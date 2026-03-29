@@ -23,6 +23,7 @@ from typing import Optional
 
 from tradingview_mcp.core.services.indicators_calc import (
     calc_rsi, calc_bollinger, calc_macd, calc_ema, calc_supertrend, calc_donchian,
+    calc_vwma, calc_atr,
 )
 
 _UA       = "tradingview-mcp/0.7.0 backtest-bot"
@@ -41,6 +42,7 @@ _STRATEGY_LABELS = {
     "ema_cross":  "EMA 20/50 Golden/Death Cross",
     "supertrend": "Supertrend (ATR-based Trend Following)",
     "donchian":   "Donchian Channel Breakout",
+    "vwma17":     "VWMA 17 Crossover (ATR Stop/TP)",
 }
 
 
@@ -193,6 +195,116 @@ def _run_donchian(candles, period=20, **_):
     return trades
 
 
+def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_multiplier=2.0, **_):
+    """
+    VWMA 17 Strategy — matches Pine Script v6 logic exactly.
+
+    Entry:
+      Long  → close crosses above VWMA(17)
+      Short → close crosses below VWMA(17)
+
+    Exit:
+      ATR-based stop loss and take profit per trade.
+      Long  SL = entry - ATR * atr_multiplier,  TP = entry + ATR * tp_multiplier
+      Short SL = entry + ATR * atr_multiplier,  TP = entry - ATR * tp_multiplier
+    """
+    closes  = [c["close"]  for c in candles]
+    highs   = [c["high"]   for c in candles]
+    lows    = [c["low"]    for c in candles]
+    volumes = [c["volume"] for c in candles]
+
+    vwma = calc_vwma(closes, volumes, vwma_length)
+    atr  = calc_atr(highs, lows, closes, atr_length)
+
+    trades   = []
+    position = None  # None, or dict with side="long"/"short"
+
+    for i in range(1, len(candles)):
+        if vwma[i] is None or vwma[i - 1] is None or atr[i] is None:
+            continue
+
+        price = candles[i]["close"]
+        high  = candles[i]["high"]
+        low   = candles[i]["low"]
+        date  = candles[i]["date"]
+
+        # Check exits first (stop loss / take profit hit during this bar)
+        if position is not None:
+            if position["side"] == "long":
+                if low <= position["stop_loss"]:
+                    trades.append({
+                        "entry_date":  position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "exit_date":   date,
+                        "exit_price":  position["stop_loss"],
+                        "strategy":    "vwma17",
+                        "exit_reason": "stop_loss",
+                    })
+                    position = None
+                elif high >= position["take_profit"]:
+                    trades.append({
+                        "entry_date":  position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "exit_date":   date,
+                        "exit_price":  position["take_profit"],
+                        "strategy":    "vwma17",
+                        "exit_reason": "take_profit",
+                    })
+                    position = None
+            elif position["side"] == "short":
+                if high >= position["stop_loss"]:
+                    trades.append({
+                        "entry_date":  position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "exit_date":   date,
+                        "exit_price":  position["stop_loss"],
+                        "strategy":    "vwma17",
+                        "exit_reason": "stop_loss",
+                        "short":       True,
+                    })
+                    position = None
+                elif low <= position["take_profit"]:
+                    trades.append({
+                        "entry_date":  position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "exit_date":   date,
+                        "exit_price":  position["take_profit"],
+                        "strategy":    "vwma17",
+                        "exit_reason": "take_profit",
+                        "short":       True,
+                    })
+                    position = None
+
+        # Check entries (crossover / crossunder)
+        if position is None:
+            # Long: close crosses above VWMA
+            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i]:
+                stop_loss   = price - atr[i] * atr_multiplier
+                take_profit = price + atr[i] * tp_multiplier
+                position = {
+                    "entry_date":  date,
+                    "entry_price": price,
+                    "side":        "long",
+                    "stop_loss":   stop_loss,
+                    "take_profit": take_profit,
+                    "strategy":    "vwma17",
+                }
+            # Short: close crosses below VWMA
+            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i]:
+                stop_loss   = price + atr[i] * atr_multiplier
+                take_profit = price - atr[i] * tp_multiplier
+                position = {
+                    "entry_date":  date,
+                    "entry_price": price,
+                    "side":        "short",
+                    "stop_loss":   stop_loss,
+                    "take_profit": take_profit,
+                    "strategy":    "vwma17",
+                }
+
+    return trades
+
+
 _STRATEGY_MAP = {
     "rsi":        _run_rsi,
     "bollinger":  _run_bollinger,
@@ -200,6 +312,7 @@ _STRATEGY_MAP = {
     "ema_cross":  _run_ema_cross,
     "supertrend": _run_supertrend,
     "donchian":   _run_donchian,
+    "vwma17":     _run_vwma17,
 }
 
 

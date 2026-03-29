@@ -1,0 +1,54 @@
+// This Pine Script™ v6 indicator/strategy is subject to the Terms of Usage at https://www.tradingview.com/pine-script-docs/
+// © VWMA17 Trading Strategy
+
+//@version=6
+strategy("VWMA 17 Strategy", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// ─── Inputs ───
+vwmaLength      = input.int(17, "VWMA Length", minval=1)
+atrLength       = input.int(14, "ATR Length (for Stop Loss)", minval=1)
+atrMultiplier   = input.float(1.5, "ATR Multiplier (Stop Loss)", minval=0.1, step=0.1)
+tpMultiplier    = input.float(2.0, "Take Profit Multiplier (x ATR)", minval=0.1, step=0.1)
+useDateFilter   = input.bool(false, "Use Date Range Filter")
+startDate       = input.time(timestamp("2024-01-01"), "Start Date")
+endDate         = input.time(timestamp("2026-12-31"), "End Date")
+
+// ─── Calculations ───
+vwma17  = ta.vwma(close, vwmaLength)
+atr     = ta.atr(atrLength)
+
+// ─── Conditions ───
+inDateRange = not useDateFilter or (time >= startDate and time <= endDate)
+
+// Price crosses above VWMA → bullish signal
+longCondition  = ta.crossover(close, vwma17) and inDateRange
+// Price crosses below VWMA → bearish signal
+shortCondition = ta.crossunder(close, vwma17) and inDateRange
+
+// ─── Stop Loss & Take Profit ───
+longStop   = close - atr * atrMultiplier
+longTP     = close + atr * tpMultiplier
+shortStop  = close + atr * atrMultiplier
+shortTP    = close - atr * tpMultiplier
+
+// ─── Strategy Execution ───
+if longCondition
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=longStop, limit=longTP)
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=shortStop, limit=shortTP)
+
+// ─── Plotting ───
+vwmaPlot = plot(vwma17, "VWMA 17", color=color.new(color.blue, 0), linewidth=2)
+pricePlot = plot(close, "Close", display=display.none)
+fill(vwmaPlot, pricePlot, color=close > vwma17 ? color.new(color.green, 85) : color.new(color.red, 85))
+
+// ─── Signal Markers ───
+plotshape(longCondition,  title="Long Signal",  location=location.belowbar, style=shape.triangleup,   color=color.green, size=size.small, text="Long")
+plotshape(shortCondition, title="Short Signal", location=location.abovebar, style=shape.triangledown, color=color.red,   size=size.small, text="Short")
+
+// ─── Alerts ───
+alertcondition(longCondition,  title="VWMA17 Long",  message="VWMA17: Price crossed above VWMA — Long entry signal")
+alertcondition(shortCondition, title="VWMA17 Short", message="VWMA17: Price crossed below VWMA — Short entry signal")

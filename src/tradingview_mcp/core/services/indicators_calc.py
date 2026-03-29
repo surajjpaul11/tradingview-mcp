@@ -13,6 +13,7 @@ Indicators:
   - Supertrend
   - Donchian Channel
   - ADX (Average Directional Index)
+  - VWMA (Volume Weighted Moving Average)
 """
 from __future__ import annotations
 
@@ -267,3 +268,31 @@ def calc_donchian(
         middle[i] = (u + l) / 2
 
     return {"upper": upper, "lower": lower, "middle": middle}
+
+
+# ─── VWMA (Volume Weighted Moving Average) ───────────────────────────────────
+
+def calc_vwma(
+    closes: list[float], volumes: list[float], period: int = 17
+) -> list[Optional[float]]:
+    """
+    Volume Weighted Moving Average.
+    VWMA = sum(close * volume, period) / sum(volume, period)
+    First (period-1) values are None.
+    """
+    n = len(closes)
+    result: list[Optional[float]] = [None] * n
+    if n < period or len(volumes) < period:
+        return result
+
+    for i in range(period - 1, n):
+        window_c = closes[i - period + 1 : i + 1]
+        window_v = volumes[i - period + 1 : i + 1]
+        vol_sum = sum(window_v)
+        if vol_sum == 0:
+            # fallback to SMA if no volume
+            result[i] = sum(window_c) / period
+        else:
+            result[i] = sum(c * v for c, v in zip(window_c, window_v)) / vol_sum
+
+    return result

@@ -2987,6 +2987,7 @@ def backtest_strategy(
                                 'ema_cross'  — Buy EMA20>EMA50 crossover, Sell on reversal
                                 'supertrend' — Buy on bullish Supertrend flip
                                 'donchian'   — Buy Donchian Channel breakout (Turtle Trader style)
+                                'vwma17'     — VWMA(17) crossover with ATR stop-loss & take-profit
         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
         initial_capital:      Starting capital in USD (default: $10,000)
         commission_pct:       Per-trade commission % (default: 0.1%)
@@ -3014,7 +3015,7 @@ def compare_strategies(
     initial_capital: float = 10000.0,
     interval: str = "1d",
 ) -> dict:
-    """Run all 6 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian) on the
+    """Run all 7 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian, VWMA17) on the
     same symbol and return a ranked performance leaderboard.
 
     Args:
@@ -3102,4 +3103,3 @@ def market_snapshot() -> dict:
 
 if __name__ == "__main__":
 	main()
-

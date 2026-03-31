@@ -15,7 +15,7 @@ SLIPPAGE = 0.05
 CAPITAL = 10_000.0
 
 print(f"\n{'='*115}")
-print(f"  VOLATILITY HARVESTER vs BUY & HOLD — Dev: 2.0 ATR, Stop: 3.0 ATR, ER < 0.25, Vol: ON")
+print(f"  VOLATILITY HARVESTER vs BUY & HOLD — Dev: 3.0 ATR, Stop: 2.0 ATR, Hold: 15, ER < 0.25, Vol: ON")
 print(f"{'='*115}\n")
 
 header = f"{'Symbol':<10} | {'VH Ret':>9} {'Trades':>7} {'WR':>6} {'PF':>6} {'DD':>8} {'Regime%':>8} | {'B&H':>9} | {'vs B&H':>8} | {'Exits (rev/time/stop/eod)'}"

@@ -23,7 +23,7 @@ Entry logic (only when ER < threshold):
 Triple-layer exit (checked before entries each bar):
   1. Mean reversion: close >= SMA (long) or close <= SMA (short)
   2. Time exit:      bars held >= max_hold_bars (stale trade)
-  3. Stop loss:      ATR-based, frozen at entry — 3x ATR from entry price
+  3. Stop loss:      ATR-based, frozen at entry — 2x ATR from entry price
 
 Usage:
   python volatility_harvester_strategy.py                               # defaults: SPY, 2y, 1h
@@ -50,9 +50,9 @@ from typing import Optional
 
 ATR_PERIOD       = 14      # ATR period for deviation threshold and stop loss
 SMA_PERIOD       = 20      # SMA period for mean calculation
-DEVIATION_MULT   = 2.0     # entry when |close - sma| > deviation_mult * atr
-STOP_MULT        = 3.0     # stop loss = entry ± stop_mult * entry_atr (frozen)
-MAX_HOLD_BARS    = 20      # time-based exit after this many bars
+DEVIATION_MULT   = 3.0     # entry when |close - sma| > deviation_mult * atr
+STOP_MULT        = 2.0     # stop loss = entry ± stop_mult * entry_atr (frozen)
+MAX_HOLD_BARS    = 15      # time-based exit after this many bars
 VOL_MA_PERIOD    = 20      # volume moving average period for spike detection
 VOL_SPIKE_MULT   = 1.5     # volume must be >= vol_spike_mult * vol_ma to enter
 ER_PERIOD        = 50      # Efficiency Ratio lookback (choppy vs trending regime)

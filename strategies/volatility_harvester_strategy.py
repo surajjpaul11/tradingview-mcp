@@ -507,3 +507,94 @@ def run_backtest(
         "disclaimer":              "Past performance does not guarantee future results. For educational use only.",
         "timestamp":               datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ==============================================================================
+# CLI ENTRY POINT
+# ==============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(description="Volatility Harvester Strategy Backtester")
+    parser.add_argument("--symbol", default="SPY", help="Yahoo Finance symbol (default: SPY)")
+    parser.add_argument("--period", default=PERIOD, help="Data period (default: 2y)")
+    parser.add_argument("--interval", default=INTERVAL, choices=["5m", "15m", "30m", "1h", "1d"],
+                        help="Candle size (default: 1h)")
+    parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
+    parser.add_argument("--commission", type=float, default=COMMISSION_PCT, help="Commission %% per trade")
+    parser.add_argument("--slippage", type=float, default=SLIPPAGE_PCT, help="Slippage %% per trade")
+    parser.add_argument("--atr-period", type=int, default=ATR_PERIOD, help="ATR period (default: 14)")
+    parser.add_argument("--sma-period", type=int, default=SMA_PERIOD, help="SMA period for mean (default: 20)")
+    parser.add_argument("--deviation-mult", type=float, default=DEVIATION_MULT,
+                        help="ATR multiples from SMA to trigger entry (default: 2.0)")
+    parser.add_argument("--stop-mult", type=float, default=STOP_MULT,
+                        help="ATR multiples for stop loss (default: 3.0)")
+    parser.add_argument("--max-hold-bars", type=int, default=MAX_HOLD_BARS,
+                        help="Max bars to hold a position (default: 20)")
+    parser.add_argument("--vol-ma-period", type=int, default=VOL_MA_PERIOD,
+                        help="Volume MA period (default: 20)")
+    parser.add_argument("--vol-spike-mult", type=float, default=VOL_SPIKE_MULT,
+                        help="Volume spike multiplier (default: 1.5)")
+    parser.add_argument("--er-period", type=int, default=ER_PERIOD, help="ER lookback (default: 50)")
+    parser.add_argument("--er-threshold", type=float, default=ER_THRESHOLD,
+                        help="ER threshold: below = choppy (default: 0.25)")
+    parser.add_argument("--no-volume-filter", action="store_true",
+                        help="Disable volume confirmation for entries")
+    parser.add_argument("--long-only", action="store_true",
+                        help="Disable short positions")
+    args = parser.parse_args()
+
+    vol_filter = not args.no_volume_filter
+    vol_label = "ON" if vol_filter else "OFF"
+    shorts_label = "OFF" if args.long_only else "ON"
+
+    print(f"\n{'='*60}")
+    print(f"  Volatility Harvester — {args.symbol}")
+    print(f"  Entry: {args.deviation_mult} ATR  |  Stop: {args.stop_mult} ATR  |  Hold: {args.max_hold_bars} bars")
+    print(f"  ER < {args.er_threshold}  |  Volume: {vol_label}  |  Shorts: {shorts_label}")
+    print(f"  Interval: {args.interval}")
+    print(f"{'='*60}\n")
+
+    result = run_backtest(
+        symbol=args.symbol, period=args.period, interval=args.interval,
+        initial_capital=args.initial_capital,
+        commission_pct=args.commission, slippage_pct=args.slippage,
+        atr_period=args.atr_period, sma_period=args.sma_period,
+        deviation_mult=args.deviation_mult, stop_mult=args.stop_mult,
+        max_hold_bars=args.max_hold_bars,
+        vol_ma_period=args.vol_ma_period, vol_spike_mult=args.vol_spike_mult,
+        er_period=args.er_period, er_threshold=args.er_threshold,
+        volume_filter=vol_filter, long_only=args.long_only,
+    )
+
+    m = result
+    print(f"  Period:           {m['date_from']} -> {m['date_to']} ({m['candles_analyzed']} bars)")
+    print(f"  Regime Active:    {m['regime_active_pct']}% of bars (ER < {args.er_threshold})")
+    print(f"  Initial Capital:  ${m['initial_capital']:,.2f}")
+    print(f"  Final Capital:    ${m['final_capital']:,.2f}")
+    print(f"  Total Return:     {m['total_return_pct']:+.2f}%")
+    print(f"  Buy & Hold:       {m['buy_and_hold_return_pct']:+.2f}%")
+    print(f"  vs B&H:           {m['vs_buy_and_hold_pct']:+.2f}%")
+    print(f"  Total Trades:     {m['total_trades']} (L:{m['long_trades']} S:{m['short_trades']})")
+    print(f"  Win Rate:         {m['win_rate_pct']}%")
+    print(f"  Profit Factor:    {m['profit_factor']}")
+    print(f"  Sharpe Ratio:     {m['sharpe_ratio']}")
+    print(f"  Max Drawdown:     {m['max_drawdown_pct']}%")
+    print(f"  Exits:            Reversion: {m['mean_reversion_exits']}  |  Time: {m['time_exits']}  |  Stop: {m['stop_loss_exits']}  |  EOD: {m['end_of_data_exits']}")
+
+    print(f"\n  Trade Log:")
+    for t in m["trade_log"]:
+        side_label = "LONG " if t["side"] == "long" else "SHORT"
+        print(f"    {side_label} {t['entry_date']} -> {t['exit_date']}  "
+              f"${t['entry_price']:>10,.2f} -> ${t['exit_price']:>10,.2f}  "
+              f"{t['return_pct']:+7.2f}%  [{t.get('exit_reason', 'n/a')}]")
+
+    print(f"\n{'='*60}\n")
+
+    fname = f"volatility_harvester_backtest_{args.symbol.replace('-','_')}_{args.period}.json"
+    with open(fname, "w") as f:
+        json.dump(result, f, indent=2)
+    print(f"  Full results saved to: {fname}\n")
+
+
+if __name__ == "__main__":
+    main()

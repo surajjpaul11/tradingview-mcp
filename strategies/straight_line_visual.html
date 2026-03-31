@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Straight Line Strategy — Visual Guide</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 30px; }
+  h1 { text-align: center; margin-bottom: 10px; color: #58a6ff; font-size: 28px; }
+  .subtitle { text-align: center; color: #8b949e; margin-bottom: 40px; font-size: 14px; }
+  .chart-container { max-width: 900px; margin: 0 auto 50px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 30px; }
+  .chart-title { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
+  .chart-desc { color: #8b949e; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+  canvas { width: 100%; border-radius: 8px; background: #0d1117; }
+  .legend { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 15px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+  .steps { max-width: 900px; margin: 0 auto 40px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 30px; }
+  .steps h2 { color: #58a6ff; margin-bottom: 15px; font-size: 18px; }
+  .steps ol { padding-left: 24px; line-height: 2; }
+  .steps li { color: #c9d1d9; }
+  .steps .highlight { color: #3fb950; font-weight: 600; }
+  .steps .sell { color: #f85149; font-weight: 600; }
+  .steps .neutral { color: #d29922; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Straight Line Strategy</h1>
+<p class="subtitle">Trendline break detection with 4-point confirmation</p>
+
+<!-- Uptrend Chart -->
+<div class="chart-container">
+  <div class="chart-title" style="color: #3fb950;">Uptrend: Support Trendline Break = SELL</div>
+  <div class="chart-desc">
+    A support trendline is drawn through ascending swing lows. The line is anchored at the first two prominent lows
+    and extended forward. When 2+ additional swing lows confirm the trendline (land within 1.5% tolerance),
+    it becomes active. A candle closing below the trendline triggers a sell signal.
+  </div>
+  <canvas id="uptrendChart" height="400"></canvas>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Bullish candles</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Bearish candles</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Support trendline</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Anchor points (2)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d2a8ff"></div> Confirmation points (2+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f85149; border: 2px solid #fff"></div> Break candle = SELL</div>
+  </div>
+</div>
+
+<!-- Downtrend Chart -->
+<div class="chart-container">
+  <div class="chart-title" style="color: #f85149;">Downtrend: Resistance Trendline Break = BUY</div>
+  <div class="chart-desc">
+    A resistance trendline is drawn through descending swing highs. The line is anchored at the first two prominent highs
+    and extended forward. When 2+ additional swing highs confirm the trendline (land within 1.5% tolerance),
+    it becomes active. A candle closing above the trendline triggers a buy signal.
+  </div>
+  <canvas id="downtrendChart" height="400"></canvas>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Bullish candles</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Bearish candles</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f85149; opacity:0.7"></div> Resistance trendline</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Anchor points (2)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d2a8ff"></div> Confirmation points (2+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950; border: 2px solid #fff"></div> Break candle = BUY</div>
+  </div>
+</div>
+
+<!-- Steps -->
+<div class="steps">
+  <h2>How the Strategy Works — Step by Step</h2>
+  <ol>
+    <li>Detect <span class="neutral">swing lows</span> and <span class="neutral">swing highs</span> using pivot logic (5 bars left/right)</li>
+    <li>In an uptrend: pick 2 ascending swing lows as <span class="highlight">anchor points</span> and draw a straight line through them</li>
+    <li>Extend the line forward — check if <span class="neutral">2+ more swing lows</span> land within 1.5% of the projected line</li>
+    <li>Once confirmed (4+ total touches), the trendline is <span class="highlight">active</span></li>
+    <li>When a candle <span class="sell">closes below</span> the trendline → <span class="sell">SELL</span> on the next bar's open</li>
+    <li>After selling, look for a <span class="neutral">downtrend resistance trendline</span> to form (descending swing highs)</li>
+    <li>When price <span class="highlight">closes above</span> the resistance trendline → <span class="highlight">BUY</span> on the next bar's open</li>
+    <li>Repeat — the strategy alternates between support and resistance trendline tracking</li>
+  </ol>
+</div>
+
+<div class="steps">
+  <h2>Tolerance Zone</h2>
+  <div class="chart-desc" style="margin-bottom: 0;">
+    Swing points rarely land exactly on a mathematical line. The <span class="neutral" style="color:#d29922">1.5% tolerance</span> means a swing low
+    at $98.50 would still "touch" a trendline projecting $100.00 at that bar (within 1.5%).
+    This captures real-world trendlines where price bounces near — but not exactly on — support/resistance.
+  </div>
+</div>
+
+<script>
+function drawCandle(ctx, x, o, h, l, c, w) {
+  const bullish = c >= o;
+  ctx.strokeStyle = bullish ? '#3fb950' : '#f85149';
+  ctx.fillStyle = bullish ? '#3fb950' : '#f85149';
+  // Wick
+  ctx.beginPath();
+  ctx.moveTo(x, h);
+  ctx.lineTo(x, l);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Body
+  const top = Math.min(o, c);
+  const bot = Math.max(o, c);
+  const bodyH = Math.max(bot - top, 1);
+  ctx.fillRect(x - w/2, top, w, bodyH);
+}
+
+function drawLabel(ctx, x, y, text, color, above) {
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x, above ? y - 12 : y + 16);
+}
+
+function drawCircle(ctx, x, y, r, color, filled) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  if (filled) {
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// ============================================================
+// UPTREND CHART
+// ============================================================
+(function() {
+  const canvas = document.getElementById('uptrendChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * 2;
+  canvas.height = 400 * 2;
+  ctx.scale(2, 2);
+  const W = canvas.offsetWidth, H = 400;
+
+  // Generate uptrend price data with clear swing lows
+  const bars = 55;
+  const prices = [];
+  // Build a realistic uptrend with swings
+  const base = [
+    // Early uptrend
+    {o:100,h:102,l:99,c:101}, {o:101,h:104,l:100,c:103}, {o:103,h:106,l:102,c:105},
+    {o:105,h:107,l:104,c:104}, {o:104,h:105,l:101,c:102}, // swing low ~101
+    {o:102,h:105,l:101.5,c:104}, {o:104,h:108,l:103,c:107}, {o:107,h:110,l:106,c:109},
+    {o:109,h:112,l:108,c:111}, {o:111,h:113,l:109,c:110},
+    {o:110,h:111,l:107,c:108}, {o:108,h:109,l:106,c:106.5}, // swing low ~106
+    {o:106.5,h:109,l:106,c:108}, {o:108,h:112,l:107,c:111}, {o:111,h:115,l:110,c:114},
+    {o:114,h:117,l:113,c:116}, {o:116,h:118,l:114,c:115},
+    {o:115,h:116,l:112,c:113}, {o:113,h:114,l:111,c:111.5}, // swing low ~111 (confirm 1)
+    {o:111.5,h:114,l:111,c:113}, {o:113,h:117,l:112,c:116}, {o:116,h:120,l:115,c:119},
+    {o:119,h:122,l:118,c:121}, {o:121,h:123,l:119,c:120},
+    {o:120,h:121,l:117,c:118}, {o:118,h:119,l:116,c:116.5}, // swing low ~116 (confirm 2) → trendline ACTIVE
+    {o:116.5,h:119,l:116,c:118}, {o:118,h:122,l:117,c:121}, {o:121,h:125,l:120,c:124},
+    {o:124,h:127,l:123,c:126}, {o:126,h:128,l:124,c:125},
+    {o:125,h:126,l:122,c:123}, {o:123,h:124,l:121,c:121.5}, // swing low ~121
+    {o:121.5,h:124,l:121,c:123}, {o:123,h:127,l:122,c:126}, {o:126,h:130,l:125,c:129},
+    {o:129,h:131,l:127,c:128},
+    // Now the breakdown
+    {o:128,h:129,l:124,c:125}, {o:125,h:126,l:121,c:122}, {o:122,h:123,l:118,c:119},
+    {o:119,h:121,l:115,c:113}, // ← BREAK CANDLE: closes below trendline
+    {o:113,h:115,l:110,c:111}, {o:111,h:113,l:108,c:109},
+    {o:109,h:111,l:106,c:107}, {o:107,h:109,l:105,c:106},
+    {o:106,h:108,l:104,c:105}, {o:105,h:107,l:103,c:104},
+    {o:104,h:106,l:102,c:103}, {o:103,h:105,l:101,c:102},
+    {o:102,h:104,l:100,c:101}, {o:101,h:103,l:99,c:100},
+    {o:100,h:102,l:98,c:99}, {o:99,h:101,l:97,c:98},
+    {o:98,h:100,l:96,c:97}, {o:97,h:99,l:95,c:96},
+  ];
+
+  // Scale to chart
+  const marginL = 50, marginR = 20, marginT = 40, marginB = 40;
+  const chartW = W - marginL - marginR;
+  const chartH = H - marginT - marginB;
+  const allVals = base.flatMap(b => [b.h, b.l]);
+  const minP = Math.min(...allVals) - 3;
+  const maxP = Math.max(...allVals) + 3;
+
+  const xFor = i => marginL + (i / (base.length - 1)) * chartW;
+  const yFor = p => marginT + (1 - (p - minP) / (maxP - minP)) * chartH;
+  const candleW = Math.max(chartW / base.length * 0.5, 4);
+
+  // Grid
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth = 0.5;
+  for (let p = Math.ceil(minP / 5) * 5; p <= maxP; p += 5) {
+    const y = yFor(p);
+    ctx.beginPath(); ctx.moveTo(marginL, y); ctx.lineTo(W - marginR, y); ctx.stroke();
+    ctx.fillStyle = '#484f58'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('$' + p, marginL - 5, y + 3);
+  }
+
+  // Draw candles
+  for (let i = 0; i < base.length; i++) {
+    const b = base[i];
+    drawCandle(ctx, xFor(i), yFor(b.o), yFor(b.h), yFor(b.l), yFor(b.c), candleW);
+  }
+
+  // Swing low points: bars 4(101), 11(106), 18(111), 25(116), 32(121)
+  const swingLows = [
+    {bar: 4, price: 101, type: 'anchor', label: 'HL1 (Anchor)'},
+    {bar: 11, price: 106, type: 'anchor', label: 'HL2 (Anchor)'},
+    {bar: 18, price: 111, type: 'confirm', label: 'HL3 (Confirm)'},
+    {bar: 25, price: 116, type: 'confirm', label: 'HL4 (Confirm)'},
+    {bar: 32, price: 121, type: 'extra', label: 'HL5'},
+  ];
+
+  // Draw trendline (through HL1 and HL2, extended)
+  const sl1 = swingLows[0], sl2 = swingLows[1];
+  const slope = (sl2.price - sl1.price) / (sl2.bar - sl1.bar);
+  const tlAt = bar => sl1.price + slope * (bar - sl1.bar);
+
+  // Trendline
+  ctx.beginPath();
+  ctx.moveTo(xFor(sl1.bar), yFor(sl1.price));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1)));
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Tolerance zone
+  ctx.fillStyle = 'rgba(88, 166, 255, 0.06)';
+  ctx.beginPath();
+  ctx.moveTo(xFor(sl1.bar), yFor(sl1.price * 1.015));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1) * 1.015));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1) * 0.985));
+  ctx.lineTo(xFor(sl1.bar), yFor(sl1.price * 0.985));
+  ctx.closePath();
+  ctx.fill();
+
+  // Tolerance labels
+  ctx.font = '9px sans-serif';
+  ctx.fillStyle = '#58a6ff';
+  ctx.textAlign = 'left';
+  const tolX = xFor(38);
+  ctx.fillText('1.5% tolerance zone', tolX, yFor(tlAt(38) * 1.015) - 4);
+
+  // Draw swing low markers
+  for (const sl of swingLows) {
+    const color = sl.type === 'anchor' ? '#f0883e' : sl.type === 'confirm' ? '#d2a8ff' : '#8b949e';
+    drawCircle(ctx, xFor(sl.bar), yFor(sl.price), 6, color, true);
+    drawLabel(ctx, xFor(sl.bar), yFor(sl.price), sl.label, color, false);
+  }
+
+  // Break candle highlight (bar 40)
+  const breakBar = 40;
+  ctx.strokeStyle = '#f85149';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(xFor(breakBar) - candleW, yFor(base[breakBar].h) - 2, candleW * 2, yFor(base[breakBar].l) - yFor(base[breakBar].h) + 4);
+
+  // Break arrow and label
+  const breakTlPrice = tlAt(breakBar);
+  ctx.beginPath();
+  ctx.moveTo(xFor(breakBar) + candleW + 5, yFor(breakTlPrice));
+  ctx.lineTo(xFor(breakBar) + candleW + 5, yFor(base[breakBar].c));
+  ctx.strokeStyle = '#f85149';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Arrow head
+  ctx.beginPath();
+  ctx.moveTo(xFor(breakBar) + candleW + 5, yFor(base[breakBar].c));
+  ctx.lineTo(xFor(breakBar) + candleW + 1, yFor(base[breakBar].c) - 6);
+  ctx.lineTo(xFor(breakBar) + candleW + 9, yFor(base[breakBar].c) - 6);
+  ctx.fillStyle = '#f85149';
+  ctx.fill();
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#f85149';
+  ctx.textAlign = 'left';
+  ctx.fillText('CLOSE BELOW', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) - 5);
+  ctx.fillText('TRENDLINE', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) + 9);
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('SELL', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) + 26);
+
+  // "Trendline ACTIVE" label
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#3fb950';
+  ctx.textAlign = 'center';
+  ctx.fillText('Trendline ACTIVE', xFor(28), yFor(tlAt(28)) + 28);
+  ctx.fillText('(4 points confirmed)', xFor(28), yFor(tlAt(28)) + 42);
+})();
+
+
+// ============================================================
+// DOWNTREND CHART
+// ============================================================
+(function() {
+  const canvas = document.getElementById('downtrendChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * 2;
+  canvas.height = 400 * 2;
+  ctx.scale(2, 2);
+  const W = canvas.offsetWidth, H = 400;
+
+  const base = [
+    // Early downtrend
+    {o:130,h:132,l:128,c:129}, {o:129,h:130,l:126,c:127}, {o:127,h:128,l:124,c:125},
+    {o:125,h:128,l:124,c:127}, {o:127,h:130,l:126,c:129}, // swing high ~130
+    {o:129,h:130,l:126,c:127}, {o:127,h:128,l:123,c:124}, {o:124,h:125,l:121,c:122},
+    {o:122,h:124,l:120,c:121}, {o:121,h:123,l:119,c:120},
+    {o:120,h:122,l:119,c:121}, {o:121,h:125,l:120,c:124}, // swing high ~125
+    {o:124,h:125,l:121,c:122}, {o:122,h:123,l:118,c:119}, {o:119,h:120,l:116,c:117},
+    {o:117,h:118,l:114,c:115}, {o:115,h:117,l:114,c:116},
+    {o:116,h:120,l:115,c:119}, {o:119,h:121,l:118,c:120}, // swing high ~121 (confirm 1)
+    {o:120,h:121,l:117,c:118}, {o:118,h:119,l:115,c:116}, {o:116,h:117,l:113,c:114},
+    {o:114,h:115,l:111,c:112}, {o:112,h:114,l:111,c:113},
+    {o:113,h:116,l:112,c:115}, {o:115,h:117,l:114,c:116}, // swing high ~117 (confirm 2) → ACTIVE
+    {o:116,h:117,l:113,c:114}, {o:114,h:115,l:111,c:112}, {o:112,h:113,l:109,c:110},
+    {o:110,h:111,l:107,c:108}, {o:108,h:110,l:107,c:109},
+    {o:109,h:112,l:108,c:111}, {o:111,h:113,l:110,c:112}, // swing high ~113
+    {o:112,h:113,l:109,c:110}, {o:110,h:111,l:107,c:108}, {o:108,h:109,l:105,c:106},
+    {o:106,h:107,l:103,c:104},
+    // Now the breakout
+    {o:104,h:107,l:103,c:106}, {o:106,h:109,l:105,c:108}, {o:108,h:111,l:107,c:110},
+    {o:110,h:114,l:109,c:113}, // ← BREAK CANDLE: closes above resistance trendline
+    {o:113,h:116,l:112,c:115}, {o:115,h:118,l:114,c:117},
+    {o:117,h:120,l:116,c:119}, {o:119,h:122,l:118,c:121},
+    {o:121,h:124,l:120,c:123}, {o:123,h:126,l:122,c:125},
+    {o:125,h:128,l:124,c:127}, {o:127,h:130,l:126,c:129},
+    {o:129,h:132,l:128,c:131}, {o:131,h:134,l:130,c:133},
+    {o:133,h:136,l:132,c:135}, {o:135,h:138,l:134,c:137},
+    {o:137,h:140,l:136,c:139}, {o:139,h:142,l:138,c:141},
+  ];
+
+  const marginL = 50, marginR = 20, marginT = 40, marginB = 40;
+  const chartW = W - marginL - marginR;
+  const chartH = H - marginT - marginB;
+  const allVals = base.flatMap(b => [b.h, b.l]);
+  const minP = Math.min(...allVals) - 3;
+  const maxP = Math.max(...allVals) + 3;
+
+  const xFor = i => marginL + (i / (base.length - 1)) * chartW;
+  const yFor = p => marginT + (1 - (p - minP) / (maxP - minP)) * chartH;
+  const candleW = Math.max(chartW / base.length * 0.5, 4);
+
+  // Grid
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth = 0.5;
+  for (let p = Math.ceil(minP / 5) * 5; p <= maxP; p += 5) {
+    const y = yFor(p);
+    ctx.beginPath(); ctx.moveTo(marginL, y); ctx.lineTo(W - marginR, y); ctx.stroke();
+    ctx.fillStyle = '#484f58'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('$' + p, marginL - 5, y + 3);
+  }
+
+  // Draw candles
+  for (let i = 0; i < base.length; i++) {
+    const b = base[i];
+    drawCandle(ctx, xFor(i), yFor(b.o), yFor(b.h), yFor(b.l), yFor(b.c), candleW);
+  }
+
+  // Swing high points: bars 4(130), 11(125), 18(121), 25(117), 32(113)
+  const swingHighs = [
+    {bar: 4, price: 130, type: 'anchor', label: 'LH1 (Anchor)'},
+    {bar: 11, price: 125, type: 'anchor', label: 'LH2 (Anchor)'},
+    {bar: 18, price: 121, type: 'confirm', label: 'LH3 (Confirm)'},
+    {bar: 25, price: 117, type: 'confirm', label: 'LH4 (Confirm)'},
+    {bar: 32, price: 113, type: 'extra', label: 'LH5'},
+  ];
+
+  // Draw resistance trendline (through LH1 and LH2, extended)
+  const sh1 = swingHighs[0], sh2 = swingHighs[1];
+  const slope = (sh2.price - sh1.price) / (sh2.bar - sh1.bar);
+  const tlAt = bar => sh1.price + slope * (bar - sh1.bar);
+
+  // Trendline
+  ctx.beginPath();
+  ctx.moveTo(xFor(sh1.bar), yFor(sh1.price));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1)));
+  ctx.strokeStyle = '#f85149';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Tolerance zone
+  ctx.fillStyle = 'rgba(248, 81, 73, 0.06)';
+  ctx.beginPath();
+  ctx.moveTo(xFor(sh1.bar), yFor(sh1.price * 1.015));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1) * 1.015));
+  ctx.lineTo(xFor(base.length - 1), yFor(tlAt(base.length - 1) * 0.985));
+  ctx.lineTo(xFor(sh1.bar), yFor(sh1.price * 0.985));
+  ctx.closePath();
+  ctx.fill();
+
+  // Tolerance label
+  ctx.font = '9px sans-serif';
+  ctx.fillStyle = '#f85149';
+  ctx.textAlign = 'left';
+  ctx.fillText('1.5% tolerance zone', xFor(38), yFor(tlAt(38) * 0.985) + 14);
+
+  // Draw swing high markers
+  for (const sh of swingHighs) {
+    const color = sh.type === 'anchor' ? '#f0883e' : sh.type === 'confirm' ? '#d2a8ff' : '#8b949e';
+    drawCircle(ctx, xFor(sh.bar), yFor(sh.price), 6, color, true);
+    drawLabel(ctx, xFor(sh.bar), yFor(sh.price), sh.label, color, true);
+  }
+
+  // Break candle highlight (bar 40)
+  const breakBar = 40;
+  ctx.strokeStyle = '#3fb950';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(xFor(breakBar) - candleW, yFor(base[breakBar].h) - 2, candleW * 2, yFor(base[breakBar].l) - yFor(base[breakBar].h) + 4);
+
+  // Break arrow and label
+  const breakTlPrice = tlAt(breakBar);
+  ctx.beginPath();
+  ctx.moveTo(xFor(breakBar) + candleW + 5, yFor(breakTlPrice));
+  ctx.lineTo(xFor(breakBar) + candleW + 5, yFor(base[breakBar].c));
+  ctx.strokeStyle = '#3fb950';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Arrow head
+  ctx.beginPath();
+  ctx.moveTo(xFor(breakBar) + candleW + 5, yFor(base[breakBar].c));
+  ctx.lineTo(xFor(breakBar) + candleW + 1, yFor(base[breakBar].c) + 6);
+  ctx.lineTo(xFor(breakBar) + candleW + 9, yFor(base[breakBar].c) + 6);
+  ctx.fillStyle = '#3fb950';
+  ctx.fill();
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#3fb950';
+  ctx.textAlign = 'left';
+  ctx.fillText('CLOSE ABOVE', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) + 5);
+  ctx.fillText('TRENDLINE', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) + 19);
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('BUY', xFor(breakBar) + candleW + 14, yFor(base[breakBar].c) + 36);
+
+  // "Trendline ACTIVE" label
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#f85149';
+  ctx.textAlign = 'center';
+  ctx.fillText('Trendline ACTIVE', xFor(28), yFor(tlAt(28)) - 28);
+  ctx.fillText('(4 points confirmed)', xFor(28), yFor(tlAt(28)) - 14);
+})();
+</script>
+
+</body>
+</html>

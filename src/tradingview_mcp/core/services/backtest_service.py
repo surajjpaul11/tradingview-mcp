@@ -23,17 +23,17 @@ from typing import Optional
 
 from tradingview_mcp.core.services.indicators_calc import (
     calc_rsi, calc_bollinger, calc_macd, calc_ema, calc_supertrend, calc_donchian,
-    calc_vwma, calc_atr,
+    calc_vwma, calc_atr, calc_sma,
 )
 
 _UA       = "tradingview-mcp/0.7.0 backtest-bot"
 _YF_BASE  = "https://query1.finance.yahoo.com/v8/finance/chart"
 
-_VALID_PERIODS   = {"1mo", "3mo", "6mo", "1y", "2y"}
-_VALID_INTERVALS = {"1d", "1h"}
+_VALID_PERIODS   = {"5d", "1mo", "3mo", "6mo", "1y", "2y"}
+_VALID_INTERVALS = {"1d", "1h", "30m"}
 
 # Annualization factor for Sharpe ratio
-_ANNUALIZATION = {"1d": 252, "1h": 252 * 6}
+_ANNUALIZATION = {"1d": 252, "1h": 252 * 6, "30m": 252 * 13}
 
 _STRATEGY_LABELS = {
     "rsi":        "RSI Oversold/Overbought",
@@ -42,7 +42,8 @@ _STRATEGY_LABELS = {
     "ema_cross":  "EMA 20/50 Golden/Death Cross",
     "supertrend": "Supertrend (ATR-based Trend Following)",
     "donchian":   "Donchian Channel Breakout",
-    "vwma17":     "VWMA 17 Crossover (ATR Stop/TP)",
+    "vwma17":       "VWMA 17 Crossover (ATR Stop/TP)",
+    "higher_highs": "Higher Highs / Lower Lows (MTF Structure)",
 }
 
 
@@ -71,7 +72,7 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d") -> list[dict]:
     result     = data["chart"]["result"][0]
     timestamps = result["timestamp"]
     q          = result["indicators"]["quote"][0]
-    date_fmt   = "%Y-%m-%d %H:%M" if interval == "1h" else "%Y-%m-%d"
+    date_fmt   = "%Y-%m-%d %H:%M" if interval in ("1h", "30m") else "%Y-%m-%d"
 
     candles = []
     for i, ts in enumerate(timestamps):
@@ -195,13 +196,37 @@ def _run_donchian(candles, period=20, **_):
     return trades
 
 
-def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_multiplier=2.0, **_):
+def _calc_efficiency_ratio(closes: list[float], period: int = 50) -> list[float | None]:
     """
-    VWMA 17 Strategy — matches Pine Script v6 logic exactly.
+    Kaufman Efficiency Ratio — measures trend strength per bar.
+
+    ER = |net change over period| / sum(|bar-to-bar changes| over period)
+    Near 1.0 = strong trend, near 0.0 = choppy/mean-reverting.
+    """
+    n = len(closes)
+    result: list[float | None] = [None] * n
+    if n < period + 1:
+        return result
+    for i in range(period, n):
+        net_change = abs(closes[i] - closes[i - period])
+        sum_changes = sum(abs(closes[j] - closes[j - 1]) for j in range(i - period + 1, i + 1))
+        result[i] = net_change / sum_changes if sum_changes > 0 else 0.0
+    return result
+
+
+def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_multiplier=2.0,
+                er_period=50, er_threshold=0.3, sma_trending=200, sma_choppy=100, **_):
+    """
+    VWMA 17 Strategy — with adaptive SMA trend filter.
+
+    Adaptive trend filter:
+      Uses Kaufman Efficiency Ratio to detect trending vs choppy regimes.
+      ER > threshold (trending) → use longer SMA (200) as filter
+      ER <= threshold (choppy)  → use shorter SMA (100) as filter
 
     Entry:
-      Long  → close crosses above VWMA(17)
-      Short → close crosses below VWMA(17)
+      Long  → close crosses above VWMA(17) AND close > active SMA
+      Short → close crosses below VWMA(17) AND close < active SMA
 
     Exit:
       ATR-based stop loss and take profit per trade.
@@ -213,8 +238,11 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
     lows    = [c["low"]    for c in candles]
     volumes = [c["volume"] for c in candles]
 
-    vwma = calc_vwma(closes, volumes, vwma_length)
-    atr  = calc_atr(highs, lows, closes, atr_length)
+    vwma     = calc_vwma(closes, volumes, vwma_length)
+    atr      = calc_atr(highs, lows, closes, atr_length)
+    sma_long = calc_sma(closes, sma_trending)
+    sma_short = calc_sma(closes, sma_choppy)
+    er       = _calc_efficiency_ratio(closes, er_period)
 
     trades   = []
     position = None  # None, or dict with side="long"/"short"
@@ -275,10 +303,20 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                     })
                     position = None
 
-        # Check entries (crossover / crossunder)
+        # Pick active SMA based on efficiency ratio (adaptive filter)
         if position is None:
-            # Long: close crosses above VWMA
-            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i]:
+            trending = er[i] is not None and er[i] > er_threshold
+            sma = sma_long if trending else sma_short
+            active_sma = sma[i]
+
+            if active_sma is None:
+                continue
+
+            trend_up   = price > active_sma
+            trend_down = price < active_sma
+
+            # Long: close crosses above VWMA AND price above active SMA (uptrend)
+            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i] and trend_up:
                 stop_loss   = price - atr[i] * atr_multiplier
                 take_profit = price + atr[i] * tp_multiplier
                 position = {
@@ -289,8 +327,8 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                     "take_profit": take_profit,
                     "strategy":    "vwma17",
                 }
-            # Short: close crosses below VWMA
-            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i]:
+            # Short: close crosses below VWMA AND price below active SMA (downtrend)
+            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i] and trend_down:
                 stop_loss   = price + atr[i] * atr_multiplier
                 take_profit = price - atr[i] * tp_multiplier
                 position = {
@@ -305,14 +343,154 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
     return trades
 
 
+def _aggregate_candles(candles: list[dict], factor: int = 8) -> list[dict]:
+    """Aggregate lower-timeframe candles into higher-timeframe bars."""
+    htf: list[dict] = []
+    for start in range(0, len(candles), factor):
+        chunk = candles[start : start + factor]
+        if not chunk:
+            continue
+        htf.append({
+            "date":   chunk[0]["date"],
+            "open":   chunk[0]["open"],
+            "high":   max(c["high"] for c in chunk),
+            "low":    min(c["low"] for c in chunk),
+            "close":  chunk[-1]["close"],
+            "volume": sum(c["volume"] for c in chunk),
+        })
+    return htf
+
+
+def _find_swings(highs: list[float], lows: list[float], lookback: int = 5
+                 ) -> tuple[list[tuple[int, float, int]], list[tuple[int, float, int]]]:
+    """Detect swing highs/lows. Returns (swing_highs, swing_lows) as (bar, price, confirmed_at)."""
+    n = len(highs)
+    swing_highs: list[tuple[int, float, int]] = []
+    swing_lows: list[tuple[int, float, int]] = []
+    for i in range(lookback, n - lookback):
+        window = range(i - lookback, i + lookback + 1)
+        if all(highs[i] >= highs[j] for j in window):
+            swing_highs.append((i, highs[i], i + lookback))
+        if all(lows[i] <= lows[j] for j in window):
+            swing_lows.append((i, lows[i], i + lookback))
+    return swing_highs, swing_lows
+
+
+def _get_structure(confirmed_highs: list[tuple[int, float]],
+                   confirmed_lows: list[tuple[int, float]],
+                   min_swings: int = 2) -> str:
+    """Assess market structure: 'bullish', 'bearish', or 'neutral'."""
+    need = min_swings + 1
+    if len(confirmed_highs) < need or len(confirmed_lows) < need:
+        return "neutral"
+    rh = [p for _, p in confirmed_highs[-need:]]
+    rl = [p for _, p in confirmed_lows[-need:]]
+    hh = all(rh[j + 1] > rh[j] for j in range(min_swings))
+    hl = all(rl[j + 1] > rl[j] for j in range(min_swings))
+    lh = all(rh[j + 1] < rh[j] for j in range(min_swings))
+    ll = all(rl[j + 1] < rl[j] for j in range(min_swings))
+    if hh and hl:
+        return "bullish"
+    if lh and ll:
+        return "bearish"
+    return "neutral"
+
+
+def _run_higher_highs(candles, pivot_lookback=5, min_swings=2, htf_multiplier=8, **_):
+    """
+    Higher Highs / Lower Lows — multi-timeframe market structure strategy.
+
+    HTF (aggregated): detect trend via swing structure (HH/HL = bullish, LH/LL = bearish)
+    LTF (raw candles): time entries on pullbacks (higher low for long, lower high for short)
+    Exit: HTF structure break.
+    """
+    highs  = [c["high"]  for c in candles]
+    lows   = [c["low"]   for c in candles]
+    closes = [c["close"] for c in candles]
+
+    htf_candles = _aggregate_candles(candles, htf_multiplier)
+    htf_highs   = [c["high"] for c in htf_candles]
+    htf_lows    = [c["low"]  for c in htf_candles]
+    htf_sh, htf_sl = _find_swings(htf_highs, htf_lows, pivot_lookback)
+
+    htf_sh_ltf = [(idx, price, (conf + 1) * htf_multiplier - 1) for idx, price, conf in htf_sh]
+    htf_sl_ltf = [(idx, price, (conf + 1) * htf_multiplier - 1) for idx, price, conf in htf_sl]
+
+    ltf_sh, ltf_sl = _find_swings(highs, lows, pivot_lookback)
+
+    trades: list[dict]   = []
+    position: dict | None = None
+
+    htf_confirmed_highs: list[tuple[int, float]] = []
+    htf_confirmed_lows:  list[tuple[int, float]] = []
+    ltf_confirmed_highs: list[tuple[int, float]] = []
+    ltf_confirmed_lows:  list[tuple[int, float]] = []
+
+    htf_sh_ptr = htf_sl_ptr = ltf_sh_ptr = ltf_sl_ptr = 0
+
+    for i in range(len(candles)):
+        date  = candles[i]["date"]
+        price = closes[i]
+
+        new_htf_high = new_htf_low = False
+        while htf_sh_ptr < len(htf_sh_ltf) and htf_sh_ltf[htf_sh_ptr][2] <= i:
+            htf_confirmed_highs.append(htf_sh_ltf[htf_sh_ptr][:2])
+            htf_sh_ptr += 1
+            new_htf_high = True
+        while htf_sl_ptr < len(htf_sl_ltf) and htf_sl_ltf[htf_sl_ptr][2] <= i:
+            htf_confirmed_lows.append(htf_sl_ltf[htf_sl_ptr][:2])
+            htf_sl_ptr += 1
+            new_htf_low = True
+
+        new_ltf_high = new_ltf_low = False
+        while ltf_sh_ptr < len(ltf_sh) and ltf_sh[ltf_sh_ptr][2] <= i:
+            ltf_confirmed_highs.append(ltf_sh[ltf_sh_ptr][:2])
+            ltf_sh_ptr += 1
+            new_ltf_high = True
+        while ltf_sl_ptr < len(ltf_sl) and ltf_sl[ltf_sl_ptr][2] <= i:
+            ltf_confirmed_lows.append(ltf_sl[ltf_sl_ptr][:2])
+            ltf_sl_ptr += 1
+            new_ltf_low = True
+
+        if position is not None:
+            if position["side"] == "long" and new_htf_low and len(htf_confirmed_lows) >= 2:
+                if htf_confirmed_lows[-1][1] < htf_confirmed_lows[-2][1]:
+                    trades.append({
+                        "entry_date": position["entry_date"], "entry_price": position["entry_price"],
+                        "exit_date": date, "exit_price": price,
+                        "side": "long", "exit_reason": "htf_structure_break", "strategy": "higher_highs",
+                    })
+                    position = None
+            elif position["side"] == "short" and new_htf_high and len(htf_confirmed_highs) >= 2:
+                if htf_confirmed_highs[-1][1] > htf_confirmed_highs[-2][1]:
+                    trades.append({
+                        "entry_date": position["entry_date"], "entry_price": position["entry_price"],
+                        "exit_date": date, "exit_price": price,
+                        "side": "short", "exit_reason": "htf_structure_break", "strategy": "higher_highs",
+                    })
+                    position = None
+
+        if position is None:
+            htf_struct = _get_structure(htf_confirmed_highs, htf_confirmed_lows, min_swings)
+            if htf_struct == "bullish" and new_ltf_low and len(ltf_confirmed_lows) >= 2:
+                if ltf_confirmed_lows[-1][1] > ltf_confirmed_lows[-2][1]:
+                    position = {"entry_date": date, "entry_price": price, "side": "long"}
+            elif htf_struct == "bearish" and new_ltf_high and len(ltf_confirmed_highs) >= 2:
+                if ltf_confirmed_highs[-1][1] < ltf_confirmed_highs[-2][1]:
+                    position = {"entry_date": date, "entry_price": price, "side": "short"}
+
+    return trades
+
+
 _STRATEGY_MAP = {
-    "rsi":        _run_rsi,
-    "bollinger":  _run_bollinger,
-    "macd":       _run_macd,
-    "ema_cross":  _run_ema_cross,
-    "supertrend": _run_supertrend,
-    "donchian":   _run_donchian,
-    "vwma17":     _run_vwma17,
+    "rsi":          _run_rsi,
+    "bollinger":    _run_bollinger,
+    "macd":         _run_macd,
+    "ema_cross":    _run_ema_cross,
+    "supertrend":   _run_supertrend,
+    "donchian":     _run_donchian,
+    "vwma17":       _run_vwma17,
+    "higher_highs": _run_higher_highs,
 }
 
 
@@ -322,7 +500,10 @@ def _apply_costs(trades: list[dict], commission_pct: float, slippage_pct: float)
     total_cost_pct = (commission_pct + slippage_pct) * 2
     result = []
     for t in trades:
-        gross = (t["exit_price"] - t["entry_price"]) / t["entry_price"] * 100
+        if t.get("side") == "short":
+            gross = (t["entry_price"] - t["exit_price"]) / t["entry_price"] * 100
+        else:
+            gross = (t["exit_price"] - t["entry_price"]) / t["entry_price"] * 100
         net   = round(gross - total_cost_pct, 3)
         result.append({**t, "return_pct": net, "gross_return_pct": round(gross, 3),
                         "cost_pct": round(-total_cost_pct, 3)})

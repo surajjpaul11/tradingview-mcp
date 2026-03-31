@@ -5,9 +5,12 @@ VWMA 17 Strategy — Standalone Python Implementation
 Mirrors the Pine Script v6 strategy (vwma17_strategy.pine) exactly.
 
 Logic:
-  - Long entry:  close crosses above VWMA(17)
-  - Short entry: close crosses below VWMA(17)
-  - Exit:        ATR-based stop loss (1.5x ATR) and take profit (2.0x ATR)
+  - Adaptive trend filter: Kaufman Efficiency Ratio picks SMA period per bar
+    - ER > 0.3 (trending regime)  → use SMA(200) as trend filter
+    - ER <= 0.3 (choppy regime)   → use SMA(100) as trend filter
+  - Long entry:   close crosses above VWMA(17) AND close > active SMA
+  - Short entry:  close crosses below VWMA(17) AND close < active SMA
+  - Exit:         ATR-based stop loss (1.5x ATR) and take profit (2.0x ATR)
 
 Usage:
   python vwma17_strategy.py                          # defaults: BTC-USD, 1y, daily
@@ -35,6 +38,10 @@ VWMA_LENGTH     = 17
 ATR_LENGTH      = 14
 ATR_MULTIPLIER  = 1.5
 TP_MULTIPLIER   = 2.0
+ER_PERIOD       = 50     # Efficiency Ratio lookback
+ER_THRESHOLD    = 0.3    # above = trending, below = choppy
+SMA_TRENDING    = 200    # SMA period for trending regime
+SMA_CHOPPY      = 100    # SMA period for choppy regime
 INITIAL_CAPITAL = 10_000.0
 COMMISSION_PCT  = 0.1    # per trade, percent
 SLIPPAGE_PCT    = 0.05   # per trade, percent
@@ -55,6 +62,30 @@ def calc_vwma(closes: list[float], volumes: list[float], period: int = 17) -> li
         wv = volumes[i - period + 1 : i + 1]
         vol_sum = sum(wv)
         result[i] = sum(c * v for c, v in zip(wc, wv)) / vol_sum if vol_sum else sum(wc) / period
+    return result
+
+
+def calc_sma(closes: list[float], period: int) -> list[Optional[float]]:
+    """Simple Moving Average"""
+    n = len(closes)
+    result: list[Optional[float]] = [None] * n
+    if n < period:
+        return result
+    for i in range(period - 1, n):
+        result[i] = sum(closes[i - period + 1 : i + 1]) / period
+    return result
+
+
+def calc_efficiency_ratio(closes: list[float], period: int = 50) -> list[Optional[float]]:
+    """Kaufman Efficiency Ratio: |net change| / sum(|bar-to-bar changes|). Near 1 = trending, near 0 = choppy."""
+    n = len(closes)
+    result: list[Optional[float]] = [None] * n
+    if n < period + 1:
+        return result
+    for i in range(period, n):
+        net_change = abs(closes[i] - closes[i - period])
+        sum_changes = sum(abs(closes[j] - closes[j - 1]) for j in range(i - period + 1, i + 1))
+        result[i] = net_change / sum_changes if sum_changes > 0 else 0.0
     return result
 
 
@@ -116,9 +147,17 @@ def run_vwma17(
     atr_length: int = ATR_LENGTH,
     atr_multiplier: float = ATR_MULTIPLIER,
     tp_multiplier: float = TP_MULTIPLIER,
+    er_period: int = ER_PERIOD,
+    er_threshold: float = ER_THRESHOLD,
+    sma_trending: int = SMA_TRENDING,
+    sma_choppy: int = SMA_CHOPPY,
 ) -> list[dict]:
     """
     Run VWMA 17 strategy on OHLCV candles. Returns list of completed trades.
+
+    Adaptive trend filter: Efficiency Ratio selects SMA period per bar.
+      ER > threshold (trending) → SMA(200)
+      ER <= threshold (choppy)  → SMA(100)
 
     Each trade dict contains:
       entry_date, entry_price, exit_date, exit_price,
@@ -129,8 +168,11 @@ def run_vwma17(
     lows    = [c["low"]    for c in candles]
     volumes = [c["volume"] for c in candles]
 
-    vwma = calc_vwma(closes, volumes, vwma_length)
-    atr  = calc_atr(highs, lows, closes, atr_length)
+    vwma      = calc_vwma(closes, volumes, vwma_length)
+    atr       = calc_atr(highs, lows, closes, atr_length)
+    sma_long  = calc_sma(closes, sma_trending)
+    sma_short = calc_sma(closes, sma_choppy)
+    er        = calc_efficiency_ratio(closes, er_period)
 
     trades   = []
     position = None
@@ -168,15 +210,26 @@ def run_vwma17(
                 })
                 position = None
 
-        # ── Check entries (crossover / crossunder) ──
+        # ── Pick active SMA based on efficiency ratio (adaptive filter) ──
         if position is None:
-            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i]:
+            trending = er[i] is not None and er[i] > er_threshold
+            active_sma = (sma_long if trending else sma_short)[i]
+
+            if active_sma is None:
+                continue
+
+            trend_up   = price > active_sma
+            trend_down = price < active_sma
+
+            # Long: cross above VWMA AND price above active SMA (uptrend)
+            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i] and trend_up:
                 position = {
                     "entry_date": date, "entry_price": price, "side": "long",
                     "stop_loss":   price - atr[i] * atr_multiplier,
                     "take_profit": price + atr[i] * tp_multiplier,
                 }
-            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i]:
+            # Short: cross below VWMA AND price below active SMA (downtrend)
+            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i] and trend_down:
                 position = {
                     "entry_date": date, "entry_price": price, "side": "short",
                     "stop_loss":   price + atr[i] * atr_multiplier,
@@ -277,10 +330,15 @@ def run_backtest(
     atr_length: int = ATR_LENGTH,
     atr_multiplier: float = ATR_MULTIPLIER,
     tp_multiplier: float = TP_MULTIPLIER,
+    er_period: int = ER_PERIOD,
+    er_threshold: float = ER_THRESHOLD,
+    sma_trending: int = SMA_TRENDING,
+    sma_choppy: int = SMA_CHOPPY,
 ) -> dict:
     """Full backtest pipeline: fetch data → run strategy → compute metrics."""
     candles = fetch_ohlcv(symbol, period)
-    raw_trades = run_vwma17(candles, vwma_length, atr_length, atr_multiplier, tp_multiplier)
+    raw_trades = run_vwma17(candles, vwma_length, atr_length, atr_multiplier, tp_multiplier,
+                            er_period, er_threshold, sma_trending, sma_choppy)
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital)
 
@@ -328,6 +386,10 @@ def main():
     parser.add_argument("--atr-length", type=int, default=ATR_LENGTH)
     parser.add_argument("--atr-mult", type=float, default=ATR_MULTIPLIER)
     parser.add_argument("--tp-mult", type=float, default=TP_MULTIPLIER)
+    parser.add_argument("--er-period", type=int, default=ER_PERIOD, help="Efficiency Ratio lookback (default: 50)")
+    parser.add_argument("--er-threshold", type=float, default=ER_THRESHOLD, help="ER threshold: above=trending, below=choppy (default: 0.3)")
+    parser.add_argument("--sma-trending", type=int, default=SMA_TRENDING, help="SMA period for trending regime (default: 200)")
+    parser.add_argument("--sma-choppy", type=int, default=SMA_CHOPPY, help="SMA period for choppy regime (default: 100)")
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
@@ -340,6 +402,8 @@ def main():
         commission_pct=args.commission, slippage_pct=args.slippage,
         vwma_length=args.vwma_length, atr_length=args.atr_length,
         atr_multiplier=args.atr_mult, tp_multiplier=args.tp_mult,
+        er_period=args.er_period, er_threshold=args.er_threshold,
+        sma_trending=args.sma_trending, sma_choppy=args.sma_choppy,
     )
 
     # Summary

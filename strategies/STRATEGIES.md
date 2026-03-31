@@ -342,13 +342,13 @@ A counter-trend strategy designed specifically for choppy/volatile markets. Uses
 The ER measures how "efficient" price movement is. ER < 0.25 means lots of movement but no net direction (choppy) — the strategy only opens new positions in this regime. When ER >= 0.25 (trending), the strategy sits in cash.
 
 **Entry (ATR Z-Score + Volume Confirmation):**
-- Long: close is >= 2.0 ATR below SMA(20) AND volume >= 1.5x its MA (panic dip)
-- Short: close is >= 2.0 ATR above SMA(20) AND volume >= 1.5x its MA (sharp rip)
+- Long: close is >= 3.0 ATR below SMA(20) AND volume >= 1.5x its MA (panic dip)
+- Short: close is >= 3.0 ATR above SMA(20) AND volume >= 1.5x its MA (sharp rip)
 
 **Exit (Triple Layer — first to fire wins):**
 1. **Mean Reversion:** Price returns to SMA(20) — thesis complete
-2. **Time Exit:** Position held for 20 bars — thesis expired
-3. **Stop Loss:** Price moves 3 ATR against entry (ATR frozen at entry) — thesis wrong
+2. **Time Exit:** Position held for 15 bars — thesis expired
+3. **Stop Loss:** Price moves 2.0 ATR against entry (ATR frozen at entry) — thesis wrong
 
 ### Default Parameters
 
@@ -356,9 +356,9 @@ The ER measures how "efficient" price movement is. ER < 0.25 means lots of movem
 |-----------|-------|-------------|
 | `atr_period` | 14 | ATR calculation period |
 | `sma_period` | 20 | Mean for deviation + reversion target |
-| `deviation_mult` | 2.0 | ATR multiples from SMA to trigger entry |
-| `stop_mult` | 3.0 | ATR multiples for stop loss |
-| `max_hold_bars` | 20 | Max bars to hold a position |
+| `deviation_mult` | 3.0 | ATR multiples from SMA to trigger entry |
+| `stop_mult` | 2.0 | ATR multiples for stop loss |
+| `max_hold_bars` | 15 | Max bars to hold a position |
 | `vol_ma_period` | 20 | Volume MA period |
 | `vol_spike_mult` | 1.5 | Volume spike multiplier for confirmation |
 | `er_period` | 50 | Efficiency Ratio lookback |

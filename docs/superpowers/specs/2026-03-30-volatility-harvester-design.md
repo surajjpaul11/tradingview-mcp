@@ -35,13 +35,13 @@ ER >= 0.25 →  trending →  INACTIVE (cash only, no new positions)
 ### Entry Signals (ATR Z-Score + Volume Confirmation)
 
 **Long entry (buy panic dip):**
-1. Price deviation: `SMA(20) - close >= 2.0 * ATR(14)` — price has dropped 2+ normal daily ranges below its mean
+1. Price deviation: `SMA(20) - close >= 3.0 * ATR(14)` — price has dropped 3+ normal daily ranges below its mean
 2. Volume confirmation: `volume >= 1.5 * volume_MA(20)` — elevated volume confirms panic selling
 3. Regime gate: ER(50) < 0.25
 4. No existing position open
 
 **Short entry (sell sharp rip):**
-1. Price deviation: `close - SMA(20) >= 2.0 * ATR(14)` — price has risen 2+ normal daily ranges above its mean
+1. Price deviation: `close - SMA(20) >= 3.0 * ATR(14)` — price has risen 3+ normal daily ranges above its mean
 2. Volume confirmation: `volume >= 1.5 * volume_MA(20)` — elevated volume confirms euphoric buying
 3. Regime gate: ER(50) < 0.25
 4. No existing position open
@@ -55,8 +55,8 @@ Three exit mechanisms checked every bar. First to fire closes the position:
 | Priority | Exit Type | Long Condition | Short Condition | Rationale |
 |----------|-----------|---------------|-----------------|-----------|
 | 1 | Mean reversion | Close >= SMA(20) | Close <= SMA(20) | Thesis complete — price reverted to mean |
-| 2 | Time exit | Bars held >= 20 | Bars held >= 20 | Thesis expired — no reversion, close at market |
-| 3 | Stop loss | Close <= entry - 3 * ATR(14) | Close >= entry + 3 * ATR(14) | Thesis wrong — cut losses |
+| 2 | Time exit | Bars held >= 15 | Bars held >= 15 | Thesis expired — no reversion, close at market |
+| 3 | Stop loss | Close <= entry - 2.0 * ATR(14) | Close >= entry + 2.0 * ATR(14) | Thesis wrong — cut losses |
 
 The ATR value used for stop loss is the ATR at entry time (frozen), not recalculated. This prevents the stop from widening during a volatility spike.
 
@@ -66,9 +66,9 @@ The ATR value used for stop loss is the ATR at entry time (frozen), not recalcul
 |-----------|---------|----------|-------------|
 | `atr_period` | 14 | `--atr-period` | ATR calculation period |
 | `sma_period` | 20 | `--sma-period` | Mean for deviation and reversion target |
-| `deviation_mult` | 2.0 | `--deviation-mult` | ATR multiples from SMA to trigger entry |
-| `stop_mult` | 3.0 | `--stop-mult` | ATR multiples for stop loss (from entry) |
-| `max_hold_bars` | 20 | `--max-hold-bars` | Time exit cap |
+| `deviation_mult` | 3.0 | `--deviation-mult` | ATR multiples from SMA to trigger entry |
+| `stop_mult` | 2.0 | `--stop-mult` | ATR multiples for stop loss (from entry) |
+| `max_hold_bars` | 15 | `--max-hold-bars` | Time exit cap |
 | `vol_ma_period` | 20 | `--vol-ma-period` | Volume MA period for spike detection |
 | `vol_spike_mult` | 1.5 | `--vol-spike-mult` | Volume >= this * vol MA to confirm |
 | `er_period` | 50 | `--er-period` | Kaufman ER lookback |

@@ -1,210 +1,40 @@
-diff --git a/src/tradingview_mcp/core/services/backtest_service.py b/src/tradingview_mcp/core/services/backtest_service.py
-index b006514..4c5123b 100644
---- a/src/tradingview_mcp/core/services/backtest_service.py
-+++ b/src/tradingview_mcp/core/services/backtest_service.py
-@@ -23,6 +23,7 @@ from typing import Optional
+diff --git a/README.md b/README.md
+index 16f70be..2b61557 100644
+--- a/README.md
++++ b/README.md
+@@ -43,13 +43,34 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
+ |---------|-------------------|--------------------|--------------------|
+ | **Setup Time** | 5 minutes | Hours (Docker, Conda...) | Weeks (Contracts) |
+ | **Cost** | Free & Open Source | Variable | $30k+/year |
+-| **Backtesting** | ✅ 6 strategies + Sharpe | ❌ Manual scripting | ✅ Proprietary |
++| **Backtesting** | ✅ 7 strategies + Sharpe (incl. shorts) | ❌ Manual scripting | ✅ Proprietary |
+ | **Live Sentiment** | ✅ Reddit + RSS news | ❌ Separate setup | ✅ Terminal |
+ | **Market Data** | ✅ Live / Real-Time | Historical / Delayed | Live |
+ | **API Keys** | **None required** | Multiple (OpenAI, etc.) | N/A |
  
- from tradingview_mcp.core.services.indicators_calc import (
-     calc_rsi, calc_bollinger, calc_macd, calc_ema, calc_supertrend, calc_donchian,
-+    calc_vwma, calc_atr,
- )
+ ---
  
- _UA       = "tradingview-mcp/0.7.0 backtest-bot"
-@@ -41,6 +42,7 @@ _STRATEGY_LABELS = {
-     "ema_cross":  "EMA 20/50 Golden/Death Cross",
-     "supertrend": "Supertrend (ATR-based Trend Following)",
-     "donchian":   "Donchian Channel Breakout",
-+    "vwma17":     "VWMA 17 Crossover (ATR Stop/TP)",
- }
++## 🆕 VWMA 17 Strategy (Fork Addition)
++
++This fork adds the **VWMA 17 strategy** — the first strategy supporting both long and short positions with ATR-based stop loss and take profit.
++
++**Entry:** Close crosses above VWMA(17) → Long | Close crosses below VWMA(17) → Short
++**Exit:** ATR-based stop loss (1.5x) and take profit (2.0x)
++
++```bash
++# Backtest via MCP tool
++backtest_strategy(symbol="BTC-USD", strategy="vwma17", period="2y")
++
++# Or run standalone
++python strategies/vwma17_strategy.py --symbol BTC-USD --period 2y
++```
++
++The `strategies/` directory contains paired files — same strategy name, different extensions:
++- `vwma17_strategy.py` — Standalone Python backtester
++- `vwma17_strategy.pine` — TradingView Pine Script v6
++
++---
++
+ ## 🚀 Quick Start (5 Minutes)
  
- 
-@@ -193,6 +195,116 @@ def _run_donchian(candles, period=20, **_):
-     return trades
- 
- 
-+def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_multiplier=2.0, **_):
-+    """
-+    VWMA 17 Strategy — matches Pine Script v6 logic exactly.
-+
-+    Entry:
-+      Long  → close crosses above VWMA(17)
-+      Short → close crosses below VWMA(17)
-+
-+    Exit:
-+      ATR-based stop loss and take profit per trade.
-+      Long  SL = entry - ATR * atr_multiplier,  TP = entry + ATR * tp_multiplier
-+      Short SL = entry + ATR * atr_multiplier,  TP = entry - ATR * tp_multiplier
-+    """
-+    closes  = [c["close"]  for c in candles]
-+    highs   = [c["high"]   for c in candles]
-+    lows    = [c["low"]    for c in candles]
-+    volumes = [c["volume"] for c in candles]
-+
-+    vwma = calc_vwma(closes, volumes, vwma_length)
-+    atr  = calc_atr(highs, lows, closes, atr_length)
-+
-+    trades   = []
-+    position = None  # None, or dict with side="long"/"short"
-+
-+    for i in range(1, len(candles)):
-+        if vwma[i] is None or vwma[i - 1] is None or atr[i] is None:
-+            continue
-+
-+        price = candles[i]["close"]
-+        high  = candles[i]["high"]
-+        low   = candles[i]["low"]
-+        date  = candles[i]["date"]
-+
-+        # Check exits first (stop loss / take profit hit during this bar)
-+        if position is not None:
-+            if position["side"] == "long":
-+                if low <= position["stop_loss"]:
-+                    trades.append({
-+                        "entry_date":  position["entry_date"],
-+                        "entry_price": position["entry_price"],
-+                        "exit_date":   date,
-+                        "exit_price":  position["stop_loss"],
-+                        "strategy":    "vwma17",
-+                        "exit_reason": "stop_loss",
-+                    })
-+                    position = None
-+                elif high >= position["take_profit"]:
-+                    trades.append({
-+                        "entry_date":  position["entry_date"],
-+                        "entry_price": position["entry_price"],
-+                        "exit_date":   date,
-+                        "exit_price":  position["take_profit"],
-+                        "strategy":    "vwma17",
-+                        "exit_reason": "take_profit",
-+                    })
-+                    position = None
-+            elif position["side"] == "short":
-+                if high >= position["stop_loss"]:
-+                    trades.append({
-+                        "entry_date":  position["entry_date"],
-+                        "entry_price": position["entry_price"],
-+                        "exit_date":   date,
-+                        "exit_price":  position["stop_loss"],
-+                        "strategy":    "vwma17",
-+                        "exit_reason": "stop_loss",
-+                        "short":       True,
-+                    })
-+                    position = None
-+                elif low <= position["take_profit"]:
-+                    trades.append({
-+                        "entry_date":  position["entry_date"],
-+                        "entry_price": position["entry_price"],
-+                        "exit_date":   date,
-+                        "exit_price":  position["take_profit"],
-+                        "strategy":    "vwma17",
-+                        "exit_reason": "take_profit",
-+                        "short":       True,
-+                    })
-+                    position = None
-+
-+        # Check entries (crossover / crossunder)
-+        if position is None:
-+            # Long: close crosses above VWMA
-+            if closes[i - 1] <= vwma[i - 1] and closes[i] > vwma[i]:
-+                stop_loss   = price - atr[i] * atr_multiplier
-+                take_profit = price + atr[i] * tp_multiplier
-+                position = {
-+                    "entry_date":  date,
-+                    "entry_price": price,
-+                    "side":        "long",
-+                    "stop_loss":   stop_loss,
-+                    "take_profit": take_profit,
-+                    "strategy":    "vwma17",
-+                }
-+            # Short: close crosses below VWMA
-+            elif closes[i - 1] >= vwma[i - 1] and closes[i] < vwma[i]:
-+                stop_loss   = price + atr[i] * atr_multiplier
-+                take_profit = price - atr[i] * tp_multiplier
-+                position = {
-+                    "entry_date":  date,
-+                    "entry_price": price,
-+                    "side":        "short",
-+                    "stop_loss":   stop_loss,
-+                    "take_profit": take_profit,
-+                    "strategy":    "vwma17",
-+                }
-+
-+    return trades
-+
-+
- _STRATEGY_MAP = {
-     "rsi":        _run_rsi,
-     "bollinger":  _run_bollinger,
-@@ -200,6 +312,7 @@ _STRATEGY_MAP = {
-     "ema_cross":  _run_ema_cross,
-     "supertrend": _run_supertrend,
-     "donchian":   _run_donchian,
-+    "vwma17":     _run_vwma17,
- }
- 
- 
-diff --git a/src/tradingview_mcp/core/services/indicators_calc.py b/src/tradingview_mcp/core/services/indicators_calc.py
-index 1eb42eb..0eb8ae8 100644
---- a/src/tradingview_mcp/core/services/indicators_calc.py
-+++ b/src/tradingview_mcp/core/services/indicators_calc.py
-@@ -13,6 +13,7 @@ Indicators:
-   - Supertrend
-   - Donchian Channel
-   - ADX (Average Directional Index)
-+  - VWMA (Volume Weighted Moving Average)
- """
- from __future__ import annotations
- 
-@@ -267,3 +268,31 @@ def calc_donchian(
-         middle[i] = (u + l) / 2
- 
-     return {"upper": upper, "lower": lower, "middle": middle}
-+
-+
-+# ─── VWMA (Volume Weighted Moving Average) ───────────────────────────────────
-+
-+def calc_vwma(
-+    closes: list[float], volumes: list[float], period: int = 17
-+) -> list[Optional[float]]:
-+    """
-+    Volume Weighted Moving Average.
-+    VWMA = sum(close * volume, period) / sum(volume, period)
-+    First (period-1) values are None.
-+    """
-+    n = len(closes)
-+    result: list[Optional[float]] = [None] * n
-+    if n < period or len(volumes) < period:
-+        return result
-+
-+    for i in range(period - 1, n):
-+        window_c = closes[i - period + 1 : i + 1]
-+        window_v = volumes[i - period + 1 : i + 1]
-+        vol_sum = sum(window_v)
-+        if vol_sum == 0:
-+            # fallback to SMA if no volume
-+            result[i] = sum(window_c) / period
-+        else:
-+            result[i] = sum(c * v for c, v in zip(window_c, window_v)) / vol_sum
-+
-+    return result
-diff --git a/src/tradingview_mcp/server.py b/src/tradingview_mcp/server.py
-index 16179c0..1988b71 100644
---- a/src/tradingview_mcp/server.py
-+++ b/src/tradingview_mcp/server.py
-@@ -2987,6 +2987,7 @@ def backtest_strategy(
-                                 'ema_cross'  — Buy EMA20>EMA50 crossover, Sell on reversal
-                                 'supertrend' — Buy on bullish Supertrend flip
-                                 'donchian'   — Buy Donchian Channel breakout (Turtle Trader style)
-+                                'vwma17'     — VWMA(17) crossover with ATR stop-loss & take-profit
-         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
-         initial_capital:      Starting capital in USD (default: $10,000)
-         commission_pct:       Per-trade commission % (default: 0.1%)
-@@ -3014,7 +3015,7 @@ def compare_strategies(
-     initial_capital: float = 10000.0,
-     interval: str = "1d",
- ) -> dict:
--    """Run all 6 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian) on the
-+    """Run all 7 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian, VWMA17) on the
-     same symbol and return a ranked performance leaderboard.
- 
-     Args:
+ ### Install via pip

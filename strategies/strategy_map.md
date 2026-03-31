@@ -138,6 +138,15 @@ These profit from prices returning to the mean. They get destroyed in strong tre
 - **When to use:** Bollinger Band Width is stable (not contracting into a squeeze), price is oscillating between bands
 - **Trade frequency:** Medium (5-15 trades/year on daily)
 
+#### Volatility Harvester
+- **Best in:** Choppy, volatile markets with no sustained direction (the one condition most strategies bleed in)
+- **Mechanism:** ER gate detects choppy regime (ER < 0.25), then buys panic dips / sells sharp rips when price deviates >= 3.0 ATR from SMA(20) with volume confirmation (>= 1.5x MA). Triple-layer exit: mean reversion, 15-bar time limit, 2.0 ATR stop loss (frozen at entry)
+- **Strength:** Only strategy designed specifically for choppy markets. ER regime gate keeps it in cash during trends (avoids fighting the trend). Volume filter reduces false signals. Frozen entry ATR prevents stop widening during vol spikes
+- **Weakness:** Requires significant price deviation (3.0 ATR) to enter — may miss smaller mean-reversion opportunities. In a bull market, shorts drag performance — use `--long-only` for equities
+- **When to use:** ATR is spiking, ER < 0.25 (no directional follow-through), VIX elevated, price whipsawing with high volume
+- **Trade frequency:** Low-medium (varies widely by asset volatility)
+- **Comparison data (23 symbols, 2y, long-only):** +1.40% avg. Best on high-vol assets: VXX +25.73% vs B&H
+
 ---
 
 ### Momentum & Breakout Strategies

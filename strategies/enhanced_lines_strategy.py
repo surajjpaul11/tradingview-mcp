@@ -353,6 +353,55 @@ def calc_trade_pct(
 
 
 # ==============================================================================
+# FIFO PARTIAL CLOSE HELPER
+# ==============================================================================
+
+def _fifo_partial_close(
+    position_entries: list[dict],
+    shares_to_close: float,
+    date: str,
+    price: float,
+    side: str,
+    exit_reason: str,
+    trade_pct: float,
+    trades_list: list[dict],
+) -> list[dict]:
+    """
+    Walk position_entries FIFO, closing up to shares_to_close shares.
+
+    Appends completed trade dicts to trades_list.
+    Returns the updated position_entries (with partially/fully consumed entries removed).
+    """
+    remaining = shares_to_close
+    new_entries: list[dict] = []
+    for entry in position_entries:
+        if remaining <= 0.001:
+            new_entries.append(entry)
+            continue
+        close_from_this = min(entry["shares"], remaining)
+        trades_list.append({
+            "entry_date": entry["date"],
+            "entry_price": entry["price"],
+            "exit_date": date,
+            "exit_price": price,
+            "side": side,
+            "exit_reason": exit_reason,
+            "strategy": "enhanced_lines",
+            "shares": close_from_this,
+            "trade_pct": trade_pct,
+        })
+        remaining -= close_from_this
+        leftover = entry["shares"] - close_from_this
+        if leftover > 0.001:
+            new_entries.append({
+                "date": entry["date"],
+                "price": entry["price"],
+                "shares": leftover,
+            })
+    return new_entries
+
+
+# ==============================================================================
 # STRATEGY ENGINE
 # ==============================================================================
 
@@ -401,12 +450,20 @@ def run_enhanced_lines(
     position_entries: list[dict] = []  # FIFO: [{date, price, shares}, ...]
     prev_trend: str = "neutral"
 
-    # Max shares reference: based on initial capital / first close
-    # We'll set this once we see the first candle
-    max_shares: float = 0.0
+    # I-4: dynamic capital tracking — max_shares scales with realized PnL
+    current_capital: float = initial_capital
     initial_price: float = candles[0]["close"] if candles else 1.0
-    # Use initial capital for sizing reference
-    max_shares = initial_capital / initial_price if initial_price > 0 else 0.0
+    max_shares: float = initial_capital / initial_price if initial_price > 0 else 0.0
+
+    def _update_capital_from_trades(trades_before: int) -> None:
+        """Update current_capital from trades appended since trades_before index."""
+        nonlocal current_capital
+        for t in trades[trades_before:]:
+            if t["side"] == "short":
+                pnl = t["shares"] * (t["entry_price"] - t["exit_price"])
+            else:
+                pnl = t["shares"] * (t["exit_price"] - t["entry_price"])
+            current_capital += pnl
 
     for i in range(len(candles)):
         date = candles[i]["date"]
@@ -449,6 +506,7 @@ def run_enhanced_lines(
         # --- REGIME CHANGE: close ALL positions ---
         if trend != prev_trend and prev_trend != "neutral" and position_shares != 0.0:
             side = "long" if position_shares > 0 else "short"
+            trades_before = len(trades)
             # Close all entries FIFO
             for entry in position_entries:
                 trades.append({
@@ -464,6 +522,10 @@ def run_enhanced_lines(
                 })
             position_shares = 0.0
             position_entries = []
+            # I-4: update running capital and max_shares
+            _update_capital_from_trades(trades_before)
+            if price > 0:
+                max_shares = current_capital / price
 
         prev_trend = trend
 
@@ -492,36 +554,18 @@ def run_enhanced_lines(
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
                     shares_to_sell = position_shares * trade_pct
                     if shares_to_sell > 0.01:
-                        remaining_to_sell = shares_to_sell
-                        new_entries = []
-                        for entry in position_entries:
-                            if remaining_to_sell <= 0.001:
-                                new_entries.append(entry)
-                                continue
-                            sell_from_this = min(entry["shares"], remaining_to_sell)
-                            trades.append({
-                                "entry_date": entry["date"],
-                                "entry_price": entry["price"],
-                                "exit_date": date,
-                                "exit_price": price,
-                                "side": "long",
-                                "exit_reason": "resistance_bounce",
-                                "strategy": "enhanced_lines",
-                                "shares": sell_from_this,
-                                "trade_pct": trade_pct,
-                            })
-                            remaining_to_sell -= sell_from_this
-                            leftover = entry["shares"] - sell_from_this
-                            if leftover > 0.001:
-                                new_entries.append({
-                                    "date": entry["date"],
-                                    "price": entry["price"],
-                                    "shares": leftover,
-                                })
-                        position_entries = new_entries
+                        trades_before = len(trades)
+                        position_entries = _fifo_partial_close(
+                            position_entries, shares_to_sell, date, price,
+                            "long", "resistance_bounce", trade_pct, trades,
+                        )
                         position_shares -= shares_to_sell
                         if position_shares < 0.001:
                             position_shares = 0.0
+                        # I-4: update running capital and max_shares
+                        _update_capital_from_trades(trades_before)
+                        if price > 0:
+                            max_shares = current_capital / price
 
         # --- DOWNTREND: bounce logic (short) ---
         elif trend == "downtrend" and enable_short:
@@ -548,36 +592,18 @@ def run_enhanced_lines(
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
                     shares_to_cover = abs(position_shares) * trade_pct
                     if shares_to_cover > 0.01:
-                        remaining_to_cover = shares_to_cover
-                        new_entries = []
-                        for entry in position_entries:
-                            if remaining_to_cover <= 0.001:
-                                new_entries.append(entry)
-                                continue
-                            cover_from_this = min(entry["shares"], remaining_to_cover)
-                            trades.append({
-                                "entry_date": entry["date"],
-                                "entry_price": entry["price"],
-                                "exit_date": date,
-                                "exit_price": price,
-                                "side": "short",
-                                "exit_reason": "support_bounce",
-                                "strategy": "enhanced_lines",
-                                "shares": cover_from_this,
-                                "trade_pct": trade_pct,
-                            })
-                            remaining_to_cover -= cover_from_this
-                            leftover = entry["shares"] - cover_from_this
-                            if leftover > 0.001:
-                                new_entries.append({
-                                    "date": entry["date"],
-                                    "price": entry["price"],
-                                    "shares": leftover,
-                                })
-                        position_entries = new_entries
+                        trades_before = len(trades)
+                        position_entries = _fifo_partial_close(
+                            position_entries, shares_to_cover, date, price,
+                            "short", "support_bounce", trade_pct, trades,
+                        )
                         position_shares += shares_to_cover
                         if abs(position_shares) < 0.001:
                             position_shares = 0.0
+                        # I-4: update running capital and max_shares
+                        _update_capital_from_trades(trades_before)
+                        if price > 0:
+                            max_shares = current_capital / price
 
     # End of data: close all open positions
     if position_shares != 0.0 and position_entries:
@@ -665,14 +691,23 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1h
 
     total_ret = (capital - initial_capital) / initial_capital * 100
 
+    # I-1: Dollar-weighted metrics — weight gains/losses by actual dollar PnL
+    def _dollar_pnl(t: dict) -> float:
+        shares = t.get("shares", 1.0)
+        return shares * t["entry_price"] * (t["return_pct"] / 100)
+
     winners = [t for t in trades if t["return_pct"] > 0]
     losers = [t for t in trades if t["return_pct"] <= 0]
 
-    avg_gain = sum(t["return_pct"] for t in winners) / len(winners) if winners else 0
-    avg_loss = sum(t["return_pct"] for t in losers) / len(losers) if losers else 0
-    gp = sum(t["return_pct"] for t in winners)
-    gl = abs(sum(t["return_pct"] for t in losers))
-    pf = round(gp / gl, 2) if gl > 0 else float("inf")
+    winner_pnls = [_dollar_pnl(t) for t in winners]
+    loser_pnls = [_dollar_pnl(t) for t in losers]
+
+    gross_gains = sum(winner_pnls)
+    gross_losses = abs(sum(loser_pnls))
+
+    avg_gain = (gross_gains / len(winners)) if winners else 0
+    avg_loss = (sum(loser_pnls) / len(losers)) if losers else 0  # negative value
+    pf = round(gross_gains / gross_losses, 2) if gross_losses > 0 else float("inf")
 
     sharpe = 0.0
     if len(returns) > 1:
@@ -698,12 +733,12 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1h
         "win_rate_pct": round(wr * 100, 1),
         "final_capital": round(capital, 2),
         "total_return_pct": round(total_ret, 2),
-        "avg_gain_pct": round(avg_gain, 2),
-        "avg_loss_pct": round(avg_loss, 2),
+        "avg_gain_pct": round(avg_gain, 2),   # dollar-weighted avg gain
+        "avg_loss_pct": round(avg_loss, 2),   # dollar-weighted avg loss
         "max_drawdown_pct": round(-max_dd, 2),
         "profit_factor": pf,
         "sharpe_ratio": sharpe,
-        "expectancy_pct": round(wr * avg_gain + (1 - wr) * avg_loss, 2),
+        "expectancy_pct": round(wr * avg_gain + (1 - wr) * avg_loss, 2),  # dollar-weighted
     }
 
 

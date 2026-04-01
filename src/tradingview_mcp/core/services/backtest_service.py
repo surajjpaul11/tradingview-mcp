@@ -20,6 +20,8 @@ import statistics
 import urllib.request
 from datetime import datetime, timezone
 from typing import Optional
+import importlib.util
+from pathlib import Path
 
 from tradingview_mcp.core.services.indicators_calc import (
     calc_rsi, calc_bollinger, calc_macd, calc_ema, calc_supertrend, calc_donchian,
@@ -45,6 +47,9 @@ _STRATEGY_LABELS = {
     "vwma17":       "VWMA 17 Crossover (ATR Stop/TP)",
     "higher_highs": "Higher Highs / Lower Lows (MTF Structure)",
     "enhanced_lines": "Enhanced Straight Lines (Channel + Volume Sizing)",
+    "straight_line": "Straight Line (Trendline Bounce)",
+    "buy_and_protect": "Buy and Protect (Regime Filtered Trend Following)",
+    "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
 }
 
 
@@ -483,314 +488,30 @@ def _run_higher_highs(candles, pivot_lookback=5, min_swings=2, htf_multiplier=8,
     return trades
 
 
-# ─── Enhanced Lines (Channel Bounce + Volume Sizing) ─────────────────────────
+# ─── Dynamic Importer for Standalone Strategies ───────────────────────────────
 
-def _run_enhanced_lines(candles, pivot_lookback=5, min_touches=3, tolerance=0.015,
-                        confirm_bars=2, vol_ma_period=20, vol_base_pct=0.25,
-                        vol_floor_pct=0.20, vol_ceiling_pct=0.80, enable_short=True, **_):
-    """
-    Enhanced Lines — channel trendline bounce strategy with volume-weighted sizing.
-
-    Trades bounces within trendline channels (not breaks).  Uptrend: buy support
-    bounce, partial-sell resistance bounce.  Downtrend (if enabled): short
-    resistance bounce, partial-cover support bounce.  Regime change closes all.
-
-    Self-contained: all helpers are local to this function.
-    """
-    if not candles:
-        return []
-
-    # -- helper: swing detection (pivot) --
-    def _find_swings(highs, lows, lookback):
-        n = len(highs)
-        sh, sl = [], []
-        for i in range(lookback, n - lookback):
-            w = range(i - lookback, i + lookback + 1)
-            if all(highs[i] >= highs[j] for j in w):
-                sh.append((i, highs[i], i + lookback))
-            if all(lows[i] <= lows[j] for j in w):
-                sl.append((i, lows[i], i + lookback))
-        return sh, sl
-
-    # -- helper: volume SMA --
-    def _vol_sma(volumes, period):
-        result = [None] * len(volumes)
-        for i in range(period - 1, len(volumes)):
-            result[i] = sum(volumes[i - period + 1: i + 1]) / period
-        return result
-
-    # -- helper: trendline value at bar --
-    def _tl_value(p1, p2, bar):
-        b1, pr1 = p1
-        b2, pr2 = p2
-        if b2 == b1:
-            return pr1
-        return pr1 + (pr2 - pr1) / (b2 - b1) * (bar - b1)
-
-    # -- helper: trendline slope --
-    def _tl_slope(p1, p2):
-        b1, pr1 = p1
-        b2, pr2 = p2
-        if b2 == b1:
-            return None
-        return (pr2 - pr1) / (b2 - b1)
-
-    # -- helper: fit trendline from last N touches --
-    def _fit_trendline(points, min_t, tol, direction):
-        if len(points) < min_t:
-            return None
-        selected = points[-min_t:]
-        anchor1, anchor2 = selected[0], selected[-1]
-        slope = _tl_slope(anchor1, anchor2)
-        if slope is None:
-            return None
-        if direction == "ascending" and slope <= 0:
-            return None
-        if direction == "descending" and slope >= 0:
-            return None
-        for pt in selected[1:-1]:
-            projected = _tl_value(anchor1, anchor2, pt[0])
-            if projected <= 0:
-                return None
-            if abs(pt[1] - projected) / projected > tol:
-                return None
-        return {"anchor1": anchor1, "anchor2": anchor2, "slope_per_bar": slope,
-                "all_points": selected, "last_bar": anchor2[0]}
-
-    # -- helper: build channel (4 trendline types) --
-    def _build_channel(c_highs, c_lows, min_t, tol):
-        return {
-            "higher_highs": _fit_trendline(c_highs, min_t, tol, "ascending"),
-            "higher_lows":  _fit_trendline(c_lows, min_t, tol, "ascending"),
-            "lower_highs":  _fit_trendline(c_highs, min_t, tol, "descending"),
-            "lower_lows":   _fit_trendline(c_lows, min_t, tol, "descending"),
-        }
-
-    # -- helper: determine trend from slope agreement --
-    def _determine_trend(sup_slope, res_slope, avg_price, flat_pct=0.0002):
-        if sup_slope is None or res_slope is None:
-            return "neutral"
-        flat = flat_pct * avg_price
-        if sup_slope > flat and res_slope > flat:
-            return "uptrend"
-        if sup_slope < -flat and res_slope < -flat:
-            return "downtrend"
-        return "neutral"
-
-    # -- helper: detect bounce off trendline --
-    def _detect_bounce(cndls, idx, tl, direction, tol, cfm):
-        if idx < cfm or idx >= len(cndls):
-            return False
-        projected = _tl_value(tl["anchor1"], tl["anchor2"], idx)
-        if projected <= 0:
-            return False
-        c = cndls[idx]
-        close_dev = abs(c["close"] - projected) / projected
-        if direction == "up":
-            low_dev = abs(c["low"] - projected) / projected
-            in_zone = close_dev <= tol or low_dev <= tol
-        else:
-            high_dev = abs(c["high"] - projected) / projected
-            in_zone = close_dev <= tol or high_dev <= tol
-        if not in_zone:
-            return False
-        start = idx - cfm + 1
-        if start < 0:
-            return False
-        for k in range(start, idx + 1):
-            if direction == "up":
-                if cndls[k]["close"] <= cndls[k]["open"]:
-                    return False
-            else:
-                if cndls[k]["close"] >= cndls[k]["open"]:
-                    return False
-        return True
-
-    # -- helper: volume-weighted trade pct --
-    def _calc_trade_pct(cndls, idx, vsma, cfm, base, floor, ceiling):
-        if vsma[idx] is None or vsma[idx] == 0:
-            return base
-        start = max(0, idx - cfm + 1)
-        recent = [cndls[k]["volume"] for k in range(start, idx + 1)]
-        avg_v = sum(recent) / len(recent) if recent else 0
-        ratio = avg_v / vsma[idx] if vsma[idx] > 0 else 1.0
-        return max(floor, min(ceiling, ratio * base))
-
-    # -- helper: FIFO partial close --
-    def _fifo_close(entries, shares_close, date, price, side, reason, tpct, out):
-        remaining = shares_close
-        new_entries = []
-        for entry in entries:
-            if remaining <= 0.001:
-                new_entries.append(entry)
-                continue
-            close_amt = min(entry["shares"], remaining)
-            out.append({
-                "entry_date": entry["date"], "entry_price": entry["price"],
-                "exit_date": date, "exit_price": price,
-                "side": side, "exit_reason": reason, "strategy": "enhanced_lines",
-            })
-            remaining -= close_amt
-            leftover = entry["shares"] - close_amt
-            if leftover > 0.001:
-                new_entries.append({"date": entry["date"], "price": entry["price"],
-                                    "shares": leftover})
-        return new_entries
-
-    # ---- main loop ----
-    highs = [c["high"] for c in candles]
-    lows = [c["low"] for c in candles]
-    closes = [c["close"] for c in candles]
-    volumes = [c["volume"] for c in candles]
-
-    vol_sma = _vol_sma(volumes, vol_ma_period)
-    swing_highs, swing_lows = _find_swings(highs, lows, pivot_lookback)
-
-    confirmed_highs: list = []
-    confirmed_lows: list = []
-    sh_ptr = sl_ptr = 0
-
-    trades: list = []
-    position_shares = 0.0
-    position_entries: list = []
-    prev_trend = "neutral"
-
-    initial_price = candles[0]["close"] if candles else 1.0
-    max_shares = 10000.0 / initial_price if initial_price > 0 else 0.0
-    current_capital = 10000.0
-
-    def _update_capital(trades_before):
-        nonlocal current_capital
-        for t in trades[trades_before:]:
-            if t["side"] == "short":
-                pnl = (t["entry_price"] - t["exit_price"])
-            else:
-                pnl = (t["exit_price"] - t["entry_price"])
-            current_capital += pnl
-
-    for i in range(len(candles)):
-        date = candles[i]["date"]
-        price = closes[i]
-
-        # Confirm swings progressively
-        while sh_ptr < len(swing_highs) and swing_highs[sh_ptr][2] <= i:
-            confirmed_highs.append(swing_highs[sh_ptr][:2])
-            sh_ptr += 1
-        while sl_ptr < len(swing_lows) and swing_lows[sl_ptr][2] <= i:
-            confirmed_lows.append(swing_lows[sl_ptr][:2])
-            sl_ptr += 1
-
-        # Build channel
-        channel = _build_channel(confirmed_highs, confirmed_lows, min_touches, tolerance)
-
-        # Select support/resistance pair
-        support = resistance = None
-        if channel["higher_lows"] is not None and channel["higher_highs"] is not None:
-            support = channel["higher_lows"]
-            resistance = channel["higher_highs"]
-        elif channel["lower_lows"] is not None and channel["lower_highs"] is not None:
-            support = channel["lower_lows"]
-            resistance = channel["lower_highs"]
-        else:
-            support = channel["higher_lows"] or channel["lower_lows"]
-            resistance = channel["higher_highs"] or channel["lower_highs"]
-
-        sup_slope = support["slope_per_bar"] if support else None
-        res_slope = resistance["slope_per_bar"] if resistance else None
-        trend = _determine_trend(sup_slope, res_slope, price)
-
-        # REGIME CHANGE: close all positions
-        if trend != prev_trend and prev_trend != "neutral" and position_shares != 0.0:
-            side = "long" if position_shares > 0 else "short"
-            trades_before = len(trades)
-            for entry in position_entries:
-                trades.append({
-                    "entry_date": entry["date"], "entry_price": entry["price"],
-                    "exit_date": date, "exit_price": price,
-                    "side": side, "exit_reason": "trend_flip", "strategy": "enhanced_lines",
-                })
-            position_shares = 0.0
-            position_entries = []
-            _update_capital(trades_before)
-            if price > 0:
-                max_shares = current_capital / price
-
-        prev_trend = trend
-
-        # UPTREND: buy support bounce, sell resistance bounce
-        if trend == "uptrend":
-            if support is not None and position_shares >= 0:
-                if _detect_bounce(candles, i, support, "up", tolerance, confirm_bars):
-                    available = max_shares - position_shares
-                    if available > 0.01:
-                        tpct = _calc_trade_pct(candles, i, vol_sma, confirm_bars,
-                                               vol_base_pct, vol_floor_pct, vol_ceiling_pct)
-                        shares_buy = available * tpct
-                        if shares_buy > 0.01:
-                            position_shares += shares_buy
-                            position_entries.append({"date": date, "price": price,
-                                                     "shares": shares_buy})
-
-            elif resistance is not None and position_shares > 0.01:
-                if _detect_bounce(candles, i, resistance, "down", tolerance, confirm_bars):
-                    tpct = _calc_trade_pct(candles, i, vol_sma, confirm_bars,
-                                           vol_base_pct, vol_floor_pct, vol_ceiling_pct)
-                    shares_sell = position_shares * tpct
-                    if shares_sell > 0.01:
-                        trades_before = len(trades)
-                        position_entries = _fifo_close(
-                            position_entries, shares_sell, date, price,
-                            "long", "resistance_bounce", tpct, trades)
-                        position_shares -= shares_sell
-                        if position_shares < 0.001:
-                            position_shares = 0.0
-                        _update_capital(trades_before)
-                        if price > 0:
-                            max_shares = current_capital / price
-
-        # DOWNTREND: short resistance bounce, cover support bounce
-        elif trend == "downtrend" and enable_short:
-            if resistance is not None and position_shares <= 0:
-                if _detect_bounce(candles, i, resistance, "down", tolerance, confirm_bars):
-                    available = max_shares - abs(position_shares)
-                    if available > 0.01:
-                        tpct = _calc_trade_pct(candles, i, vol_sma, confirm_bars,
-                                               vol_base_pct, vol_floor_pct, vol_ceiling_pct)
-                        shares_short = available * tpct
-                        if shares_short > 0.01:
-                            position_shares -= shares_short
-                            position_entries.append({"date": date, "price": price,
-                                                     "shares": shares_short})
-
-            elif support is not None and position_shares < -0.01:
-                if _detect_bounce(candles, i, support, "up", tolerance, confirm_bars):
-                    tpct = _calc_trade_pct(candles, i, vol_sma, confirm_bars,
-                                           vol_base_pct, vol_floor_pct, vol_ceiling_pct)
-                    shares_cover = abs(position_shares) * tpct
-                    if shares_cover > 0.01:
-                        trades_before = len(trades)
-                        position_entries = _fifo_close(
-                            position_entries, shares_cover, date, price,
-                            "short", "support_bounce", tpct, trades)
-                        position_shares += shares_cover
-                        if abs(position_shares) < 0.001:
-                            position_shares = 0.0
-                        _update_capital(trades_before)
-                        if price > 0:
-                            max_shares = current_capital / price
-
-    # End of data: close remaining positions
-    if position_shares != 0.0 and position_entries:
-        side = "long" if position_shares > 0 else "short"
-        for entry in position_entries:
-            trades.append({
-                "entry_date": entry["date"], "entry_price": entry["price"],
-                "exit_date": candles[-1]["date"], "exit_price": candles[-1]["close"],
-                "side": side, "exit_reason": "end_of_data", "strategy": "enhanced_lines",
-            })
-
-    return trades
-
+def _get_dynamic_runner(file_name: str, func_name: str):
+    """Returns a callable matching the signature of strategy functions via dynamic import."""
+    def runner(candles, **kwargs):
+        base_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+        strategy_path = base_dir / "strategies" / file_name
+        
+        if not strategy_path.exists():
+            raise FileNotFoundError(f"Strategy file not found: {strategy_path}")
+            
+        spec = importlib.util.spec_from_file_location("dynamic_strategy", strategy_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load strategy from {strategy_path}")
+            
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        if not hasattr(module, func_name):
+            raise AttributeError(f"Function {func_name} not found in {file_name}")
+            
+        strategy_func = getattr(module, func_name)
+        return strategy_func(candles, **kwargs)
+    return runner
 
 _STRATEGY_MAP = {
     "rsi":          _run_rsi,
@@ -801,7 +522,10 @@ _STRATEGY_MAP = {
     "donchian":     _run_donchian,
     "vwma17":       _run_vwma17,
     "higher_highs": _run_higher_highs,
-    "enhanced_lines": _run_enhanced_lines,
+    "enhanced_lines": _get_dynamic_runner("enhanced_lines_strategy.py", "run_enhanced_lines"),
+    "straight_line": _get_dynamic_runner("straight_line_strategy.py", "run_straight_line"),
+    "buy_and_protect": _get_dynamic_runner("buy_and_protect_strategy.py", "run_buy_and_protect"),
+    "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
 }
 
 

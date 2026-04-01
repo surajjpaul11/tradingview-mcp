@@ -367,6 +367,7 @@ def run_enhanced_lines(
     vol_floor_pct: float = VOL_FLOOR_PCT,
     vol_ceiling_pct: float = VOL_CEILING_PCT,
     enable_short: bool = ENABLE_SHORT,
+    initial_capital: float = INITIAL_CAPITAL,
 ) -> list[dict]:
     """
     Enhanced Lines channel bounce strategy.
@@ -405,7 +406,7 @@ def run_enhanced_lines(
     max_shares: float = 0.0
     initial_price: float = candles[0]["close"] if candles else 1.0
     # Use initial capital for sizing reference
-    max_shares = INITIAL_CAPITAL / initial_price if initial_price > 0 else 0.0
+    max_shares = initial_capital / initial_price if initial_price > 0 else 0.0
 
     for i in range(len(candles)):
         date = candles[i]["date"]
@@ -485,7 +486,7 @@ def run_enhanced_lines(
                             })
 
             # Bounce DOWN from resistance -> PARTIAL SELL (FIFO)
-            if resistance is not None and position_shares > 0.01:
+            elif resistance is not None and position_shares > 0.01:
                 if detect_bounce(candles, i, resistance, "down", tolerance, confirm_bars):
                     trade_pct = calc_trade_pct(candles, i, vol_sma, confirm_bars,
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
@@ -541,7 +542,7 @@ def run_enhanced_lines(
                             })
 
             # Bounce UP from support -> CLOSE SHORT (partial, FIFO)
-            if support is not None and position_shares < -0.01:
+            elif support is not None and position_shares < -0.01:
                 if detect_bounce(candles, i, support, "up", tolerance, confirm_bars):
                     trade_pct = calc_trade_pct(candles, i, vol_sma, confirm_bars,
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
@@ -728,6 +729,7 @@ def run_backtest(
     raw_trades = run_enhanced_lines(
         candles, pivot_lookback, min_touches, tolerance, confirm_bars,
         vol_ma_period, vol_base_pct, vol_floor_pct, vol_ceiling_pct, enable_short,
+        initial_capital,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)

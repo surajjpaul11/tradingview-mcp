@@ -45,6 +45,9 @@ strategies/                              # Strategy pairs: same name, .py + .pin
   compare_straight_line.py               # Straight Line vs B&H comparison script
   volatility_harvester_strategy.py        # Volatility Harvester — mean reversion for choppy markets
   compare_volatility_harvester.py         # Volatility Harvester vs B&H comparison script
+  enhanced_lines_strategy.py             # Enhanced Lines — channel bounce trading, volume-weighted sizing
+  enhanced_lines_strategy.html           # Interactive visual of channel bounce concept
+  compare_enhanced_lines.py             # Enhanced Lines vs Straight Line vs B&H comparison script
 ```
 
 ### Strategy Convention
@@ -134,7 +137,7 @@ Every strategy gets two files with the **same filename**, different extensions:
 
 Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.md)
 
-### Available Backtest Strategies (11 total)
+### Available Backtest Strategies (12 total)
 
 | Strategy | Type | Sides | Description |
 |----------|------|-------|-------------|
@@ -149,6 +152,7 @@ Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.
 | **buy_and_protect** | **B&H + protection** | **Long only** | **SMA200 + 8% decline + ATR spike, 2+ signal confluence** |
 | **straight_line** | **Trendline break** | **Long (+ optional short)** | **4-point trendline confirmation, 1.5% tolerance, 1-bar break confirm** |
 | **volatility_harvester** | **Mean reversion** | **Long + Short** | **ATR Z-Score + volume entries, ER regime gate, triple-layer exits** |
+| **enhanced_lines** | **Channel trend** | **Long + Short** | **Channel bounce trading, volume-weighted sizing, tax-optimized partial sells** |
 
 ## What Needs To Be Done
 
@@ -234,6 +238,10 @@ python strategies/straight_line_strategy.py --symbol QQQ --period 2y --enable-sh
 # Run standalone Volatility Harvester backtest
 python strategies/volatility_harvester_strategy.py --symbol SPY --period 2y
 python strategies/volatility_harvester_strategy.py --symbol BTC-USD --no-volume-filter
+
+# Run standalone Enhanced Lines backtest
+python strategies/enhanced_lines_strategy.py --symbol SPY --period 2y
+python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
 ```
 
 ## Inspiration

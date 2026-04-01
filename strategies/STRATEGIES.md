@@ -329,6 +329,114 @@ Downtrend resistance trendline (buy when price closes above):
 
 ---
 
+## Enhanced Straight Lines Strategy
+
+**Files:** `strategies/enhanced_lines_strategy.py` | `strategies/enhanced_lines_strategy.html`
+**Type:** Channel trend following | **Sides:** Long + Short (short optional via `--no-short`) | **MCP key:** `enhanced_lines`
+
+### Overview
+
+Channel-based trend following that trades **bounces within a trendline channel** rather than breaks through one. Pairs a support trendline (ascending swing lows) with a resistance trendline (ascending swing highs) in uptrends, and the mirror image in downtrends.
+
+Volume-weighted position sizing scales each trade by recent volume activity relative to its moving average, so high-conviction entries (surging volume) get larger allocations automatically.
+
+### How It Works
+
+**Trendline Construction (Last-N-Touches):**
+- Support line: fit through the last `min_touches` swing lows, minimising residuals
+- Resistance line: fit through the last `min_touches` swing highs
+- A point is "touching" if it is within `tolerance` (1.5%) of the projected line value
+- Lines are refit continuously as new swing points form (unlike Straight Line, which locks its anchors)
+
+**Trend Determination:**
+- Uptrend: the fitted support slope is positive (ascending swing lows)
+- Downtrend: the fitted resistance slope is negative (descending swing highs)
+- Regime change: trend flips → close all open positions immediately (100%)
+
+**Bounce Detection (Confirmed over `confirm_bars` consecutive bars):**
+- Support bounce (long entry): candle low touches support line from above, then price recovers
+- Resistance bounce (partial sell / short entry): candle high touches resistance line from below, then price retreats
+
+### Trading Rules
+
+| Signal | Condition | Action |
+|--------|-----------|--------|
+| Long entry | Support bounce confirmed in uptrend | Buy volume-weighted fraction of available capital |
+| Partial sell | Resistance bounce confirmed in uptrend | Sell volume-weighted fraction of current position (FIFO) |
+| Short entry | Resistance bounce confirmed in downtrend | Short volume-weighted fraction of available capital |
+| Partial cover | Support bounce confirmed in downtrend | Cover volume-weighted fraction of current short (FIFO) |
+| Regime change | Trend flips | Close all positions at full size immediately |
+
+### Volume-Weighted Sizing
+
+```
+vol_ratio  = recent_vol / vol_SMA(vol_ma_period)
+size_frac  = clamp(vol_ratio * vol_base_pct, vol_floor_pct, vol_ceiling_pct)
+trade_size = size_frac * available_capacity   # buys
+           = size_frac * current_position     # partial sells / covers
+```
+
+This means a 2x volume bar doubles the base allocation (subject to ceiling), while a low-volume bar falls back to the floor — keeping position sizing proportional to market conviction.
+
+### Default Parameters
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `pivot_lookback` | 5 | Bars left/right for swing point detection |
+| `min_touches` | 3 | Points required to fit/confirm a trendline (last N) |
+| `tolerance` | 0.015 | 1.5% proximity tolerance for trendline touches |
+| `confirm_bars` | 2 | Consecutive bars needed to confirm a bounce |
+| `vol_ma_period` | 20 | Volume moving average lookback |
+| `vol_base_pct` | 0.25 | Base allocation (25% of available capacity) |
+| `vol_floor_pct` | 0.20 | Minimum allocation per trade |
+| `vol_ceiling_pct` | 0.80 | Maximum allocation per trade |
+| `enable_short` | true | Enable short positions in downtrends |
+| `interval` | 1h | Candle size |
+| `period` | 2y | Data lookback |
+
+### Key Differences from Straight Line
+
+| Dimension | Straight Line | Enhanced Lines |
+|-----------|--------------|----------------|
+| Trade trigger | Trendline **break** | Trendline **bounce** |
+| Trendline anchoring | Fixed at first two anchor points | Refit continuously to last N touches |
+| Position sizing | Fixed (all-in / all-out) | Volume-weighted fractional |
+| Partial exits | Not supported | Yes — scales out at resistance/covers at support |
+| Short support | Optional (`--enable-short`) | Enabled by default (`--no-short` to disable) |
+| Regime change exit | Re-enters after break | Immediate full close on trend flip |
+
+### Usage
+
+```bash
+# Default (SPY, 2y, 1h, long+short)
+python strategies/enhanced_lines_strategy.py
+
+# Different symbol
+python strategies/enhanced_lines_strategy.py --symbol BTC-USD --period 1y
+
+# Long-only mode
+python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
+
+# Fewer touch requirements (more signals)
+python strategies/enhanced_lines_strategy.py --symbol AAPL --min-touches 2
+
+# Tighter tolerance (stricter trendline matching)
+python strategies/enhanced_lines_strategy.py --symbol NVDA --tolerance 0.01
+
+# Compare Enhanced Lines vs Straight Line vs B&H
+python strategies/compare_enhanced_lines.py
+```
+
+### Future Enhancements
+
+- Pine Script v6 port (trendline refit via `array` built-ins)
+- ATR-based stop loss as fourth exit layer
+- Dynamic `confirm_bars` scaling with ATR (fewer confirmations in low-vol, more in high-vol)
+- Multi-channel stacking (trade inner and outer channel separately)
+- MCP server integration (`run_backtest` with `strategy="enhanced_lines"`)
+
+---
+
 ## Volatility Harvester Strategy
 
 **Files:** `strategies/volatility_harvester_strategy.py` (Pine Script TBD)

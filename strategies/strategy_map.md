@@ -70,10 +70,10 @@ Before picking a strategy, classify the market. These four regimes cover ~95% of
 
 | Condition | Best Strategies | Acceptable | Avoid |
 |-----------|----------------|------------|-------|
-| **Bullish trending** | Buy & Protect, Higher Highs, EMA Cross, Supertrend | Straight Line (long), VWMA 17, Donchian | RSI, Bollinger (exit too early) |
-| **Bearish trending** | Higher Highs (short), VWMA 17 (short), Straight Line (short enabled) | Supertrend, EMA Cross (will short/exit) | Buy & Protect (forced exit, re-entry lag), RSI (catches falling knives) |
+| **Bullish trending** | Buy & Protect, Higher Highs, EMA Cross, Supertrend | Straight Line (long), Enhanced Lines (long), VWMA 17, Donchian | RSI, Bollinger (exit too early) |
+| **Bearish trending** | Higher Highs (short), VWMA 17 (short), Straight Line (short enabled), Enhanced Lines (short) | Supertrend, EMA Cross (will short/exit) | Buy & Protect (forced exit, re-entry lag), RSI (catches falling knives) |
 | **Sideways / range** | RSI, Bollinger | MACD (slow but catches edges) | EMA Cross (whipsaws), Supertrend (whipsaws), Donchian (false breakouts) |
-| **Choppy / volatile** | Buy & Protect (stays invested unless 2+ signals), Bollinger (wide bands adapt) | RSI (if range holds) | Higher Highs (structure breaks constantly), Straight Line (false breaks), EMA Cross, Donchian |
+| **Choppy / volatile** | Buy & Protect (stays invested unless 2+ signals), Bollinger (wide bands adapt) | RSI (if range holds) | Higher Highs (structure breaks constantly), Straight Line (false breaks), Enhanced Lines (channel collapses), EMA Cross, Donchian |
 
 ---
 
@@ -115,6 +115,14 @@ These make money when the market picks a direction and sticks with it. They blee
 - **When to use:** Asset has clear ascending lows or descending highs visible on the chart
 - **Trade frequency:** Medium (7-16 trades/year on hourly)
 - **Comparison data (23 symbols, 2y):** +67.38% avg. Beats B&H on reversal-heavy assets (META +20%, MELI +29%, NVTS +78%)
+
+#### Enhanced Lines
+- **Best in:** Trending markets where price oscillates cleanly between channel support and resistance
+- **Mechanism:** Continuously refits support and resistance trendlines to the last N swing points, trades confirmed bounces off those lines. Volume-weighted sizing allocates larger positions on high-volume bounces. Partially scales out at resistance and covers at support. Closes all positions immediately on trend regime change
+- **Strength:** Stays invested through the trend rather than waiting for a break. Partial sells at resistance lock in gains incrementally. Volume weighting increases allocation precisely when market conviction is highest
+- **Weakness:** Requires well-formed channels — will struggle in choppy or trendless markets where trendlines don't hold. Continuous trendline refitting means the channel can shift away from a valid historical line
+- **When to use:** Asset is trending cleanly with visible swings that consistently tag both channel boundaries. Use when you want channel-riding behaviour rather than break-and-reverse entries
+- **Trade frequency:** Medium-high (varies; more signals than Straight Line due to bounce-based entries)
 
 ---
 
@@ -206,11 +214,13 @@ START: What is the market doing?
 │   │   ├─ Want maximum exposure (ride the trend): Buy & Protect
 │   │   ├─ Want active management with entries/exits: Higher Highs, EMA Cross
 │   │   ├─ Want volatility-adjusted stops: Supertrend
-│   │   └─ Want trendline-based timing: Straight Line (long only)
+│   │   ├─ Want trendline-based timing (break): Straight Line (long only)
+│   │   └─ Want trendline-based timing (bounce): Enhanced Lines (long only, --no-short)
 │   │
 │   └─ Bearish trend?
 │       ├─ Can short: Higher Highs (short), VWMA 17 (short)
-│       ├─ Can short + clear trendline: Straight Line (--enable-short)
+│       ├─ Can short + clear trendline (break): Straight Line (--enable-short)
+│       ├─ Can short + clear channel (bounce): Enhanced Lines (default shorts enabled)
 │       └─ Long only: Stay in cash (or Buy & Protect will auto-exit)
 │
 ├─ Ranging? (ER < 0.2, ADX < 20, price oscillating)
@@ -275,6 +285,7 @@ Scores from 1 (poor) to 5 (excellent) based on backtesting results and strategy 
 | Buy & Protect | 5 | 2 | 3 | 4 | 3 |
 | Straight Line | 4 | 3 | 2 | 1 | 4 |
 | Vol. Harvester | 1 | 2 | 3 | 5 | 3 |
+| Enhanced Lines | 4 | 4 | 2 | 1 | 3 |
 
 **Reading the table:**
 - **5 = sweet spot** — strategy was designed for this condition

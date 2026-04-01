@@ -53,6 +53,7 @@ VOL_BASE_PCT      = 0.25     # base position size as fraction of capacity
 VOL_FLOOR_PCT     = 0.20     # minimum position size fraction
 VOL_CEILING_PCT   = 0.80     # maximum position size fraction
 ENABLE_SHORT      = True     # enable short positions in downtrends
+TREND_HOLD_MIN    = 3        # bars of consistent new trend before confirming regime change
 INTERVAL          = "1h"     # candle size
 PERIOD            = "2y"     # data lookback
 INITIAL_CAPITAL   = 10_000.0
@@ -274,12 +275,15 @@ def detect_bounce(
     """
     Detect a bounce off a trendline.
 
-    - direction "up": price near trendline from above, then confirm_bars bullish closes
-    - direction "down": price near trendline from below, then confirm_bars bearish closes
+    - direction "up": price touched/crossed below the trendline zone during the
+      confirmation window, then confirm_bars bullish closes confirm the bounce.
+    - direction "down": price touched/crossed above the trendline zone during the
+      confirmation window, then confirm_bars bearish closes confirm the bounce.
 
-    Price must be within tolerance of projected trendline value.
-    For "up" bounces, also checks if low is in tolerance zone.
-    For "down" bounces, also checks if high is in tolerance zone.
+    The confirmation window spans [bar_idx - confirm_bars + 1 .. bar_idx].
+    ANY bar in that window having its low (up) or high (down) within or through
+    the tolerance zone counts as the "touch".  The confirm_bars candles must then
+    all be bullish (up) or bearish (down).
 
     Returns True if bounce confirmed.
     """
@@ -288,30 +292,36 @@ def detect_bounce(
     if bar_idx >= len(candles):
         return False
 
-    projected = trendline_value(trendline["anchor1"], trendline["anchor2"], bar_idx)
-    if projected <= 0:
-        return False
-
-    c = candles[bar_idx]
-
-    # Check if price is in the tolerance zone
-    close_dev = abs(c["close"] - projected) / projected
-    if direction == "up":
-        low_dev = abs(c["low"] - projected) / projected
-        in_zone = close_dev <= tolerance or low_dev <= tolerance
-    else:
-        high_dev = abs(c["high"] - projected) / projected
-        in_zone = close_dev <= tolerance or high_dev <= tolerance
-
-    if not in_zone:
-        return False
-
-    # Check confirm_bars consecutive candles close in the bounce direction
-    # We look at the bars ending at bar_idx (the current bar and preceding bars)
     start = bar_idx - confirm_bars + 1
     if start < 0:
         return False
 
+    # Check if ANY bar in the confirmation window touched/crossed the trendline zone
+    touched = False
+    for k in range(start, bar_idx + 1):
+        projected = trendline_value(trendline["anchor1"], trendline["anchor2"], k)
+        if projected <= 0:
+            continue
+        c = candles[k]
+        if direction == "up":
+            # Support bounce: low touched or went below the trendline zone
+            low_dev = (c["low"] - projected) / projected
+            # low is within tolerance above the line, or below the line
+            if low_dev <= tolerance:
+                touched = True
+                break
+        else:
+            # Resistance bounce: high touched or went above the trendline zone
+            high_dev = (c["high"] - projected) / projected
+            # high is within tolerance below the line, or above the line
+            if high_dev >= -tolerance:
+                touched = True
+                break
+
+    if not touched:
+        return False
+
+    # Check confirm_bars consecutive candles close in the bounce direction
     for k in range(start, bar_idx + 1):
         if direction == "up":
             # Bullish: close > open
@@ -417,6 +427,7 @@ def run_enhanced_lines(
     vol_ceiling_pct: float = VOL_CEILING_PCT,
     enable_short: bool = ENABLE_SHORT,
     initial_capital: float = INITIAL_CAPITAL,
+    trend_hold_min: int = TREND_HOLD_MIN,
 ) -> list[dict]:
     """
     Enhanced Lines channel bounce strategy.
@@ -450,6 +461,15 @@ def run_enhanced_lines(
     position_entries: list[dict] = []  # FIFO: [{date, price, shares}, ...]
     prev_trend: str = "neutral"
 
+    # Trend hysteresis: require trend_hold_min bars of consistent new trend before switching
+    pending_trend: str = "neutral"
+    pending_count: int = 0
+
+    # Channel caching: only rebuild when swing pointers advance
+    prev_sh_ptr: int = 0
+    prev_sl_ptr: int = 0
+    cached_channel: Optional[dict] = None
+
     # I-4: dynamic capital tracking — max_shares scales with realized PnL
     current_capital: float = initial_capital
     initial_price: float = candles[0]["close"] if candles else 1.0
@@ -477,8 +497,12 @@ def run_enhanced_lines(
             confirmed_lows.append(swing_lows[sl_ptr][:2])
             sl_ptr += 1
 
-        # Build channel from confirmed swings
-        channel = build_channel(confirmed_highs, confirmed_lows, min_touches, tolerance)
+        # Build channel from confirmed swings — only rebuild when swings change
+        if sh_ptr != prev_sh_ptr or sl_ptr != prev_sl_ptr or cached_channel is None:
+            cached_channel = build_channel(confirmed_highs, confirmed_lows, min_touches, tolerance)
+            prev_sh_ptr = sh_ptr
+            prev_sl_ptr = sl_ptr
+        channel = cached_channel
 
         # Select best support/resistance pair
         support = None
@@ -501,7 +525,27 @@ def run_enhanced_lines(
         sup_slope = support["slope_per_bar"] if support else None
         res_slope = resistance["slope_per_bar"] if resistance else None
         avg_price = price  # Use current price as reference
-        trend = determine_trend(sup_slope, res_slope, avg_price)
+        raw_trend = determine_trend(sup_slope, res_slope, avg_price)
+
+        # Trend hysteresis: only change prev_trend after trend_hold_min consistent bars
+        if raw_trend != prev_trend:
+            if raw_trend == pending_trend:
+                pending_count += 1
+            else:
+                pending_trend = raw_trend
+                pending_count = 1
+            if pending_count >= trend_hold_min:
+                trend = raw_trend
+                # Reset pending state once confirmed
+                pending_trend = raw_trend
+                pending_count = 0
+            else:
+                trend = prev_trend  # hold the previous trend
+        else:
+            trend = prev_trend
+            # Reset pending state — current trend is stable
+            pending_trend = prev_trend
+            pending_count = 0
 
         # --- REGIME CHANGE: close ALL positions ---
         if trend != prev_trend and prev_trend != "neutral" and position_shares != 0.0:
@@ -548,7 +592,7 @@ def run_enhanced_lines(
                             })
 
             # Bounce DOWN from resistance -> PARTIAL SELL (FIFO)
-            elif resistance is not None and position_shares > 0.01:
+            if resistance is not None and position_shares > 0.01:
                 if detect_bounce(candles, i, resistance, "down", tolerance, confirm_bars):
                     trade_pct = calc_trade_pct(candles, i, vol_sma, confirm_bars,
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
@@ -586,7 +630,7 @@ def run_enhanced_lines(
                             })
 
             # Bounce UP from support -> CLOSE SHORT (partial, FIFO)
-            elif support is not None and position_shares < -0.01:
+            if support is not None and position_shares < -0.01:
                 if detect_bounce(candles, i, support, "up", tolerance, confirm_bars):
                     trade_pct = calc_trade_pct(candles, i, vol_sma, confirm_bars,
                                                vol_base_pct, vol_floor_pct, vol_ceiling_pct)
@@ -758,13 +802,14 @@ def run_backtest(
     vol_floor_pct: float = VOL_FLOOR_PCT,
     vol_ceiling_pct: float = VOL_CEILING_PCT,
     enable_short: bool = ENABLE_SHORT,
+    trend_hold_min: int = TREND_HOLD_MIN,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
     candles = fetch_ohlcv(symbol, period, interval)
     raw_trades = run_enhanced_lines(
         candles, pivot_lookback, min_touches, tolerance, confirm_bars,
         vol_ma_period, vol_base_pct, vol_floor_pct, vol_ceiling_pct, enable_short,
-        initial_capital,
+        initial_capital, trend_hold_min,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -788,6 +833,7 @@ def run_backtest(
             "vol_floor_pct": vol_floor_pct,
             "vol_ceiling_pct": vol_ceiling_pct,
             "enable_short": enable_short,
+            "trend_hold_min": trend_hold_min,
         },
         "period": period,
         "interval": interval,
@@ -840,6 +886,8 @@ def main():
                         help="Minimum position size fraction (default: 0.20)")
     parser.add_argument("--vol-ceiling-pct", type=float, default=VOL_CEILING_PCT,
                         help="Maximum position size fraction (default: 0.80)")
+    parser.add_argument("--trend-hold-min", type=int, default=TREND_HOLD_MIN,
+                        help="Bars of consistent trend before regime change (default: 3)")
     parser.add_argument("--no-short", action="store_true",
                         help="Disable short selling")
     args = parser.parse_args()
@@ -849,7 +897,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"  Enhanced Lines Strategy — {args.symbol}")
     print(f"  Pivots: {args.pivot_lookback}  |  Touches: {args.min_touches}  |  Tolerance: {args.tolerance*100:.1f}%")
-    print(f"  Confirm: {args.confirm_bars} bars  |  Shorts: {'ON' if enable_short else 'OFF'}")
+    print(f"  Confirm: {args.confirm_bars} bars  |  Trend Hold: {args.trend_hold_min} bars  |  Shorts: {'ON' if enable_short else 'OFF'}")
     print(f"  Vol sizing: base={args.vol_base_pct:.0%} floor={args.vol_floor_pct:.0%} ceiling={args.vol_ceiling_pct:.0%}")
     print(f"  Interval: {args.interval}  |  Period: {args.period}")
     print(f"{'='*60}\n")
@@ -862,7 +910,7 @@ def main():
         tolerance=args.tolerance, confirm_bars=args.confirm_bars,
         vol_ma_period=args.vol_ma_period, vol_base_pct=args.vol_base_pct,
         vol_floor_pct=args.vol_floor_pct, vol_ceiling_pct=args.vol_ceiling_pct,
-        enable_short=enable_short,
+        enable_short=enable_short, trend_hold_min=args.trend_hold_min,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

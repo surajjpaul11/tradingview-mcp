@@ -2996,6 +2996,8 @@ def backtest_strategy(
                                 'supertrend' — Buy on bullish Supertrend flip
                                 'donchian'   — Buy Donchian Channel breakout (Turtle Trader style)
                                 'vwma17'     — VWMA(17) crossover with ATR stop-loss & take-profit
+                                'higher_highs' — Multi-timeframe market structure (HH/HL detection)
+                                'enhanced_lines' — Channel trend following with volume-weighted bounce trading
         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
         initial_capital:      Starting capital in USD (default: $10,000)
         commission_pct:       Per-trade commission % (default: 0.1%)

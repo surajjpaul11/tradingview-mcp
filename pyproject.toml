@@ -20,6 +20,9 @@ dependencies = [
   "tradingview-ta>=3.3.0",
   "ccxt>=4.3",
   "alpaca-trade-api>=3.0",
+  "fastapi>=0.135.3",
+  "uvicorn>=0.35.0",
+  "yfinance>=0.2.58",
 ]
 
 [project.scripts]
@@ -33,8 +36,10 @@ where = ["src"]
 tradingview_mcp = ["coinlist/*.txt"]
 
 [tool.uv]
-dev-dependencies = []
 package = true
+
+[dependency-groups]
+dev = []
 
 [build-system]
 requires = ["setuptools>=61"]

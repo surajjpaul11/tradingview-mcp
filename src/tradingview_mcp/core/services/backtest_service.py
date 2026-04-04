@@ -50,6 +50,7 @@ _STRATEGY_LABELS = {
     "straight_line": "Straight Line (Trendline Bounce)",
     "buy_and_protect": "Buy and Protect (Regime Filtered Trend Following)",
     "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
+    "ema21":        "EMA 21 Price Crossover (Long + Short)",
 }
 
 
@@ -144,6 +145,66 @@ def _run_macd(candles, fast=12, slow=26, signal=9, **_):
         elif position is not None and mp > sp and m <= s:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    return trades
+
+
+def _run_ema21(candles, ema_period=21, use_atr_exits=False,
+               atr_period=14, atr_sl_mult=1.5, atr_tp_mult=2.0, **_):
+    closes = [c["close"] for c in candles]
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+    ema = calc_ema(closes, ema_period)
+    atr = calc_atr(highs, lows, closes, atr_period) if use_atr_exits else None
+    trades, position = [], None
+    for i in range(1, len(candles)):
+        e, ep = ema[i], ema[i - 1]
+        if e is None or ep is None:
+            continue
+        price, date = candles[i]["close"], candles[i]["date"]
+        hi, lo = candles[i]["high"], candles[i]["low"]
+        # Check ATR exits on open position
+        if position is not None and use_atr_exits and atr is not None:
+            if position["side"] == "long":
+                if lo <= position["_sl"]:
+                    trades.append({**position, "exit_date": date, "exit_price": position["_sl"]})
+                    position = None
+                    continue
+                if hi >= position["_tp"]:
+                    trades.append({**position, "exit_date": date, "exit_price": position["_tp"]})
+                    position = None
+                    continue
+            else:
+                if hi >= position["_sl"]:
+                    trades.append({**position, "exit_date": date, "exit_price": position["_sl"]})
+                    position = None
+                    continue
+                if lo <= position["_tp"]:
+                    trades.append({**position, "exit_date": date, "exit_price": position["_tp"]})
+                    position = None
+                    continue
+        prev_close = candles[i - 1]["close"]
+        cross_up = prev_close < ep and price >= e
+        cross_down = prev_close > ep and price <= e
+        if cross_up:
+            if position is not None and position["side"] == "short":
+                trades.append({**position, "exit_date": date, "exit_price": price})
+            atr_val = atr[i] if atr and atr[i] else 0
+            position = {"entry_date": date, "entry_price": price,
+                        "strategy": "ema21", "side": "long",
+                        "_sl": price - atr_sl_mult * atr_val if use_atr_exits else 0,
+                        "_tp": price + atr_tp_mult * atr_val if use_atr_exits else 0}
+        elif cross_down:
+            if position is not None and position["side"] == "long":
+                trades.append({**position, "exit_date": date, "exit_price": price})
+            atr_val = atr[i] if atr and atr[i] else 0
+            position = {"entry_date": date, "entry_price": price,
+                        "strategy": "ema21", "side": "short",
+                        "_sl": price + atr_sl_mult * atr_val if use_atr_exits else 0,
+                        "_tp": price - atr_tp_mult * atr_val if use_atr_exits else 0}
+    # Strip internal keys from trade dicts
+    for t in trades:
+        t.pop("_sl", None)
+        t.pop("_tp", None)
     return trades
 
 
@@ -526,6 +587,7 @@ _STRATEGY_MAP = {
     "straight_line": _get_dynamic_runner("straight_line_strategy.py", "run_straight_line"),
     "buy_and_protect": _get_dynamic_runner("buy_and_protect_strategy.py", "run_buy_and_protect"),
     "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
+    "ema21":        _run_ema21,
 }
 
 

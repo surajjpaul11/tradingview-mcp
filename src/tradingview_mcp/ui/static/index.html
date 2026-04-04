@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Visualizer</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Google Fonts for typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header & Controls -->
+        <header class="topbar glass-panel">
+            <div class="brand">
+                <div class="logo"></div>
+                <h1>Trade Visualizer</h1>
+            </div>
+            
+            <div class="controls">
+                <div class="filter-group">
+                    <label for="ticker-select">Ticker</label>
+                    <div class="custom-select">
+                        <select id="ticker-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label for="strategy-select">Strategy</label>
+                    <div class="custom-select">
+                        <select id="strategy-select">
+                            <option value="all">All Strategies</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic Statistics -->
+        <div class="stats-row">
+            <div class="stat-card glass-panel">
+                <span class="stat-label">Total P&L</span>
+                <span class="stat-value" id="pnl-val">--</span>
+            </div>
+            <div class="stat-card glass-panel">
+                <span class="stat-label">Win Rate</span>
+                <span class="stat-value" id="winrate-val">--</span>
+            </div>
+            <div class="stat-card glass-panel">
+                <span class="stat-label">Total Executions</span>
+                <span class="stat-value" id="total-trades-val">--</span>
+            </div>
+        </div>
+
+        <!-- The Chart Container -->
+        <div class="chart-wrapper glass-panel">
+            <div id="tv-chart" class="chart-container"></div>
+            <!-- Loading overlay -->
+            <div id="loading" class="loading-overlay">
+                <div class="spinner"></div>
+                <p>Loading market data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- TradingView Lightweight Charts MUST load before app.js -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

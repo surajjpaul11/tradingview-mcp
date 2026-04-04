@@ -68,6 +68,8 @@ grpVis          = "Visuals"
 i_showChannel   = input.bool(true, "Show Channel Lines",    group=grpVis)
 i_showBounces   = input.bool(true, "Show Bounce Signals",   group=grpVis)
 i_showTrend     = input.bool(true, "Show Trend Background", group=grpVis)
+i_showMidpoint  = input.bool(true, "Show Bar Midpoint Line", group=grpVis,
+                            tooltip="Continuous line through (high+low)/2 of every bar")
 
 // =============================================================================
 // SWING POINT DETECTION
@@ -422,6 +424,15 @@ trendColor = confirmedTrend == "uptrend"   ? color.new(color.green, 92) :
              confirmedTrend == "downtrend"  ? color.new(color.red, 92)   :
              color.new(color.gray, 95)
 bgcolor(i_showTrend ? trendColor : na, title="Trend Background")
+
+// --- Bar midpoint line ---
+// Draws a continuous line through the exact midpoint of every bar (high+low)/2.
+// Useful as a visual reference for price equilibrium within each bar.
+plot(i_showMidpoint ? (high + low) / 2 : na,
+     title     = "Bar Midpoint",
+     color     = color.new(color.gray, 50),
+     linewidth = 1,
+     style     = plot.style_line)
 
 // --- Info table ---
 var table infoTable = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80))

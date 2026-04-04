@@ -343,7 +343,7 @@ var line resistanceLine = na
 var label[] supportTouchLbls    = array.new_label(0)
 var label[] resistanceTouchLbls = array.new_label(0)
 
-if i_showChannel and barstate.islast
+if i_showChannel and (barstate.islastconfirmedhistory or barstate.isrealtime)
     // Delete stale lines before redrawing
     if not na(supportLine)
         line.delete(supportLine)
@@ -436,7 +436,7 @@ plot(i_showMidpoint ? (high + low) / 2 : na,
 
 // --- Info table ---
 var table infoTable = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80))
-if barstate.islast
+if barstate.islastconfirmedhistory or barstate.isrealtime
     table.cell(infoTable, 0, 0, "Trend",       text_color=color.white, text_size=size.small)
     table.cell(infoTable, 1, 0, confirmedTrend, text_color=confirmedTrend == "uptrend" ? color.green : confirmedTrend == "downtrend" ? color.red : color.gray, text_size=size.small)
     table.cell(infoTable, 0, 1, "Support",      text_color=color.white, text_size=size.small)

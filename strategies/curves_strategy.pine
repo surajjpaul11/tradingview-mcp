@@ -1,0 +1,195 @@
+//@version=6
+strategy("Curves Polynomial Channels", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// --- Inputs ---
+i_minPoints = input.int(4, "Min Touch Points", minval=3, tooltip="How many previous pivots to fit the quadratic curve to")
+i_pivotLeft = input.int(5, "Pivot Left Bars", group="Pivot Anchors")
+i_pivotRight = input.int(5, "Pivot Right Bars", group="Pivot Anchors")
+i_marginPct = input.float(1.5, "Margin of Error (%)", step=0.1, group="Margin") / 100.0
+
+// --- Arrays for Pivot Data ---
+var a_ph_x = array.new<int>()
+var a_ph_y = array.new<float>()
+var a_pl_x = array.new<int>()
+var a_pl_y = array.new<float>()
+
+// --- Update Pivot Arrays ---
+float ph = ta.pivothigh(high, i_pivotLeft, i_pivotRight)
+float pl = ta.pivotlow(low, i_pivotLeft, i_pivotRight)
+
+// Mark the anchor points being used by the quadratic matrix
+plotshape(not na(ph) ? ph : na, title="Pivot High Marker", style=shape.circle, location=location.absolute, color=color.white, size=size.tiny, offset=-i_pivotRight)
+plotshape(not na(pl) ? pl : na, title="Pivot Low Marker", style=shape.circle, location=location.absolute, color=color.white, size=size.tiny, offset=-i_pivotRight)
+
+if not na(ph)
+    array.push(a_ph_x, bar_index[i_pivotRight]) // use exact bar of the pivot
+    array.push(a_ph_y, ph)
+    if array.size(a_ph_x) > i_minPoints
+        array.shift(a_ph_x)
+        array.shift(a_ph_y)
+
+if not na(pl)
+    array.push(a_pl_x, bar_index[i_pivotRight]) // use exact bar of the pivot
+    array.push(a_pl_y, pl)
+    if array.size(a_pl_x) > i_minPoints
+        array.shift(a_pl_x)
+        array.shift(a_pl_y)
+
+// --- Quadratic Function Solver (Manual Cramer's Rule for safety against huge matrices) ---
+f_quad_fit(array<int> a_x, array<float> a_y) =>
+    int n = array.size(a_x)
+    float a = na, float b = na, float c = na
+    int o = na
+    if n >= 3
+        float S0 = n
+        float S1 = 0.0, S2 = 0.0, S3 = 0.0, S4 = 0.0
+        float Sy = 0.0, Sxy = 0.0, Sx2y = 0.0
+        
+        // Zero-align X to prevent floating point overflow on ^4 operations
+        o := array.get(a_x, 0)
+        
+        for i = 0 to n - 1
+            float x = array.get(a_x, i) - o
+            float y = array.get(a_y, i)
+            float x2 = x * x
+            
+            S1 += x
+            S2 += x2
+            S3 += x2 * x
+            S4 += x2 * x2
+            Sy += y
+            Sxy += x * y
+            Sx2y += x2 * y
+            
+        float D = S0*(S2*S4 - S3*S3) - S1*(S1*S4 - S2*S3) + S2*(S1*S3 - S2*S2)
+        if math.abs(D) > 0.0
+            a := (Sy*(S2*S4 - S3*S3) - S1*(Sxy*S4 - Sx2y*S3) + S2*(Sxy*S3 - Sx2y*S2)) / D
+            b := (S0*(Sxy*S4 - Sx2y*S3) - Sy*(S1*S4 - S2*S3) + S2*(S1*Sx2y - S2*Sxy)) / D
+            c := (S0*(S2*Sx2y - S3*Sxy) - S1*(S1*Sx2y - S2*Sxy) + Sy*(S1*S3 - S2*S2)) / D
+            
+    [a, b, c, o]
+
+[r_a, r_b, r_c, r_o] = f_quad_fit(a_ph_x, a_ph_y)
+[s_a, s_b, s_c, s_o] = f_quad_fit(a_pl_x, a_pl_y)
+
+// --- Curve Interpolation ---
+float resCurve = na
+float supCurve = na
+
+if not na(r_a)
+    float rx = bar_index - r_o
+    resCurve := r_a + r_b * rx + r_c * (rx * rx)
+
+if not na(s_a)
+    float sx = bar_index - s_o
+    supCurve := s_a + s_b * sx + s_c * (sx * sx)
+
+// --- Margins ---
+float resUpper = na, float resLower = na
+float supUpper = na, float supLower = na
+
+if not na(resCurve)
+    resUpper := resCurve * (1 + i_marginPct)
+    resLower := resCurve * (1 - i_marginPct)
+
+if not na(supCurve)
+    supUpper := supCurve * (1 + i_marginPct)
+    supLower := supCurve * (1 - i_marginPct)
+
+// --- Plots (Using style=plot.style_line or fill shapes) ---
+plot(resCurve, title="Resistance", color=color.new(color.red, 0), linewidth=2)
+plot(supCurve, title="Support", color=color.new(color.green, 0), linewidth=2)
+
+p_ru = plot(resUpper, title="Res Upper", color=color.new(color.red, 70), display=display.none)
+p_rl = plot(resLower, title="Res Lower", color=color.new(color.red, 70), display=display.none)
+fill(plot(resCurve, display=display.none), p_ru, color=color.new(color.red, 90))
+fill(plot(resCurve, display=display.none), p_rl, color=color.new(color.red, 90))
+
+p_su = plot(supUpper, title="Sup Upper", color=color.new(color.green, 70), display=display.none)
+p_sl = plot(supLower, title="Sup Lower", color=color.new(color.green, 70), display=display.none)
+fill(plot(supCurve, display=display.none), p_su, color=color.new(color.green, 90))
+fill(plot(supCurve, display=display.none), p_sl, color=color.new(color.green, 90))
+
+// --- Trend Detection ---
+// Smooth detection using multiple checks to avoid momentary jitter.
+bool isSupUp = supCurve > nz(supCurve[1])
+bool isResUp = resCurve > nz(resCurve[1])
+
+string trend = "neutral"
+if isSupUp and isResUp
+    trend := "uptrend"
+else if not isSupUp and not isResUp
+    trend := "downtrend"
+else
+    trend := na(trend[1]) ? "neutral" : trend[1]
+
+bgcolor(trend == "uptrend" ? color.new(color.green, 95) : trend == "downtrend" ? color.new(color.red, 95) : na, title="Trend BG")
+
+
+// --- Logic Conditions ---
+bool isGreen = close > open
+bool twoGreen = isGreen and isGreen[1] and close > close[1]
+
+bool isRed = close < open
+bool twoRed = isRed and isRed[1] and close < close[1]
+
+// Lookback past few bars to detect a touch mapping into the margin zone
+bool touchedSupportRecently = false
+if not na(supUpper)
+    for i = 0 to 4
+        if low[i] <= supUpper[i]
+            touchedSupportRecently := true
+            break
+
+bool touchedResRecently = false
+if not na(resLower)
+    for i = 0 to 4
+        if high[i] >= resLower[i]
+            touchedResRecently := true
+            break
+
+bool buySignal = trend == "uptrend" and touchedSupportRecently and twoGreen
+bool sellSignal = trend == "downtrend" and touchedResRecently and twoRed
+
+// Debouncer helper
+var int lastBuyBar = 0
+var int lastSellBar = 0
+
+bool validBuy = buySignal and (bar_index > lastBuyBar + 4)
+bool validSell = sellSignal and (bar_index > lastSellBar + 4)
+
+if validBuy
+    lastBuyBar := bar_index
+if validSell
+    lastSellBar := bar_index
+
+// --- Trade Execution ---
+if trend == "uptrend"
+    // Handle trend flip closure
+    if strategy.position_size < 0
+        strategy.close("Short", comment="Trend Up")
+    
+    // Support Bounce (Buy)
+    if validBuy
+        strategy.entry("Long", strategy.long, comment="Buy")
+    
+    // Resistance Bounce (Sell All)
+    if touchedResRecently and twoRed and strategy.position_size > 0
+        strategy.close("Long", comment="Sell All")
+
+if trend == "downtrend"
+    // Handle trend flip closure
+    if strategy.position_size > 0
+        strategy.close("Long", comment="Trend Down")
+        
+    // Resistance Bounce (Short)
+    if validSell
+        strategy.entry("Short", strategy.short, comment="Short")
+        
+    // Support Bounce (Buy to Cover)
+    if touchedSupportRecently and twoGreen and strategy.position_size < 0
+        strategy.close("Short", comment="Cover")
+
+// Visual Shapes for trades
+plotshape(validBuy ? low - ta.tr : na, title="Buy Arrow", style=shape.triangleup, location=location.absolute, color=color.green, size=size.small, text="BUY", textcolor=color.white)
+plotshape(validSell ? high + ta.tr : na, title="Sell Arrow", style=shape.triangledown, location=location.absolute, color=color.red, size=size.small, text="SELL", textcolor=color.white)

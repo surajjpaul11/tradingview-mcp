@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import math
 import statistics
 import urllib.request
@@ -429,9 +430,11 @@ def main():
     print(f"\n{'='*60}\n")
 
     # Also dump JSON for programmatic use
-    with open(f"vwma17_backtest_{args.symbol.replace('-','_')}_{args.period}.json", "w") as f:
+    script_dir = Path(__file__).resolve().parent
+    fname = script_dir / f"vwma17_backtest_{args.symbol.replace('-','_')}_{args.period}.json"
+    with open(fname, "w") as f:
         json.dump(result, f, indent=2)
-    print(f"  Full results saved to: vwma17_backtest_{args.symbol.replace('-','_')}_{args.period}.json\n")
+    print(f"  Full results saved to: {fname}\n")
 
 
 if __name__ == "__main__":

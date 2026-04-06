@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import math
 import statistics
 import urllib.request
@@ -497,7 +498,8 @@ def main():
 
     print(f"\n{'='*60}\n")
 
-    fname = f"buy_and_protect_backtest_{args.symbol.replace('-','_')}_{args.period}.json"
+    script_dir = Path(__file__).resolve().parent
+    fname = script_dir / f"buy_and_protect_backtest_{args.symbol.replace('-','_')}_{args.period}.json"
     with open(fname, "w") as f:
         json.dump(result, f, indent=2)
     print(f"  Full results saved to: {fname}\n")

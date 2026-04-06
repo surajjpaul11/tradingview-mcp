@@ -1,11 +1,11 @@
 //@version=6
-strategy("Curves Polynomial Channels", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+strategy("Curves Polynomial Channels", overlay=true, max_lines_count=500, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
 
 // --- Inputs ---
 i_minPoints = input.int(4, "Min Touch Points", minval=3, tooltip="How many previous pivots to fit the quadratic curve to")
 i_pivotLeft = input.int(5, "Pivot Left Bars", group="Pivot Anchors")
 i_pivotRight = input.int(5, "Pivot Right Bars", group="Pivot Anchors")
-i_marginPct = input.float(1.5, "Margin of Error (%)", step=0.1, group="Margin") / 100.0
+i_marginPct = input.float(0.5, "Margin of Error (%)", step=0.1, group="Margin") / 100.0
 
 // --- Arrays for Pivot Data ---
 var a_ph_x = array.new<int>()
@@ -13,22 +13,28 @@ var a_ph_y = array.new<float>()
 var a_pl_x = array.new<int>()
 var a_pl_y = array.new<float>()
 
+var line[] res_lines = array.new_line()
+var line[] sup_lines = array.new_line()
+
 // --- Update Pivot Arrays ---
 float ph = ta.pivothigh(high, i_pivotLeft, i_pivotRight)
 float pl = ta.pivotlow(low, i_pivotLeft, i_pivotRight)
 
-// Mark the anchor points being used by the quadratic matrix
-plotshape(not na(ph) ? ph : na, title="Pivot High Marker", style=shape.circle, location=location.absolute, color=color.white, size=size.tiny, offset=-i_pivotRight)
-plotshape(not na(pl) ? pl : na, title="Pivot Low Marker", style=shape.circle, location=location.absolute, color=color.white, size=size.tiny, offset=-i_pivotRight)
+bool isNewPh = not na(ph)
+bool isNewPl = not na(pl)
 
-if not na(ph)
+// Mark the anchor points being used by the quadratic matrix
+plotshape(isNewPh ? ph : na, title="Pivot High Marker", style=shape.circle, location=location.absolute, color=#8B4513, size=size.small, offset=-i_pivotRight)
+plotshape(isNewPl ? pl : na, title="Pivot Low Marker", style=shape.circle, location=location.absolute, color=color.white, size=size.small, offset=-i_pivotRight)
+
+if isNewPh
     array.push(a_ph_x, bar_index[i_pivotRight]) // use exact bar of the pivot
     array.push(a_ph_y, ph)
     if array.size(a_ph_x) > i_minPoints
         array.shift(a_ph_x)
         array.shift(a_ph_y)
 
-if not na(pl)
+if isNewPl
     array.push(a_pl_x, bar_index[i_pivotRight]) // use exact bar of the pivot
     array.push(a_pl_y, pl)
     if array.size(a_pl_x) > i_minPoints
@@ -40,16 +46,18 @@ f_quad_fit(array<int> a_x, array<float> a_y) =>
     int n = array.size(a_x)
     float a = na, float b = na, float c = na
     int o = na
+    float s = na
     if n >= 3
         float S0 = n
         float S1 = 0.0, S2 = 0.0, S3 = 0.0, S4 = 0.0
         float Sy = 0.0, Sxy = 0.0, Sx2y = 0.0
         
-        // Zero-align X to prevent floating point overflow on ^4 operations
+        // Zero-align and normalize X to [0, 1] to completely eliminate float^4 precision loss
         o := array.get(a_x, 0)
+        s := math.max(1.0, array.get(a_x, n - 1) - o)
         
         for i = 0 to n - 1
-            float x = array.get(a_x, i) - o
+            float x = (array.get(a_x, i) - o) / s
             float y = array.get(a_y, i)
             float x2 = x * x
             
@@ -67,21 +75,64 @@ f_quad_fit(array<int> a_x, array<float> a_y) =>
             b := (S0*(Sxy*S4 - Sx2y*S3) - Sy*(S1*S4 - S2*S3) + S2*(S1*Sx2y - S2*Sxy)) / D
             c := (S0*(S2*Sx2y - S3*Sxy) - S1*(S1*Sx2y - S2*Sxy) + Sy*(S1*S3 - S2*S2)) / D
             
-    [a, b, c, o]
+    [a, b, c, o, s]
 
-[r_a, r_b, r_c, r_o] = f_quad_fit(a_ph_x, a_ph_y)
-[s_a, s_b, s_c, s_o] = f_quad_fit(a_pl_x, a_pl_y)
+[r_a, r_b, r_c, r_o, r_s] = f_quad_fit(a_ph_x, a_ph_y)
+[s_a, s_b, s_c, s_o, s_s] = f_quad_fit(a_pl_x, a_pl_y)
+
+// --- Historical Blue Curves ---
+if isNewPh
+    for l in res_lines
+        line.delete(l)
+    array.clear(res_lines)
+    int n = array.size(a_ph_x)
+    if n >= 3 and not na(r_a)
+        int startX = array.get(a_ph_x, 0)
+        int endX = array.get(a_ph_x, n - 1)
+        int steps = 20
+        float stepSize = math.max(1.0, (endX - startX) / steps)
+        
+        float curX = startX
+        while curX < endX
+            float nxtX = math.min(curX + stepSize, endX)
+            float rx1 = (curX - r_o) / r_s
+            float ry1 = r_a + r_b * rx1 + r_c * (rx1 * rx1)
+            float rx2 = (nxtX - r_o) / r_s
+            float ry2 = r_a + r_b * rx2 + r_c * (rx2 * rx2)
+            array.push(res_lines, line.new(int(curX), ry1, int(nxtX), ry2, color=color.blue, width=3))
+            curX := nxtX
+
+if isNewPl
+    for l in sup_lines
+        line.delete(l)
+    array.clear(sup_lines)
+    int n = array.size(a_pl_x)
+    if n >= 3 and not na(s_a)
+        int startX = array.get(a_pl_x, 0)
+        int endX = array.get(a_pl_x, n - 1)
+        int steps = 20
+        float stepSize = math.max(1.0, (endX - startX) / steps)
+        
+        float curX = startX
+        while curX < endX
+            float nxtX = math.min(curX + stepSize, endX)
+            float sx1 = (curX - s_o) / s_s
+            float sy1 = s_a + s_b * sx1 + s_c * (sx1 * sx1)
+            float sx2 = (nxtX - s_o) / s_s
+            float sy2 = s_a + s_b * sx2 + s_c * (sx2 * sx2)
+            array.push(sup_lines, line.new(int(curX), sy1, int(nxtX), sy2, color=color.blue, width=3))
+            curX := nxtX
 
 // --- Curve Interpolation ---
 float resCurve = na
 float supCurve = na
 
 if not na(r_a)
-    float rx = bar_index - r_o
+    float rx = (bar_index - r_o) / r_s
     resCurve := r_a + r_b * rx + r_c * (rx * rx)
 
 if not na(s_a)
-    float sx = bar_index - s_o
+    float sx = (bar_index - s_o) / s_s
     supCurve := s_a + s_b * sx + s_c * (sx * sx)
 
 // --- Margins ---
@@ -97,18 +148,18 @@ if not na(supCurve)
     supLower := supCurve * (1 - i_marginPct)
 
 // --- Plots (Using style=plot.style_line or fill shapes) ---
-plot(resCurve, title="Resistance", color=color.new(color.red, 0), linewidth=2)
-plot(supCurve, title="Support", color=color.new(color.green, 0), linewidth=2)
+plot(resCurve, title="Resistance Projection", color=color.new(color.yellow, 0), linewidth=1)
+plot(supCurve, title="Support Projection", color=color.new(color.yellow, 0), linewidth=1)
 
-p_ru = plot(resUpper, title="Res Upper", color=color.new(color.red, 70), display=display.none)
-p_rl = plot(resLower, title="Res Lower", color=color.new(color.red, 70), display=display.none)
-fill(plot(resCurve, display=display.none), p_ru, color=color.new(color.red, 90))
-fill(plot(resCurve, display=display.none), p_rl, color=color.new(color.red, 90))
+p_ru = plot(resUpper, title="Res Upper", color=color.new(color.yellow, 70), display=display.none)
+p_rl = plot(resLower, title="Res Lower", color=color.new(color.yellow, 70), display=display.none)
+fill(plot(resCurve, display=display.none), p_ru, color=color.new(color.yellow, 90))
+fill(plot(resCurve, display=display.none), p_rl, color=color.new(color.yellow, 90))
 
-p_su = plot(supUpper, title="Sup Upper", color=color.new(color.green, 70), display=display.none)
-p_sl = plot(supLower, title="Sup Lower", color=color.new(color.green, 70), display=display.none)
-fill(plot(supCurve, display=display.none), p_su, color=color.new(color.green, 90))
-fill(plot(supCurve, display=display.none), p_sl, color=color.new(color.green, 90))
+p_su = plot(supUpper, title="Sup Upper", color=color.new(color.yellow, 70), display=display.none)
+p_sl = plot(supLower, title="Sup Lower", color=color.new(color.yellow, 70), display=display.none)
+fill(plot(supCurve, display=display.none), p_su, color=color.new(color.yellow, 90))
+fill(plot(supCurve, display=display.none), p_sl, color=color.new(color.yellow, 90))
 
 // --- Trend Detection ---
 // Smooth detection using multiple checks to avoid momentary jitter.

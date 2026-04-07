@@ -26,6 +26,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# Abbreviation maps for chart marker text
+ENTRY_ABBREV = {
+    "channel_long": "CH-LONG", "channel_short": "CH-SHORT",
+    "breakout_long": "BRK-UP", "breakout_short": "BRK-DN",
+    "fallback_sma": "SMA", "breakout_reentry": "RE-BRK",
+    "break_short": "BRK-SH", "sma_to_channel": "SMA\u2192CH",
+}
+EXIT_ABBREV = {
+    "atr_trailing_stop": "ATR-TS", "channel_trail_stop": "CH-TS",
+    "breakout_up": "BRK-UP", "breakout_down": "BRK-DN",
+    "channel_break": "CH-BRK", "channel_flip": "CH-FLIP",
+    "channel_expired": "CH-EXP", "time_exit": "TIME",
+    "fallback_sma_exit": "SMA-X", "end_of_data": "EOD",
+}
+
 
 def generate_chart_html(
     result: dict,
@@ -65,6 +80,10 @@ def generate_chart_html(
     markers = []
     for t in trades:
         side = t.get("side", "long")
+        entry_reason = t.get("entry_reason", "")
+        entry_abbrev = ENTRY_ABBREV.get(entry_reason, entry_reason.upper().replace("_", "-"))
+        exit_reason = t.get("exit_reason", "")
+        exit_abbrev = EXIT_ABBREV.get(exit_reason, exit_reason.upper().replace("_", "-"))
         # Entry marker
         if side == "long":
             markers.append({
@@ -72,7 +91,7 @@ def generate_chart_html(
                 "position": "belowBar",
                 "color": "#26a69a",
                 "shape": "arrowUp",
-                "text": "BUY",
+                "text": f"BUY {entry_abbrev}",
             })
         else:
             markers.append({
@@ -80,18 +99,16 @@ def generate_chart_html(
                 "position": "aboveBar",
                 "color": "#ef5350",
                 "shape": "arrowDown",
-                "text": "SHORT",
+                "text": f"SHORT {entry_abbrev}",
             })
         # Exit marker
-        exit_reason = t.get("exit_reason", "")
-        exit_label = "EXIT" if exit_reason == "end_of_data" else "EXIT"
         if side == "long":
             markers.append({
                 "time": t["exit_date"],
                 "position": "aboveBar",
                 "color": "#ef5350",
                 "shape": "arrowDown",
-                "text": exit_label,
+                "text": f"EXIT {exit_abbrev}",
             })
         else:
             markers.append({
@@ -99,7 +116,7 @@ def generate_chart_html(
                 "position": "belowBar",
                 "color": "#26a69a",
                 "shape": "arrowUp",
-                "text": "COVER",
+                "text": f"COVER {exit_abbrev}",
             })
 
     # Sort markers by time (required by Lightweight Charts)
@@ -215,7 +232,7 @@ body {
     position: absolute;
     top: 0;
     right: 0;
-    width: 420px;
+    width: 560px;
     height: 100%;
     background: #1e222d;
     border-left: 1px solid #2a2e39;
@@ -231,20 +248,32 @@ body {
     font-size: 13px;
 }
 .trade-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
+    padding: 6px 0;
     border-bottom: 1px solid #2a2e39;
     font-variant-numeric: tabular-nums;
 }
-.trade-row .side { width: 50px; font-weight: 600; }
+.trade-row-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.trade-row .side { width: 50px; font-weight: 600; display: inline-block; }
 .trade-row .side.long { color: #26a69a; }
 .trade-row .side.short { color: #ef5350; }
+.trade-row .entry-type { color: #d1d4dc; margin-left: 4px; font-size: 11px; }
 .trade-row .dates { color: #787b86; flex: 1; margin: 0 8px; }
 .trade-row .pnl { width: 70px; text-align: right; font-weight: 600; }
 .trade-row .pnl.positive { color: #26a69a; }
 .trade-row .pnl.negative { color: #ef5350; }
 .trade-row .reason { width: 90px; text-align: right; color: #787b86; font-size: 11px; }
+.trade-row-versions {
+    font-size: 10px;
+    color: #787b86;
+    margin-top: 2px;
+    padding-left: 54px;
+}
+.trade-row-versions .entry-ver { color: #4dd0e1; }
+.trade-row-versions .exit-ver { color: #ffb74d; }
 #legend {
     position: absolute;
     top: 12px;

@@ -48,15 +48,76 @@ MIN_TOUCH_POINTS     = 3       # min points curve must touch for valid channel
 TOUCH_TOLERANCE_PCT  = 1.0     # % tolerance for curve-to-pivot match
 POLY_DEGREE          = 2       # 1=linear, 2=quadratic, 3=cubic
 BREAKOUT_PCT         = 2.0     # % beyond channel boundary to count as breakout
-BREAKOUT_ADD_PCT     = 50      # % of capital to add on upside breakout
-ATR_TRAIL_MULT       = 2.0     # ATR multiplier for trailing stop during wait period
+BREAKOUT_ADD_PCT     = 100     # % of capital to add on upside breakout (200% total position)
+ATR_TRAIL_MULT       = 2.0     # ATR multiplier for trailing stop during wait period (longs)
+SHORT_ATR_TRAIL_MULT = 1.5     # ATR multiplier for short trailing stop (tighter than longs)
 ATR_PERIOD           = 14      # ATR lookback for trailing stop
 ENABLE_SHORT         = True    # enable short positions
+SHORT_SMA_PERIOD     = 200     # only allow shorts when price < SMA(this) (0 = no filter)
+SHORT_MIN_HOLD       = 5       # minimum bars to hold a short before allowing exit (prevents whipsaw flips)
+FALLBACK_SMA_PERIOD  = 50      # SMA period for flat-period re-entry (0 = disabled)
+FALLBACK_WAIT_BARS   = 10      # bars to wait after last exit before fallback entry
+SHORT_ENTRY_PCT      = 1.5     # % below support required to open short (vs TOUCH_TOLERANCE_PCT for long exit)
+VOL_CONFIRM_MULT     = 1.2     # volume must be >= this * SMA(20) of volume to enter (0 = disabled)
+VOL_CONFIRM_PERIOD   = 20      # lookback for volume MA
+CH_TRAIL_ACTIVATE_PCT = 2.0    # in-channel trailing stop activates after this % profit (0 = disabled)
+CH_TRAIL_ATR_MULT     = 1.5    # ATR multiplier for in-channel trailing stop (tighter than breakout trail)
+SHORT_SIZE_BASE       = 25     # base short position size (%)
+SHORT_SIZE_SCALE      = 12.5   # additional size per 1% break below support (0 = no scaling)
+SHORT_SIZE_MAX        = 75     # max short position size (%)
+TIME_EXIT_BARS        = 20     # close position if held this many bars with < 1% profit (0 = disabled)
+RSI_DIVERGENCE_LOOKBACK = 0   # bars to check for RSI divergence (0 = disabled)
+RSI_PERIOD            = 14    # RSI calculation period
+RIDE_EXPIRED_WINNERS  = True  # keep profitable positions open when channel expires (ATR trail takeover)
+MIN_CHANNEL_AGE      = 3     # minimum bars channel must exist before entry (0 = enter immediately)
+MIN_EXTEND           = 20    # minimum bars to extend channel beyond last touch point
+LOSS_COOLDOWN_BARS   = 0     # bars to wait after a losing trade before re-entering (0 = disabled)
 INTERVAL             = "1d"    # candle size (1d works best for channels)
 PERIOD               = "2y"    # data lookback
 INITIAL_CAPITAL      = 10_000.0
 COMMISSION_PCT       = 0.1
 SLIPPAGE_PCT         = 0.05
+
+
+# ==============================================================================
+# STRATEGY VERSION REGISTRY — single source of truth for trade annotations
+# ==============================================================================
+# Each kept improvement is registered here. Charts, Trade Log, and version
+# legend all derive from this dict automatically.
+#   key: version tag (e.g. "v2")
+#   value: (short_label, description, mechanism_type)
+#   mechanism_type: "entry_filter" | "exit_type" | "channel_detection" | "sizing"
+
+STRATEGY_VERSIONS = {
+    "v1":  ("Full Channel",      "Widen entry to full channel width",              "entry_filter"),
+    "v2":  ("Breakout Detect",   "Breakout invalidation + ATR trailing stop",      "exit_type"),
+    "v3":  ("Short SMA Filter",  "SMA(200) filter for shorts",                    "entry_filter"),
+    "v5":  ("Fallback SMA",      "SMA(50) re-entry during flat periods",           "entry_filter"),
+    "v8":  ("Volume Confirm",    "Volume >= 1.2x MA(20) for entry",               "entry_filter"),
+    "v9":  ("Channel Trail",     "In-channel trailing stop at 2% profit",          "exit_type"),
+    "v10": ("Ride Winners",      "Keep profitable positions on channel expiry",     "exit_type"),
+    "v21": ("Channel Age",       "Min 3-bar channel maturity for ETFs",            "entry_filter"),
+    "v23": ("Tight Short Trail", "1.5x ATR trail for shorts (vs 2.0x longs)",     "exit_type"),
+    "v25": ("2-Bar Confirm",     "Previous bar must also be in channel",           "entry_filter"),
+    "v30": ("Crypto Breakout",   "Lower breakout threshold (1.5%) for crypto",     "channel_detection"),
+    "v32": ("SMA Min Hold",      "Min 3-bar hold before fallback SMA exit",        "exit_type"),
+    "v39": ("Crypto Extend",     "Longer channel extension (30 bars) for crypto",  "channel_detection"),
+    "v48": ("SMA Trend Filter",  "Require close > SMA(50)*0.99 for long entry",   "entry_filter"),
+}
+
+# Maps exit_reason → list of version tags that contributed to that exit mechanism
+EXIT_VERSION_MAP = {
+    "atr_trailing_stop":  ["v2"],
+    "channel_trail_stop": ["v9"],
+    "breakout_up":        ["v2"],
+    "breakout_down":      ["v2"],
+    "channel_break":      [],
+    "channel_flip":       [],
+    "channel_expired":    ["v10"],
+    "time_exit":          [],
+    "fallback_sma_exit":  ["v5", "v32"],
+    "end_of_data":        [],
+}
 
 
 # ==============================================================================
@@ -315,7 +376,8 @@ def descending_sequence(bars: list[int], vals: list[float]
 # ==============================================================================
 
 def fit_boundary(seq_bars: list[int], seq_vals: list[float],
-                 degree: int, min_touch: int, tolerance: float
+                 degree: int, min_touch: int, tolerance: float,
+                 min_extend: int = 20,
                  ) -> dict | None:
     """
     Fit polynomial to a sequence, validate touch points.
@@ -350,7 +412,7 @@ def fit_boundary(seq_bars: list[int], seq_vals: list[float],
     end_bar = touch_bars[-1]
     # Extension: at least the gap between last two touch points
     gap = touch_bars[-1] - touch_bars[-2] if len(touch_bars) >= 2 else 20
-    extend_to = end_bar + max(gap, 10)
+    extend_to = end_bar + max(gap, min_extend)
 
     return {
         "c0": c0, "c1": c1, "c2": c2, "c3": c3,
@@ -368,7 +430,7 @@ def fit_boundary(seq_bars: list[int], seq_vals: list[float],
 
 def detect_channels(candles: list[dict], pivot_left: int, pivot_right: int,
                     max_pivots: int, degree: int, min_touch: int,
-                    tolerance: float) -> list[dict]:
+                    tolerance: float, min_extend: int = 20) -> list[dict]:
     """
     Walk through candles bar-by-bar, maintaining rolling pivot windows.
     When a new pivot is detected, refit all four channel boundaries.
@@ -425,19 +487,19 @@ def detect_channels(candles: list[dict], pivot_left: int, pivot_right: int,
                 # Refit all channel boundaries
                 # Ascending Higher Highs (upper)
                 asc_hh_b, asc_hh_v = ascending_sequence(ph_bars, ph_vals)
-                ah = fit_boundary(asc_hh_b, asc_hh_v, degree, min_touch, tolerance)
+                ah = fit_boundary(asc_hh_b, asc_hh_v, degree, min_touch, tolerance, min_extend=min_extend)
 
                 # Ascending Higher Lows (lower)
                 asc_hl_b, asc_hl_v = ascending_sequence(pl_bars, pl_vals)
-                al = fit_boundary(asc_hl_b, asc_hl_v, degree, min_touch, tolerance)
+                al = fit_boundary(asc_hl_b, asc_hl_v, degree, min_touch, tolerance, min_extend=min_extend)
 
                 # Descending Lower Highs (upper)
                 dsc_lh_b, dsc_lh_v = descending_sequence(ph_bars, ph_vals)
-                dh = fit_boundary(dsc_lh_b, dsc_lh_v, degree, min_touch, tolerance)
+                dh = fit_boundary(dsc_lh_b, dsc_lh_v, degree, min_touch, tolerance, min_extend=min_extend)
 
                 # Descending Lower Lows (lower)
                 dsc_ll_b, dsc_ll_v = descending_sequence(pl_bars, pl_vals)
-                dl = fit_boundary(dsc_ll_b, dsc_ll_v, degree, min_touch, tolerance)
+                dl = fit_boundary(dsc_ll_b, dsc_ll_v, degree, min_touch, tolerance, min_extend=min_extend)
 
                 # Record ascending channel if both boundaries valid
                 if ah is not None and al is not None:
@@ -461,8 +523,35 @@ def detect_channels(candles: list[dict], pivot_left: int, pivot_right: int,
 
 
 # ==============================================================================
-# ATR CALCULATION
+# SMA / ATR / VOLUME MA CALCULATION
 # ==============================================================================
+
+def calc_vol_ma(candles: list[dict], period: int = 20) -> list[float | None]:
+    """Calculate Simple Moving Average of volume. None for bars before enough data."""
+    n = len(candles)
+    vmas: list[float | None] = [None] * n
+    if n < period:
+        return vmas
+    window_sum = sum(c["volume"] for c in candles[:period])
+    vmas[period - 1] = window_sum / period
+    for i in range(period, n):
+        window_sum += candles[i]["volume"] - candles[i - period]["volume"]
+        vmas[i] = window_sum / period
+    return vmas
+
+
+def calc_sma(candles: list[dict], period: int = 200) -> list[float | None]:
+    """Calculate Simple Moving Average of close prices. None for bars before enough data."""
+    n = len(candles)
+    smas: list[float | None] = [None] * n
+    if n < period:
+        return smas
+    window_sum = sum(c["close"] for c in candles[:period])
+    smas[period - 1] = window_sum / period
+    for i in range(period, n):
+        window_sum += candles[i]["close"] - candles[i - period]["close"]
+        smas[i] = window_sum / period
+    return smas
 
 def calc_atr(candles: list[dict], period: int = 14) -> list[float | None]:
     """Calculate Average True Range for each bar. None for bars before enough data."""
@@ -488,6 +577,35 @@ def calc_atr(candles: list[dict], period: int = 14) -> list[float | None]:
     return atrs
 
 
+def calc_rsi(candles: list[dict], period: int = 14) -> list[float | None]:
+    """Calculate RSI using Wilder's smoothing."""
+    n = len(candles)
+    rsi = [None] * n
+    if n < period + 1:
+        return rsi
+    gains = []
+    losses = []
+    for i in range(1, n):
+        delta = candles[i]["close"] - candles[i - 1]["close"]
+        gains.append(max(delta, 0))
+        losses.append(max(-delta, 0))
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    if avg_loss == 0:
+        rsi[period] = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        rsi[period] = 100 - 100 / (1 + rs)
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            rsi[i + 1] = 100.0
+        else:
+            rsi[i + 1] = 100 - 100 / (1 + avg_gain / avg_loss)
+    return rsi
+
+
 # ==============================================================================
 # STRATEGY ENGINE (v2 — breakout detection + channel reset + ATR trailing stop)
 # ==============================================================================
@@ -505,7 +623,27 @@ def run_curved_channel(
     breakout_pct: float = BREAKOUT_PCT,
     breakout_add_pct: float = BREAKOUT_ADD_PCT,
     atr_trail_mult: float = ATR_TRAIL_MULT,
+    short_atr_trail_mult: float = SHORT_ATR_TRAIL_MULT,
     atr_period: int = ATR_PERIOD,
+    short_sma_period: int = SHORT_SMA_PERIOD,
+    short_min_hold: int = SHORT_MIN_HOLD,
+    fallback_sma_period: int = FALLBACK_SMA_PERIOD,
+    fallback_wait_bars: int = FALLBACK_WAIT_BARS,
+    short_entry_pct: float = SHORT_ENTRY_PCT,
+    vol_confirm_mult: float = VOL_CONFIRM_MULT,
+    vol_confirm_period: int = VOL_CONFIRM_PERIOD,
+    ch_trail_activate_pct: float = CH_TRAIL_ACTIVATE_PCT,
+    ch_trail_atr_mult: float = CH_TRAIL_ATR_MULT,
+    short_size_base: int = SHORT_SIZE_BASE,
+    short_size_scale: float = SHORT_SIZE_SCALE,
+    short_size_max: int = SHORT_SIZE_MAX,
+    time_exit_bars: int = TIME_EXIT_BARS,
+    rsi_div_lookback: int = RSI_DIVERGENCE_LOOKBACK,
+    rsi_period: int = RSI_PERIOD,
+    ride_expired_winners: bool = RIDE_EXPIRED_WINNERS,
+    min_channel_age: int = MIN_CHANNEL_AGE,
+    min_extend: int = MIN_EXTEND,
+    loss_cooldown_bars: int = LOSS_COOLDOWN_BARS,
 ) -> list[dict] | tuple[list[dict], list[dict]]:
     """
     Curved channel trading strategy with breakout detection and channel reset.
@@ -516,6 +654,8 @@ def run_curved_channel(
       - ATR trailing stop protects breakout positions during channel-less wait period
       - Upside breakout: close long + re-enter at (100 + breakout_add_pct)% size
       - Downside breakout: sell long + open short, both with pivot reset
+    v3 additions:
+      - SMA(200) filter: shorts only allowed when price < SMA (set short_sma_period=0 to disable)
 
     Returns list of trade dicts, or (trades, channels) if return_channels=True.
     """
@@ -524,12 +664,43 @@ def run_curved_channel(
 
     tolerance = tolerance_pct / 100.0
     breakout_thresh = breakout_pct / 100.0
+    short_entry_thresh = short_entry_pct / 100.0
     n = len(candles)
     highs = [c["high"] for c in candles]
     lows = [c["low"] for c in candles]
 
-    # Pre-compute ATR for trailing stop
+    # Pre-compute ATR for trailing stop and SMA for short filter
     atrs = calc_atr(candles, atr_period)
+    smas = calc_sma(candles, short_sma_period) if short_sma_period > 0 else [None] * n
+    fallback_smas = calc_sma(candles, fallback_sma_period) if fallback_sma_period > 0 else [None] * n
+    vol_mas = calc_vol_ma(candles, vol_confirm_period) if vol_confirm_mult > 0 else [None] * n
+    rsi_vals = calc_rsi(candles, rsi_period) if rsi_div_lookback > 0 else [None] * n
+
+    def _short_allowed(bar: int) -> bool:
+        """Check if shorting is allowed: enable_short + price < SMA filter."""
+        if not enable_short:
+            return False
+        sma = smas[bar]
+        if sma is None:
+            return True  # no SMA data yet, allow by default
+        return candles[bar]["close"] < sma
+
+    def _volume_confirmed(bar: int) -> bool:
+        """Check if volume is above its MA threshold for entry confirmation."""
+        if vol_confirm_mult <= 0:
+            return True
+        vma = vol_mas[bar]
+        if vma is None or vma == 0:
+            return True
+        return candles[bar]["volume"] >= vma * vol_confirm_mult
+
+    def _calc_short_size(price: float, support: float) -> int:
+        """Calculate short position size based on break magnitude below support."""
+        if support <= 0:
+            return short_size_base
+        break_pct = (support - price) / support * 100
+        size = short_size_base + break_pct * short_size_scale
+        return min(int(size), short_size_max)
 
     # Rolling pivot storage (bar_index, value)
     ph_bars: list[int] = []
@@ -547,24 +718,45 @@ def run_curved_channel(
     position: dict | None = None
     trail_stop: float | None = None
     trail_extreme: float | None = None  # trail_high for long, trail_low for short
+    ch_trail_stop: float | None = None  # in-channel trailing stop level
+    ch_trail_extreme: float | None = None  # in-channel trail extreme
+    last_exit_bar: int = -999  # bar index of most recent position exit (for fallback wait)
+    last_loss_bar: int = -999  # bar index of most recent losing trade exit (for cooldown)
 
-    def _close_position(date: str, price: float, reason: str):
+    def _close_position(date: str, price: float, reason: str, bar: int = 0):
         """Helper to close the current position and append trade."""
-        nonlocal position, trail_stop, trail_extreme
+        nonlocal position, trail_stop, trail_extreme, ch_trail_stop, ch_trail_extreme, last_exit_bar, last_loss_bar
         if position is None:
             return
+        side = position["side"]
+        entry_p = position["entry_price"]
+        is_loss = (price < entry_p) if side == "long" else (price > entry_p)
+        entry_reason = position.get("entry_reason", "unknown")
+        entry_versions = position.get("entry_versions", [])
+        exit_versions = EXIT_VERSION_MAP.get(reason, [])
+        # For short trailing stops, credit v23
+        if reason == "atr_trailing_stop" and side == "short":
+            exit_versions = ["v2", "v23"]
         trades.append({
             "entry_date": position["entry_date"],
-            "entry_price": position["entry_price"],
+            "entry_price": entry_p,
             "exit_date": date, "exit_price": price,
-            "side": position["side"],
+            "side": side,
             "size_pct": position.get("size_pct", 100),
+            "entry_reason": entry_reason,
+            "entry_versions": entry_versions,
             "exit_reason": reason,
+            "exit_versions": exit_versions,
             "strategy": "curved_channel",
         })
         position = None
         trail_stop = None
+        last_exit_bar = bar
+        if is_loss:
+            last_loss_bar = bar
         trail_extreme = None
+        ch_trail_stop = None
+        ch_trail_extreme = None
 
     def _try_fit_channel(confirmed_bar: int) -> bool:
         """Try to fit a channel from current pivots. Returns True if channel found."""
@@ -575,9 +767,9 @@ def run_curved_channel(
 
         # Ascending (HH upper + HL lower)
         asc_hh_b, asc_hh_v = ascending_sequence(ph_bars, ph_vals)
-        ah = fit_boundary(asc_hh_b, asc_hh_v, degree, min_touch, tolerance)
+        ah = fit_boundary(asc_hh_b, asc_hh_v, degree, min_touch, tolerance, min_extend=min_extend)
         asc_hl_b, asc_hl_v = ascending_sequence(pl_bars, pl_vals)
-        al = fit_boundary(asc_hl_b, asc_hl_v, degree, min_touch, tolerance)
+        al = fit_boundary(asc_hl_b, asc_hl_v, degree, min_touch, tolerance, min_extend=min_extend)
         if ah is not None and al is not None:
             t = ah["touch_count"] + al["touch_count"]
             if t > best_touches:
@@ -586,9 +778,9 @@ def run_curved_channel(
 
         # Descending (LH upper + LL lower)
         dsc_lh_b, dsc_lh_v = descending_sequence(ph_bars, ph_vals)
-        dh = fit_boundary(dsc_lh_b, dsc_lh_v, degree, min_touch, tolerance)
+        dh = fit_boundary(dsc_lh_b, dsc_lh_v, degree, min_touch, tolerance, min_extend=min_extend)
         dsc_ll_b, dsc_ll_v = descending_sequence(pl_bars, pl_vals)
-        dl = fit_boundary(dsc_ll_b, dsc_ll_v, degree, min_touch, tolerance)
+        dl = fit_boundary(dsc_ll_b, dsc_ll_v, degree, min_touch, tolerance, min_extend=min_extend)
         if dh is not None and dl is not None:
             t = dh["touch_count"] + dl["touch_count"]
             if t > best_touches:
@@ -596,7 +788,7 @@ def run_curved_channel(
                 best_touches = t
 
         if best_ch is not None:
-            active_channel = best_ch
+            active_channel = {**best_ch, "confirmed_bar": confirmed_bar}
             all_channels.append({**best_ch, "confirmed_bar": confirmed_bar})
             return True
         return False
@@ -622,7 +814,7 @@ def run_curved_channel(
             trail_stop = trail_extreme - atr * atr_trail_mult
         else:
             trail_extreme = candles[bar_idx]["low"]
-            trail_stop = trail_extreme + atr * atr_trail_mult
+            trail_stop = trail_extreme + atr * short_atr_trail_mult
 
     def _eval_boundary(boundary: dict, bar: int) -> float:
         return poly_eval(boundary["c0"], boundary["c1"], boundary["c2"],
@@ -683,6 +875,18 @@ def run_curved_channel(
             if i > lb["extend_to"] and i > ub["extend_to"]:
                 active_channel = None
 
+        # ── 2b. Time-based exit (stale positions with < 1% profit after N bars) ──
+        if (position is not None and time_exit_bars > 0
+                and (i - position.get("entry_bar", 0)) >= time_exit_bars):
+            entry_price = position["entry_price"]
+            if position["side"] == "long":
+                pnl_pct = (close - entry_price) / entry_price * 100
+            else:
+                pnl_pct = (entry_price - close) / entry_price * 100
+            if pnl_pct < 1.0:
+                _close_position(date, close, "time_exit", bar=i)
+                continue
+
         # ── 3. ATR trailing stop (active during channel-less wait period) ──
         if position is not None and waiting_for_channel and trail_stop is not None:
             if position["side"] == "long":
@@ -690,19 +894,65 @@ def run_curved_channel(
                     trail_extreme = max(trail_extreme, candles[i]["high"])
                     trail_stop = max(trail_stop, trail_extreme - atr * atr_trail_mult)
                 if close <= trail_stop:
-                    _close_position(date, close, "atr_trailing_stop")
+                    _close_position(date, close, "atr_trailing_stop", bar=i)
                     continue
             elif position["side"] == "short":
                 if atr is not None and trail_extreme is not None:
                     trail_extreme = min(trail_extreme, candles[i]["low"])
-                    trail_stop = min(trail_stop, trail_extreme + atr * atr_trail_mult)
+                    trail_stop = min(trail_stop, trail_extreme + atr * short_atr_trail_mult)
                 if close >= trail_stop:
-                    _close_position(date, close, "atr_trailing_stop")
+                    _close_position(date, close, "atr_trailing_stop", bar=i)
                     continue
 
         # ── 4. Channel-based exit + breakout detection ──
         if position is not None and active_channel is not None and not waiting_for_channel:
             ch_type = active_channel["type"]
+
+            # Check for RSI bearish divergence (price higher high, RSI lower high)
+            rsi_divergence = False
+            if rsi_div_lookback > 0 and position is not None and position["side"] == "long":
+                lookback_start = max(0, i - rsi_div_lookback)
+                price_max_bar = lookback_start
+                for j in range(lookback_start, i + 1):
+                    if candles[j]["high"] > candles[price_max_bar]["high"]:
+                        price_max_bar = j
+                # Price at current bar is near recent high, but RSI is lower
+                if (candles[i]["high"] >= candles[price_max_bar]["high"] * 0.998
+                        and rsi_vals[i] is not None and rsi_vals[price_max_bar] is not None
+                        and price_max_bar != i
+                        and rsi_vals[i] < rsi_vals[price_max_bar] - 3):
+                    rsi_divergence = True
+
+            # In-channel trailing stop (locks in gains after profit threshold)
+            if ch_trail_activate_pct > 0:
+                entry_price = position["entry_price"]
+                atr = atrs[i]
+                # Tighten trail multiplier by 0.5x if RSI divergence detected
+                trail_mult = ch_trail_atr_mult * 0.5 if rsi_divergence else ch_trail_atr_mult
+                if position["side"] == "long":
+                    pnl_pct = (close - entry_price) / entry_price * 100
+                    if pnl_pct >= ch_trail_activate_pct and atr is not None:
+                        if ch_trail_extreme is None:
+                            ch_trail_extreme = candles[i]["high"]
+                            ch_trail_stop = ch_trail_extreme - atr * trail_mult
+                        else:
+                            ch_trail_extreme = max(ch_trail_extreme, candles[i]["high"])
+                            ch_trail_stop = max(ch_trail_stop, ch_trail_extreme - atr * trail_mult)
+                    if ch_trail_stop is not None and close <= ch_trail_stop:
+                        _close_position(date, close, "channel_trail_stop", bar=i)
+                        continue
+                elif position["side"] == "short":
+                    pnl_pct = (entry_price - close) / entry_price * 100
+                    if pnl_pct >= ch_trail_activate_pct and atr is not None:
+                        if ch_trail_extreme is None:
+                            ch_trail_extreme = candles[i]["low"]
+                            ch_trail_stop = ch_trail_extreme + atr * ch_trail_atr_mult
+                        else:
+                            ch_trail_extreme = min(ch_trail_extreme, candles[i]["low"])
+                            ch_trail_stop = min(ch_trail_stop, ch_trail_extreme + atr * ch_trail_atr_mult)
+                    if ch_trail_stop is not None and close >= ch_trail_stop:
+                        _close_position(date, close, "channel_trail_stop", bar=i)
+                        continue
 
             if position["side"] == "long":
                 if ch_type == "ascending":
@@ -714,11 +964,13 @@ def run_curved_channel(
 
                         # Upside breakout: close > resistance * (1 + breakout%)
                         if close > resistance * (1 + breakout_thresh):
-                            _close_position(date, close, "breakout_up")
+                            _close_position(date, close, "breakout_up", bar=i)
                             new_size = 100 + breakout_add_pct
                             position = {
                                 "entry_date": date, "entry_price": close,
                                 "entry_bar": i, "side": "long", "size_pct": new_size,
+                                "entry_reason": "breakout_reentry",
+                                "entry_versions": ["v2"],
                             }
                             _reset_pivots_and_channel()
                             _activate_trailing_stop(i, "long")
@@ -727,11 +979,14 @@ def run_curved_channel(
                         # Downside break: close < support * (1 - tolerance)
                         if close < support * (1 - tolerance):
                             is_breakout = close < support * (1 - breakout_thresh)
-                            _close_position(date, close, "breakout_down" if is_breakout else "channel_break")
-                            if enable_short:
+                            _close_position(date, close, "breakout_down" if is_breakout else "channel_break", bar=i)
+                            # Only open short if break exceeds the higher short_entry threshold
+                            if _short_allowed(i) and close < support * (1 - short_entry_thresh):
                                 position = {
                                     "entry_date": date, "entry_price": close,
                                     "entry_bar": i, "side": "short", "size_pct": 25,
+                                    "entry_reason": "break_short",
+                                    "entry_versions": ["v2", "v3"],
                                 }
                             if is_breakout:
                                 _reset_pivots_and_channel()
@@ -744,10 +999,11 @@ def run_curved_channel(
                     if i >= lb["start_bar"]:
                         support = _eval_boundary(lb, i)
                         if close < support * (1 - tolerance):
-                            _close_position(date, close, "channel_flip")
+                            _close_position(date, close, "channel_flip", bar=i)
                             continue
 
             elif position["side"] == "short":
+                held_bars = i - position.get("entry_bar", 0)
                 if ch_type == "descending":
                     ub = active_channel["upper"]
                     lb = active_channel["lower"]
@@ -755,15 +1011,15 @@ def run_curved_channel(
                         resistance = _eval_boundary(ub, i)
                         support = _eval_boundary(lb, i)
 
-                        # Upside breakout while short — cover
+                        # Upside breakout while short — cover (always, regardless of min hold)
                         if close > resistance * (1 + breakout_thresh):
-                            _close_position(date, close, "breakout_up")
+                            _close_position(date, close, "breakout_up", bar=i)
                             _reset_pivots_and_channel()
                             continue
 
-                        # Normal resistance break — cover short
-                        if close > resistance * (1 + tolerance):
-                            _close_position(date, close, "channel_break")
+                        # Normal resistance break — cover short (min hold applies)
+                        if held_bars >= short_min_hold and close > resistance * (1 + tolerance):
+                            _close_position(date, close, "channel_break", bar=i)
                             continue
 
                         # Downside breakout while short — ride it
@@ -773,47 +1029,79 @@ def run_curved_channel(
                             continue
 
                 elif ch_type == "ascending":
-                    # Ascending channel formed while short — cover
-                    lb = active_channel["lower"]
-                    if i >= lb["start_bar"]:
-                        support = _eval_boundary(lb, i)
-                        if close > support:
-                            _close_position(date, close, "channel_flip")
-                            continue
+                    # Ascending channel formed while short — cover (min hold applies)
+                    if held_bars >= short_min_hold:
+                        lb = active_channel["lower"]
+                        if i >= lb["start_bar"]:
+                            support = _eval_boundary(lb, i)
+                            if close > support:
+                                _close_position(date, close, "channel_flip", bar=i)
+                                continue
 
-        # Channel expired — exit any position
+        # Channel expired — close position or let winners ride
         if position is not None and active_channel is None and not waiting_for_channel:
-            _close_position(date, close, "channel_expired")
-            continue
+            if not ride_expired_winners:
+                _close_position(date, close, "channel_expired", bar=i)
+                continue
+            entry_price = position["entry_price"]
+            if position["side"] == "long":
+                pnl = (close - entry_price) / entry_price
+            else:
+                pnl = (entry_price - close) / entry_price
+            if pnl <= 0:
+                _close_position(date, close, "channel_expired", bar=i)
+                continue
+            else:
+                # Profitable — keep position open with ATR trailing stop
+                _activate_trailing_stop(i, position["side"])
+                waiting_for_channel = True
 
-        # ── 5. Entry logic (flat + channel active + not waiting) ──
-        if position is None and active_channel is not None and not waiting_for_channel:
+        # ── 5. Entry logic (flat + channel active + not waiting + channel mature enough + cooldown) ──
+        channel_age = (i - active_channel.get("confirmed_bar", 0)) if active_channel else 0
+        in_cooldown = loss_cooldown_bars > 0 and (i - last_loss_bar) < loss_cooldown_bars
+        if position is None and active_channel is not None and not waiting_for_channel and channel_age >= min_channel_age and not in_cooldown:
             ch_type = active_channel["type"]
 
             if ch_type == "ascending":
                 lb = active_channel["lower"]
                 ub = active_channel["upper"]
-                if i >= lb["start_bar"] and i >= ub["start_bar"]:
+                if i >= lb["start_bar"] and i >= ub["start_bar"] and i > 0:
                     support = _eval_boundary(lb, i)
                     resistance = _eval_boundary(ub, i)
+                    # Confirm: previous bar's close was also within channel
+                    prev_close = candles[i-1]["close"]
+                    prev_support = _eval_boundary(lb, i-1) if i-1 >= lb["start_bar"] else None
+                    prev_resist = _eval_boundary(ub, i-1) if i-1 >= ub["start_bar"] else None
+                    prev_in_channel = (prev_support is not None and prev_resist is not None
+                                       and prev_support <= prev_close <= prev_resist)
                     ch_height = resistance - support
-                    if ch_height > 0 and support <= close <= resistance and close > opn:
+                    # Trend alignment: require close > SMA(50) for longs (when SMA enabled)
+                    # Use 90% of SMA as a softer filter (allows entries slightly below SMA)
+                    fsma = fallback_smas[i]
+                    trend_ok = fsma is None or close > fsma * 0.99
+                    if (ch_height > 0 and support <= close <= resistance and close > opn
+                            and _volume_confirmed(i) and prev_in_channel and trend_ok):
                         position = {
                             "entry_date": date, "entry_price": close,
                             "entry_bar": i, "side": "long", "size_pct": 100,
+                            "entry_reason": "channel_long",
+                            "entry_versions": ["v1", "v8", "v21", "v25", "v48"],
                         }
 
-            elif ch_type == "descending" and enable_short:
+            elif ch_type == "descending" and _short_allowed(i):
                 ub = active_channel["upper"]
                 lb = active_channel["lower"]
                 if i >= ub["start_bar"] and i >= lb["start_bar"]:
                     resistance = _eval_boundary(ub, i)
                     support = _eval_boundary(lb, i)
                     ch_height = resistance - support
-                    if ch_height > 0 and close <= resistance and close >= resistance - ch_height * 0.4 and close < opn:
+                    if (ch_height > 0 and close <= resistance and close >= resistance - ch_height * 0.4
+                            and close < opn and _volume_confirmed(i)):
                         position = {
                             "entry_date": date, "entry_price": close,
                             "entry_bar": i, "side": "short", "size_pct": 25,
+                            "entry_reason": "channel_short",
+                            "entry_versions": ["v3", "v8"],
                         }
 
         # ── 6. Flat breakout entry (flat + channel + price beyond boundary) ──
@@ -830,19 +1118,49 @@ def run_curved_channel(
                     position = {
                         "entry_date": date, "entry_price": close,
                         "entry_bar": i, "side": "long", "size_pct": 100,
+                        "entry_reason": "breakout_long",
+                        "entry_versions": ["v2"],
                     }
                     _reset_pivots_and_channel()
                     _activate_trailing_stop(i, "long")
                     continue
 
                 # Flat + downside breakout → enter short
-                if enable_short and close < support * (1 - breakout_thresh):
+                if _short_allowed(i) and close < support * (1 - breakout_thresh):
                     position = {
                         "entry_date": date, "entry_price": close,
                         "entry_bar": i, "side": "short", "size_pct": 25,
+                        "entry_reason": "breakout_short",
+                        "entry_versions": ["v2", "v3"],
                     }
                     _reset_pivots_and_channel()
                     _activate_trailing_stop(i, "short")
+                    continue
+
+        # ── 7. Fallback SMA entry (flat + no channel + waited long enough) ──
+        if (position is None and active_channel is None
+                and fallback_sma_period > 0
+                and (i - last_exit_bar) >= fallback_wait_bars):
+            fsma = fallback_smas[i]
+            if fsma is not None and close > fsma and close > opn and _volume_confirmed(i):
+                position = {
+                    "entry_date": date, "entry_price": close,
+                    "entry_bar": i, "side": "long", "size_pct": 100,
+                    "entry_reason": "fallback_sma",
+                    "entry_versions": ["v5"],
+                }
+
+        # ── 8. Fallback SMA exit (long from fallback + price drops below SMA) ──
+        if (position is not None and position.get("entry_reason") == "fallback_sma"):
+            if active_channel is not None and not waiting_for_channel:
+                # Channel formed — hand off to channel-based logic
+                position["entry_reason"] = "sma_to_channel"
+                position["entry_versions"] = ["v5", "v1", "v8", "v21", "v25", "v48"]
+            else:
+                fsma = fallback_smas[i]
+                bars_held = i - position.get("entry_bar", 0)
+                if fsma is not None and close < fsma and bars_held >= 3:
+                    _close_position(date, close, "fallback_sma_exit", bar=i)
                     continue
 
     # Close any open position at end of data
@@ -986,7 +1304,7 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1d
                 "long_trades": 0, "short_trades": 0,
                 "channel_break_exits": 0, "channel_expired_exits": 0, "channel_flip_exits": 0,
                 "breakout_up_exits": 0, "breakout_down_exits": 0, "atr_trailing_exits": 0,
-                "end_of_data_exits": 0,
+                "channel_trail_stop_exits": 0, "pyramid_upsize_exits": 0, "time_exit_exits": 0, "fallback_sma_exits": 0, "end_of_data_exits": 0,
                 "win_rate_pct": 0, "total_return_pct": 0,
                 "final_capital": initial_capital, "max_drawdown_pct": 0,
                 "avg_gain_pct": 0, "avg_loss_pct": 0, "sharpe_ratio": 0,
@@ -1039,6 +1357,10 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1d
         "breakout_up_exits":      sum(1 for t in trades if t.get("exit_reason") == "breakout_up"),
         "breakout_down_exits":    sum(1 for t in trades if t.get("exit_reason") == "breakout_down"),
         "atr_trailing_exits":     sum(1 for t in trades if t.get("exit_reason") == "atr_trailing_stop"),
+        "channel_trail_stop_exits": sum(1 for t in trades if t.get("exit_reason") == "channel_trail_stop"),
+        "pyramid_upsize_exits":   sum(1 for t in trades if t.get("exit_reason") == "pyramid_upsize"),
+        "time_exit_exits":        sum(1 for t in trades if t.get("exit_reason") == "time_exit"),
+        "fallback_sma_exits":     sum(1 for t in trades if t.get("exit_reason") == "fallback_sma_exit"),
         "end_of_data_exits":      sum(1 for t in trades if t.get("exit_reason") == "end_of_data"),
         "win_rate_pct":           round(wr * 100, 1),
         "final_capital":          round(capital, 2),
@@ -1069,7 +1391,27 @@ def run_backtest(
     breakout_pct: float = BREAKOUT_PCT,
     breakout_add_pct: float = BREAKOUT_ADD_PCT,
     atr_trail_mult: float = ATR_TRAIL_MULT,
+    short_atr_trail_mult: float = SHORT_ATR_TRAIL_MULT,
     atr_period: int = ATR_PERIOD,
+    short_sma_period: int = SHORT_SMA_PERIOD,
+    short_min_hold: int = SHORT_MIN_HOLD,
+    fallback_sma_period: int = FALLBACK_SMA_PERIOD,
+    fallback_wait_bars: int = FALLBACK_WAIT_BARS,
+    short_entry_pct: float = SHORT_ENTRY_PCT,
+    vol_confirm_mult: float = VOL_CONFIRM_MULT,
+    vol_confirm_period: int = VOL_CONFIRM_PERIOD,
+    ch_trail_activate_pct: float = CH_TRAIL_ACTIVATE_PCT,
+    ch_trail_atr_mult: float = CH_TRAIL_ATR_MULT,
+    short_size_base: int = SHORT_SIZE_BASE,
+    short_size_scale: float = SHORT_SIZE_SCALE,
+    short_size_max: int = SHORT_SIZE_MAX,
+    time_exit_bars: int = TIME_EXIT_BARS,
+    rsi_div_lookback: int = RSI_DIVERGENCE_LOOKBACK,
+    rsi_period: int = RSI_PERIOD,
+    ride_expired_winners: bool = RIDE_EXPIRED_WINNERS,
+    min_channel_age: int = MIN_CHANNEL_AGE,
+    min_extend: int = MIN_EXTEND,
+    loss_cooldown_bars: int = LOSS_COOLDOWN_BARS,
     include_candles: bool = False,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1079,7 +1421,27 @@ def run_backtest(
         degree, min_touch, tolerance_pct, enable_short,
         return_channels=include_candles,
         breakout_pct=breakout_pct, breakout_add_pct=breakout_add_pct,
-        atr_trail_mult=atr_trail_mult, atr_period=atr_period,
+        atr_trail_mult=atr_trail_mult, short_atr_trail_mult=short_atr_trail_mult,
+        atr_period=atr_period,
+        short_sma_period=short_sma_period,
+        short_min_hold=short_min_hold,
+        fallback_sma_period=fallback_sma_period,
+        fallback_wait_bars=fallback_wait_bars,
+        short_entry_pct=short_entry_pct,
+        vol_confirm_mult=vol_confirm_mult,
+        vol_confirm_period=vol_confirm_period,
+        ch_trail_activate_pct=ch_trail_activate_pct,
+        ch_trail_atr_mult=ch_trail_atr_mult,
+        short_size_base=short_size_base,
+        short_size_scale=short_size_scale,
+        short_size_max=short_size_max,
+        time_exit_bars=time_exit_bars,
+        rsi_div_lookback=rsi_div_lookback,
+        rsi_period=rsi_period,
+        ride_expired_winners=ride_expired_winners,
+        min_channel_age=min_channel_age,
+        min_extend=min_extend,
+        loss_cooldown_bars=loss_cooldown_bars,
     )
     if include_candles:
         raw_trades, channels = result_tuple
@@ -1109,6 +1471,22 @@ def run_backtest(
             "breakout_add_pct": breakout_add_pct,
             "atr_trail_mult": atr_trail_mult,
             "atr_period": atr_period,
+            "short_sma_period": short_sma_period,
+            "short_min_hold": short_min_hold,
+            "fallback_sma_period": fallback_sma_period,
+            "fallback_wait_bars": fallback_wait_bars,
+            "short_entry_pct": short_entry_pct,
+            "vol_confirm_mult": vol_confirm_mult,
+            "vol_confirm_period": vol_confirm_period,
+            "ch_trail_activate_pct": ch_trail_activate_pct,
+            "ch_trail_atr_mult": ch_trail_atr_mult,
+            "short_size_base": short_size_base,
+            "short_size_scale": short_size_scale,
+            "short_size_max": short_size_max,
+            "time_exit_bars": time_exit_bars,
+            "rsi_div_lookback": rsi_div_lookback,
+            "rsi_period": rsi_period,
+            "ride_expired_winners": ride_expired_winners,
         },
         "period": period,
         "interval": interval,
@@ -1159,12 +1537,46 @@ def main():
 
     enable_short = not args.no_short
 
+    # Asset-specific presets: detect crypto vs ETF
+    sym_upper = args.symbol.upper()
+    is_crypto = any(tag in sym_upper for tag in ("-USD", "-BTC", "-ETH", "BTC", "ETH", "DOGE", "SOL", "ADA"))
+    degree = args.degree
+    tolerance = args.tolerance
+    if is_crypto:
+        fallback_sma = 0       # disable fallback SMA for crypto (too choppy)
+        fallback_wait = 10
+        short_sma = 0          # no SMA filter for shorts on crypto
+        vol_mult = VOL_CONFIRM_MULT  # volume confirmation helps crypto
+        ride_expired = True    # let crypto winners ride on expired channels
+        ch_age = 0             # no channel age filter for crypto (breakouts are fast)
+        breakout_pct = 1.5     # tighter breakout threshold for crypto (bigger moves, earlier detection)
+        min_ext = 30           # longer channel extension for crypto (volatile, needs more room)
+        atr_pd = ATR_PERIOD    # keep ATR(14) for crypto too
+        time_exit = TIME_EXIT_BARS   # default 20 for crypto
+        ch_trail_act = CH_TRAIL_ACTIVATE_PCT  # default 2.0% for crypto
+        short_hold = SHORT_MIN_HOLD  # default 5 for crypto
+    else:
+        fallback_sma = FALLBACK_SMA_PERIOD
+        fallback_wait = FALLBACK_WAIT_BARS
+        short_sma = SHORT_SMA_PERIOD
+        vol_mult = VOL_CONFIRM_MULT
+        ride_expired = RIDE_EXPIRED_WINNERS
+        ch_age = MIN_CHANNEL_AGE  # filter out immature channels for ETFs
+        breakout_pct = BREAKOUT_PCT  # default 2.0% for ETFs
+        min_ext = MIN_EXTEND         # default 20 bars for ETFs
+        atr_pd = ATR_PERIOD          # default 14 bars for ETFs
+        time_exit = TIME_EXIT_BARS   # default 20 for ETFs
+        ch_trail_act = CH_TRAIL_ACTIVATE_PCT  # default 2.0% for ETFs
+        short_hold = SHORT_MIN_HOLD  # default 5 for ETFs
+
+    preset_label = "crypto" if is_crypto else "etf"
     print(f"\n{'='*60}")
-    print(f"  Curved Channel Strategy v2 — {args.symbol}")
-    print(f"  Degree: {args.degree}  |  Touch: {args.min_touch}  |  Tolerance: {args.tolerance}%")
+    print(f"  Curved Channel Strategy v7 — {args.symbol} [{preset_label} preset]")
+    print(f"  Degree: {degree}  |  Touch: {args.min_touch}  |  Tolerance: {tolerance}%")
     print(f"  Pivots: L={args.pivot_left} R={args.pivot_right}  |  Max: {args.max_pivots}")
-    print(f"  Breakout: {BREAKOUT_PCT}%  |  Add: {BREAKOUT_ADD_PCT}%  |  ATR Trail: {ATR_TRAIL_MULT}x ({ATR_PERIOD})")
-    print(f"  Interval: {args.interval}  |  Shorts: {'ON' if enable_short else 'OFF'}")
+    print(f"  Breakout: {breakout_pct}%  |  Add: {BREAKOUT_ADD_PCT}%  |  ATR Trail: {ATR_TRAIL_MULT}x ({ATR_PERIOD})")
+    print(f"  Fallback SMA: {fallback_sma or 'OFF'}  |  Short SMA: {short_sma or 'OFF'}  |  Shorts: {'ON' if enable_short else 'OFF'}")
+    print(f"  Vol Confirm: {'ON' if vol_mult > 0 else 'OFF'}  |  Ride Expired: {'ON' if ride_expired else 'OFF'}")
     print(f"{'='*60}\n")
 
     result = run_backtest(
@@ -1172,9 +1584,20 @@ def main():
         initial_capital=args.initial_capital,
         commission_pct=args.commission, slippage_pct=args.slippage,
         pivot_left=args.pivot_left, pivot_right=args.pivot_right,
-        max_pivots=args.max_pivots, degree=args.degree,
-        min_touch=args.min_touch, tolerance_pct=args.tolerance,
+        max_pivots=args.max_pivots, degree=degree,
+        min_touch=args.min_touch, tolerance_pct=tolerance,
         enable_short=enable_short,
+        breakout_pct=breakout_pct,
+        fallback_sma_period=fallback_sma, fallback_wait_bars=fallback_wait,
+        short_sma_period=short_sma,
+        vol_confirm_mult=vol_mult,
+        ride_expired_winners=ride_expired,
+        min_channel_age=ch_age,
+        min_extend=min_ext,
+        atr_period=atr_pd,
+        time_exit_bars=time_exit,
+        ch_trail_activate_pct=ch_trail_act,
+        short_min_hold=short_hold,
         include_candles=args.chart,
     )
 
@@ -1190,7 +1613,7 @@ def main():
     print(f"  Sharpe Ratio:     {result['sharpe_ratio']}")
     print(f"  Max Drawdown:     {result['max_drawdown_pct']}%")
     print(f"  Exits:            Break: {result['channel_break_exits']}  |  Expired: {result['channel_expired_exits']}  |  Flip: {result['channel_flip_exits']}")
-    print(f"                    Breakout Up: {result['breakout_up_exits']}  |  Breakout Down: {result['breakout_down_exits']}  |  ATR Trail: {result['atr_trailing_exits']}  |  EOD: {result['end_of_data_exits']}")
+    print(f"                    Breakout Up: {result['breakout_up_exits']}  |  Breakout Down: {result['breakout_down_exits']}  |  ATR Trail: {result['atr_trailing_exits']}  |  Ch Trail: {result['channel_trail_stop_exits']}  |  SMA Fallback: {result['fallback_sma_exits']}  |  EOD: {result['end_of_data_exits']}")
     print(f"\n  Trade Log:")
     for t in result["trade_log"]:
         side = t["side"].upper()

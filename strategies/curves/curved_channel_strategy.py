@@ -72,6 +72,36 @@ RIDE_EXPIRED_WINNERS  = True  # keep profitable positions open when channel expi
 MIN_CHANNEL_AGE      = 3     # minimum bars channel must exist before entry (0 = enter immediately)
 MIN_EXTEND           = 20    # minimum bars to extend channel beyond last touch point
 LOSS_COOLDOWN_BARS   = 0     # bars to wait after a losing trade before re-entering (0 = disabled)
+# Poly-Low Entry (v49) — polynomial through recent lows, enter if sloping up
+EARLY_ENABLED        = True   # master flag to enable/disable v49
+EARLY_POLY_LOOKBACK  = 12    # bars of lows to fit polynomial through
+EARLY_POLY_DEGREE    = 2     # polynomial degree (2 = quadratic)
+EARLY_VOL_GATE       = 0.80  # volume must be >= this fraction of vol MA
+EARLY_ENTRY_SIZE     = 25    # position size (%)
+# Sharp Reversal Entry (v50)
+REVERSAL_ENABLED         = True  # master flag to enable/disable v50
+REVERSAL_ATR_MULT        = 2.0   # min single-bar move as multiple of ATR
+REVERSAL_VOL_MULT        = 2.0   # min volume as multiple of volume MA
+REVERSAL_LOOKBACK        = 3     # bars to check for prior opposite direction
+REVERSAL_ENTRY_SIZE      = 25    # position size (%)
+REVERSAL_SHORT_ENABLED   = False # allow sharp reversal shorts (False = long-only reversals)
+# Steep Slope Reversal (v51)
+DIVERG_ENABLED           = False # master flag to enable/disable v51
+DIVERG_SLOPE_LOOKBACK    = 5     # bars for recent slope measurement
+DIVERG_BASELINE_LOOKBACK = 20    # bars for baseline slope
+DIVERG_SLOPE_MULT        = 8.0   # recent slope must be this * baseline slope
+DIVERG_SLOPE_MIN_ATR     = 0.5   # minimum slope magnitude as fraction of ATR
+DIVERG_CONFIRM_BARS      = 3     # max bars to wait for reversal bar confirmation
+DIVERG_ENTRY_SIZE        = 25    # position size (%)
+DIVERG_SHORT_ENABLED     = False # allow shorts on steep up-slope reversal
+# Waterfall Recovery (v52) — detect rapid multi-bar crash, enter on recovery
+WATERFALL_ENABLED        = True  # master flag to enable/disable v52
+WATERFALL_DROP_PCT       = 8.0   # min cumulative % drop over lookback bars to qualify as waterfall
+WATERFALL_LOOKBACK       = 5     # bars to measure cumulative drop
+WATERFALL_VOL_MULT       = 1.5   # avg volume over waterfall must be >= this * vol_ma
+WATERFALL_CONFIRM_BARS   = 3     # max bars after waterfall detected to wait for bullish confirmation
+WATERFALL_ENTRY_SIZE     = 50    # position size (%) — larger than v50 since conviction is higher
+WATERFALL_SHORT_ENABLED  = False # allow shorting the waterfall itself (Mode A)
 INTERVAL             = "1d"    # candle size (1d works best for channels)
 PERIOD               = "2y"    # data lookback
 INITIAL_CAPITAL      = 10_000.0
@@ -103,6 +133,10 @@ STRATEGY_VERSIONS = {
     "v32": ("SMA Min Hold",      "Min 3-bar hold before fallback SMA exit",        "exit_type"),
     "v39": ("Crypto Extend",     "Longer channel extension (30 bars) for crypto",  "channel_detection"),
     "v48": ("SMA Trend Filter",  "Require close > SMA(50)*0.99 for long entry",   "entry_filter"),
+    "v49": ("Poly-Low Entry",   "Enter 25% long before first channel when polynomial through lows slopes up + volume gate", "entry_filter"),
+    "v50": ("Sharp Reversal",   "Enter on sharp reversal (2x ATR move + 2x volume spike)",         "entry_filter"),
+    "v51": ("Steep Reversal",   "Counter-trend entry when steep slope reverses (lower low / higher high confirmation)",  "entry_filter"),
+    "v52": ("Waterfall Recovery", "Enter 50% long after rapid crash (>8% in 5 bars) on bullish confirmation bar", "entry_filter"),
 }
 
 # Maps exit_reason → list of version tags that contributed to that exit mechanism
@@ -644,6 +678,32 @@ def run_curved_channel(
     min_channel_age: int = MIN_CHANNEL_AGE,
     min_extend: int = MIN_EXTEND,
     loss_cooldown_bars: int = LOSS_COOLDOWN_BARS,
+    early_enabled: bool = EARLY_ENABLED,
+    early_poly_lookback: int = EARLY_POLY_LOOKBACK,
+    early_poly_degree: int = EARLY_POLY_DEGREE,
+    early_vol_gate: float = EARLY_VOL_GATE,
+    early_entry_size: int = EARLY_ENTRY_SIZE,
+    reversal_enabled: bool = REVERSAL_ENABLED,
+    reversal_atr_mult: float = REVERSAL_ATR_MULT,
+    reversal_vol_mult: float = REVERSAL_VOL_MULT,
+    reversal_lookback: int = REVERSAL_LOOKBACK,
+    reversal_entry_size: int = REVERSAL_ENTRY_SIZE,
+    reversal_short_enabled: bool = REVERSAL_SHORT_ENABLED,
+    diverg_enabled: bool = DIVERG_ENABLED,
+    diverg_slope_lookback: int = DIVERG_SLOPE_LOOKBACK,
+    diverg_baseline_lookback: int = DIVERG_BASELINE_LOOKBACK,
+    diverg_slope_mult: float = DIVERG_SLOPE_MULT,
+    diverg_slope_min_atr: float = DIVERG_SLOPE_MIN_ATR,
+    diverg_confirm_bars: int = DIVERG_CONFIRM_BARS,
+    diverg_entry_size: int = DIVERG_ENTRY_SIZE,
+    diverg_short_enabled: bool = DIVERG_SHORT_ENABLED,
+    waterfall_enabled: bool = WATERFALL_ENABLED,
+    waterfall_drop_pct: float = WATERFALL_DROP_PCT,
+    waterfall_lookback: int = WATERFALL_LOOKBACK,
+    waterfall_vol_mult: float = WATERFALL_VOL_MULT,
+    waterfall_confirm_bars: int = WATERFALL_CONFIRM_BARS,
+    waterfall_entry_size: int = WATERFALL_ENTRY_SIZE,
+    waterfall_short_enabled: bool = WATERFALL_SHORT_ENABLED,
 ) -> list[dict] | tuple[list[dict], list[dict]]:
     """
     Curved channel trading strategy with breakout detection and channel reset.
@@ -722,6 +782,11 @@ def run_curved_channel(
     ch_trail_extreme: float | None = None  # in-channel trail extreme
     last_exit_bar: int = -999  # bar index of most recent position exit (for fallback wait)
     last_loss_bar: int = -999  # bar index of most recent losing trade exit (for cooldown)
+    early_momentum_fired: bool = False  # one-shot: True after poly-low entry fires
+    diverg_signal_bar: int = -999       # bar where divergence was detected (-999 = none)
+    diverg_signal_side: str = ""        # "long" or "short" direction to enter on confirmation
+    waterfall_signal_bar: int = -999    # bar where waterfall crash was detected
+    waterfall_drop_size: float = 0.0    # magnitude of the detected waterfall drop
 
     def _close_position(date: str, price: float, reason: str, bar: int = 0):
         """Helper to close the current position and append trade."""
@@ -887,8 +952,13 @@ def run_curved_channel(
                 _close_position(date, close, "time_exit", bar=i)
                 continue
 
-        # ── 3. ATR trailing stop (active during channel-less wait period) ──
-        if position is not None and waiting_for_channel and trail_stop is not None:
+        # ── 3. ATR trailing stop (active during channel-less wait period or speculative entries) ──
+        if position is not None and trail_stop is not None and (
+                waiting_for_channel
+                or position.get("entry_reason") in (
+                    "early_momentum", "sharp_reversal_long", "sharp_reversal_short",
+                    "vol_divergence_long", "vol_divergence_short",
+                    "waterfall_long", "waterfall_short")):
             if position["side"] == "long":
                 if atr is not None and trail_extreme is not None:
                     trail_extreme = max(trail_extreme, candles[i]["high"])
@@ -1056,9 +1126,181 @@ def run_curved_channel(
                 _activate_trailing_stop(i, position["side"])
                 waiting_for_channel = True
 
+        # Cooldown check (shared by all entry sections)
+        in_cooldown = loss_cooldown_bars > 0 and (i - last_loss_bar) < loss_cooldown_bars
+
+        # ── 4b. Poly-Low Entry — polynomial through recent lows, enter if sloping up (v49) ──
+        if (position is None and early_enabled and not early_momentum_fired
+                and early_entry_size > 0 and len(all_channels) == 0
+                and i >= early_poly_lookback and not in_cooldown):
+            _lb_start = i - early_poly_lookback + 1
+            _x_bars = list(range(_lb_start, i + 1))
+            _y_lows = lows[_lb_start: i + 1]
+            _fit = polyfit(_x_bars, _y_lows, degree=early_poly_degree)
+            if _fit is not None:
+                _c0, _c1, _c2, _c3, _origin, _scale = _fit
+                # Derivative at right edge (x=1): c1 + 2*c2 + 3*c3
+                _slope = _c1 + 2.0 * _c2 + 3.0 * _c3
+                if _slope > 0:
+                    # Volume gate: current volume >= 80% of vol MA
+                    _vma = vol_mas[i] if (vol_mas[i] is not None and vol_mas[i] > 0) else (
+                        sum(candles[k]["volume"] for k in range(i + 1)) / (i + 1) if i > 0 else 0)
+                    if _vma > 0 and candles[i]["volume"] >= _vma * early_vol_gate:
+                        position = {
+                            "entry_date": date, "entry_price": close,
+                            "entry_bar": i, "side": "long",
+                            "size_pct": early_entry_size,
+                            "entry_reason": "early_momentum",
+                            "entry_versions": ["v49"],
+                        }
+                        _activate_trailing_stop(i, "long")
+                        early_momentum_fired = True
+
+        # ── 4c-pre. Waterfall Phase A — detect rapid multi-bar crash (v52) ──
+        # Runs before v50 so the signal is ready when v50 fires on the reversal bar
+        if (waterfall_enabled and waterfall_entry_size > 0
+                and i >= waterfall_lookback and position is None):
+            if waterfall_signal_bar < 0 or (i - waterfall_signal_bar) > waterfall_confirm_bars:
+                lookback_start = i - waterfall_lookback
+                ref_close = candles[lookback_start]["close"]
+                if ref_close > 0:
+                    cumul_drop = (ref_close - close) / ref_close * 100
+                    if cumul_drop >= waterfall_drop_pct:
+                        avg_vol = sum(candles[k]["volume"] for k in range(lookback_start, i + 1)) / (waterfall_lookback + 1)
+                        vma = vol_mas[i] if (vol_mas[i] is not None and vol_mas[i] > 0) else 1
+                        if avg_vol >= waterfall_vol_mult * vma:
+                            waterfall_signal_bar = i
+                            waterfall_drop_size = cumul_drop
+
+        # ── 4c. Sharp Reversal Entry — large single-bar move + volume spike (v50) ──
+        if (position is None and reversal_enabled and reversal_entry_size > 0
+                and atrs[i] is not None and atrs[i] > 0
+                and vol_mas[i] is not None and vol_mas[i] > 0
+                and i >= reversal_lookback and not in_cooldown):
+            bar_move = close - candles[i]["open"]
+            bar_range = abs(bar_move)
+            atr_val = atrs[i]
+            vol = candles[i]["volume"]
+            vma = vol_mas[i]
+            if bar_range >= reversal_atr_mult * atr_val and vol >= reversal_vol_mult * vma:
+                prior_bearish = 0
+                prior_bullish = 0
+                for j in range(i - reversal_lookback, i):
+                    if candles[j]["close"] < candles[j]["open"]:
+                        prior_bearish += 1
+                    elif candles[j]["close"] > candles[j]["open"]:
+                        prior_bullish += 1
+                # Bullish reversal: big up bar after mostly down bars
+                if bar_move > 0 and prior_bearish >= reversal_lookback - 1:
+                    # Check if waterfall recovery is active — upsize from 25% to waterfall size
+                    _wf_active = (waterfall_enabled and waterfall_signal_bar >= 0
+                                  and (i - waterfall_signal_bar) <= waterfall_confirm_bars)
+                    _entry_size = waterfall_entry_size if _wf_active else reversal_entry_size
+                    _entry_reason = "waterfall_long" if _wf_active else "sharp_reversal_long"
+                    _entry_versions = ["v52", "v50"] if _wf_active else ["v50"]
+                    position = {
+                        "entry_date": date, "entry_price": close,
+                        "entry_bar": i, "side": "long",
+                        "size_pct": _entry_size,
+                        "entry_reason": _entry_reason,
+                        "entry_versions": _entry_versions,
+                    }
+                    _activate_trailing_stop(i, "long")
+                    if _wf_active:
+                        waterfall_signal_bar = -999
+                # Bearish reversal: big down bar after mostly up bars
+                elif bar_move < 0 and prior_bullish >= reversal_lookback - 1 and reversal_short_enabled and _short_allowed(i):
+                    position = {
+                        "entry_date": date, "entry_price": close,
+                        "entry_bar": i, "side": "short",
+                        "size_pct": reversal_entry_size,
+                        "entry_reason": "sharp_reversal_short",
+                        "entry_versions": ["v50"],
+                    }
+                    _activate_trailing_stop(i, "short")
+
+        # ── 4d. Steep Slope Reversal (v51) ──
+        # Phase A: detect steep slope — recent 5-bar slope >> baseline 20-bar slope
+        if (position is None and diverg_enabled and diverg_entry_size > 0
+                and i >= diverg_baseline_lookback
+                and atrs[i] is not None and atrs[i] > 0
+                and not in_cooldown):
+            atr_val = atrs[i]
+
+            if diverg_signal_bar < 0 or (i - diverg_signal_bar) > diverg_confirm_bars:
+                _x_r = list(range(i - diverg_slope_lookback + 1, i + 1))
+                _y_r = [candles[b]["close"] for b in _x_r]
+                _fit_r = polyfit(_x_r, _y_r, degree=1)
+                _x_b = list(range(i - diverg_baseline_lookback + 1, i + 1))
+                _y_b = [candles[b]["close"] for b in _x_b]
+                _fit_b = polyfit(_x_b, _y_b, degree=1)
+
+                if _fit_r is not None and _fit_b is not None:
+                    recent_slope = _fit_r[1] / max(1.0, _fit_r[5])
+                    baseline_slope = _fit_b[1] / max(1.0, _fit_b[5])
+                    slope_steep = (abs(recent_slope) > diverg_slope_mult * max(abs(baseline_slope), 1e-9)
+                                   and abs(recent_slope) > diverg_slope_min_atr * atr_val)
+                    if slope_steep:
+                        if recent_slope > 0:
+                            diverg_signal_bar = i
+                            diverg_signal_side = "short"
+                        elif recent_slope < 0:
+                            diverg_signal_bar = i
+                            diverg_signal_side = "long"
+
+            # Phase B: confirmation — wait for reversal bar
+            # Bearish signal: current bar's low < previous bar's low (lower low)
+            # Bullish signal: current bar's high > previous bar's high (higher high)
+            if (diverg_signal_bar >= 0
+                    and 0 < (i - diverg_signal_bar) <= diverg_confirm_bars
+                    and i > 0):
+                confirmed = False
+                if diverg_signal_side == "short" and candles[i]["low"] < candles[i - 1]["low"]:
+                    confirmed = True
+                elif diverg_signal_side == "long" and candles[i]["high"] > candles[i - 1]["high"]:
+                    confirmed = True
+                if confirmed:
+                    if diverg_signal_side == "long":
+                        position = {
+                            "entry_date": date, "entry_price": close,
+                            "entry_bar": i, "side": "long",
+                            "size_pct": diverg_entry_size,
+                            "entry_reason": "vol_divergence_long",
+                            "entry_versions": ["v51"],
+                        }
+                        _activate_trailing_stop(i, "long")
+                    elif diverg_signal_side == "short" and diverg_short_enabled and _short_allowed(i):
+                        position = {
+                            "entry_date": date, "entry_price": close,
+                            "entry_bar": i, "side": "short",
+                            "size_pct": diverg_entry_size,
+                            "entry_reason": "vol_divergence_short",
+                            "entry_versions": ["v51"],
+                        }
+                        _activate_trailing_stop(i, "short")
+                    diverg_signal_bar = -999
+
+        # ── 4e. Waterfall Recovery Phase B (v52) — optional waterfall short + standalone recovery ──
+        # Phase A ran in 4c-pre. v50 upsize already handled in 4c.
+        # This section handles: (a) optional immediate short on waterfall, (b) standalone
+        # recovery entry for bars where v50 didn't fire but waterfall signal is active.
+        # Standalone requires close > open AND close > previous HIGH (stronger than just prev close).
+        if (position is None and waterfall_enabled and waterfall_entry_size > 0
+                and i >= waterfall_lookback and not in_cooldown):
+            # Mode A: optional short on waterfall detection bar
+            if (waterfall_short_enabled and waterfall_signal_bar == i
+                    and _short_allowed(i)):
+                position = {
+                    "entry_date": date, "entry_price": close,
+                    "entry_bar": i, "side": "short",
+                    "size_pct": 25,
+                    "entry_reason": "waterfall_short",
+                    "entry_versions": ["v52"],
+                }
+                _activate_trailing_stop(i, "short")
+
         # ── 5. Entry logic (flat + channel active + not waiting + channel mature enough + cooldown) ──
         channel_age = (i - active_channel.get("confirmed_bar", 0)) if active_channel else 0
-        in_cooldown = loss_cooldown_bars > 0 and (i - last_loss_bar) < loss_cooldown_bars
         if position is None and active_channel is not None and not waiting_for_channel and channel_age >= min_channel_age and not in_cooldown:
             ch_type = active_channel["type"]
 
@@ -1163,6 +1405,78 @@ def run_curved_channel(
                     _close_position(date, close, "fallback_sma_exit", bar=i)
                     continue
 
+        # ── 8b. Early momentum / sharp reversal → channel handoff ──
+        if (position is not None
+                and position.get("entry_reason") in ("early_momentum", "sharp_reversal_long")):
+            if active_channel is not None and not waiting_for_channel:
+                ch_type = active_channel["type"]
+                if ch_type == "ascending" and position["side"] == "long":
+                    position["entry_reason"] = ("momentum_to_channel"
+                                                if position.get("entry_reason") == "early_momentum"
+                                                else "reversal_to_channel")
+                    position["size_pct"] = 100
+                    position["entry_versions"] = position["entry_versions"] + ["v1", "v8", "v21", "v25", "v48"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif ch_type == "descending":
+                    _close_position(date, close, "channel_flip", bar=i)
+                    continue
+
+        if (position is not None
+                and position.get("entry_reason") == "sharp_reversal_short"):
+            if active_channel is not None and not waiting_for_channel:
+                ch_type = active_channel["type"]
+                if ch_type == "descending" and position["side"] == "short":
+                    position["entry_reason"] = "reversal_to_channel"
+                    position["entry_versions"] = position["entry_versions"] + ["v3", "v8"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif ch_type == "ascending":
+                    _close_position(date, close, "channel_flip", bar=i)
+                    continue
+
+        # ── 8c. Volume divergence → channel handoff ──
+        if (position is not None
+                and position.get("entry_reason") in ("vol_divergence_long", "vol_divergence_short")):
+            if active_channel is not None and not waiting_for_channel:
+                ch_type = active_channel["type"]
+                if ch_type == "ascending" and position["side"] == "long":
+                    position["entry_reason"] = "divergence_to_channel"
+                    position["size_pct"] = 100
+                    position["entry_versions"] = position["entry_versions"] + ["v1", "v8", "v21", "v25", "v48"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif ch_type == "descending" and position["side"] == "short":
+                    position["entry_reason"] = "divergence_to_channel"
+                    position["entry_versions"] = position["entry_versions"] + ["v3", "v8"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif (ch_type == "ascending" and position["side"] == "short") or \
+                     (ch_type == "descending" and position["side"] == "long"):
+                    _close_position(date, close, "channel_flip", bar=i)
+                    continue
+
+        # ── 8d. Waterfall recovery → channel handoff ──
+        if (position is not None
+                and position.get("entry_reason") in ("waterfall_long", "waterfall_short")):
+            if active_channel is not None and not waiting_for_channel:
+                ch_type = active_channel["type"]
+                if ch_type == "ascending" and position["side"] == "long":
+                    position["entry_reason"] = "waterfall_to_channel"
+                    position["size_pct"] = 100
+                    position["entry_versions"] = position["entry_versions"] + ["v1", "v8", "v21", "v25", "v48"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif ch_type == "descending" and position["side"] == "short":
+                    position["entry_reason"] = "waterfall_to_channel"
+                    position["entry_versions"] = position["entry_versions"] + ["v3", "v8"]
+                    trail_stop = None
+                    trail_extreme = None
+                elif (ch_type == "ascending" and position["side"] == "short") or \
+                     (ch_type == "descending" and position["side"] == "long"):
+                    _close_position(date, close, "channel_flip", bar=i)
+                    continue
+
     # Close any open position at end of data
     if position is not None:
         _close_position(candles[-1]["date"], candles[-1]["close"], "end_of_data")
@@ -1197,26 +1511,34 @@ def build_overlays_from_channels(channels: list[dict], candles: list[dict]) -> l
     def _ch_touches(ch: dict) -> int:
         return ch["upper"]["touch_count"] + ch["lower"]["touch_count"]
 
-    # Deduplicate: group overlapping channels of the same type, keep best per group
+    # Deduplicate: remove channels that are fully contained within a better
+    # (more touches) channel of the same type.  Keep all channels that cover
+    # distinct time regions or that extend significantly beyond their peers.
     deduped: list[dict] = []
     for ch_type in ("ascending", "descending"):
         typed = [ch for ch in channels if ch["type"] == ch_type]
         if not typed:
             continue
-        # Sort by start bar
-        typed.sort(key=lambda c: _ch_range(c)[0])
-        groups: list[list[dict]] = []
+        # Sort by most touches first so better channels are kept preferentially
+        typed.sort(key=_ch_touches, reverse=True)
+        kept: list[dict] = []
         for ch in typed:
             s, e = _ch_range(ch)
-            if groups and _ch_range(groups[-1][-1])[1] >= s:
-                # Overlaps with current group
-                groups[-1].append(ch)
-            else:
-                groups.append([ch])
-        # Pick best from each group
-        for group in groups:
-            best = max(group, key=_ch_touches)
-            deduped.append(best)
+            span = e - s
+            is_redundant = False
+            for k in kept:
+                ks, ke = _ch_range(k)
+                # Overlap region
+                overlap_start = max(s, ks)
+                overlap_end = min(e, ke)
+                overlap = max(0, overlap_end - overlap_start)
+                # Redundant if >= 70% of this channel overlaps with a kept one
+                if span > 0 and overlap / span >= 0.7:
+                    is_redundant = True
+                    break
+            if not is_redundant:
+                kept.append(ch)
+        deduped.extend(kept)
 
     color_map = {
         ("ascending", "upper"): "#26a69a",   # green for ascending upper
@@ -1412,6 +1734,32 @@ def run_backtest(
     min_channel_age: int = MIN_CHANNEL_AGE,
     min_extend: int = MIN_EXTEND,
     loss_cooldown_bars: int = LOSS_COOLDOWN_BARS,
+    early_enabled: bool = EARLY_ENABLED,
+    early_poly_lookback: int = EARLY_POLY_LOOKBACK,
+    early_poly_degree: int = EARLY_POLY_DEGREE,
+    early_vol_gate: float = EARLY_VOL_GATE,
+    early_entry_size: int = EARLY_ENTRY_SIZE,
+    reversal_enabled: bool = REVERSAL_ENABLED,
+    reversal_atr_mult: float = REVERSAL_ATR_MULT,
+    reversal_vol_mult: float = REVERSAL_VOL_MULT,
+    reversal_lookback: int = REVERSAL_LOOKBACK,
+    reversal_entry_size: int = REVERSAL_ENTRY_SIZE,
+    reversal_short_enabled: bool = REVERSAL_SHORT_ENABLED,
+    diverg_enabled: bool = DIVERG_ENABLED,
+    diverg_slope_lookback: int = DIVERG_SLOPE_LOOKBACK,
+    diverg_baseline_lookback: int = DIVERG_BASELINE_LOOKBACK,
+    diverg_slope_mult: float = DIVERG_SLOPE_MULT,
+    diverg_slope_min_atr: float = DIVERG_SLOPE_MIN_ATR,
+    diverg_confirm_bars: int = DIVERG_CONFIRM_BARS,
+    diverg_entry_size: int = DIVERG_ENTRY_SIZE,
+    diverg_short_enabled: bool = DIVERG_SHORT_ENABLED,
+    waterfall_enabled: bool = WATERFALL_ENABLED,
+    waterfall_drop_pct: float = WATERFALL_DROP_PCT,
+    waterfall_lookback: int = WATERFALL_LOOKBACK,
+    waterfall_vol_mult: float = WATERFALL_VOL_MULT,
+    waterfall_confirm_bars: int = WATERFALL_CONFIRM_BARS,
+    waterfall_entry_size: int = WATERFALL_ENTRY_SIZE,
+    waterfall_short_enabled: bool = WATERFALL_SHORT_ENABLED,
     include_candles: bool = False,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1442,6 +1790,32 @@ def run_backtest(
         min_channel_age=min_channel_age,
         min_extend=min_extend,
         loss_cooldown_bars=loss_cooldown_bars,
+        early_poly_lookback=early_poly_lookback,
+        early_poly_degree=early_poly_degree,
+        early_vol_gate=early_vol_gate,
+        early_entry_size=early_entry_size,
+        reversal_atr_mult=reversal_atr_mult,
+        reversal_vol_mult=reversal_vol_mult,
+        reversal_lookback=reversal_lookback,
+        reversal_entry_size=reversal_entry_size,
+        reversal_short_enabled=reversal_short_enabled,
+        diverg_slope_lookback=diverg_slope_lookback,
+        diverg_baseline_lookback=diverg_baseline_lookback,
+        diverg_slope_mult=diverg_slope_mult,
+        diverg_slope_min_atr=diverg_slope_min_atr,
+        diverg_confirm_bars=diverg_confirm_bars,
+        diverg_entry_size=diverg_entry_size,
+        diverg_short_enabled=diverg_short_enabled,
+        early_enabled=early_enabled,
+        reversal_enabled=reversal_enabled,
+        diverg_enabled=diverg_enabled,
+        waterfall_enabled=waterfall_enabled,
+        waterfall_drop_pct=waterfall_drop_pct,
+        waterfall_lookback=waterfall_lookback,
+        waterfall_vol_mult=waterfall_vol_mult,
+        waterfall_confirm_bars=waterfall_confirm_bars,
+        waterfall_entry_size=waterfall_entry_size,
+        waterfall_short_enabled=waterfall_short_enabled,
     )
     if include_candles:
         raw_trades, channels = result_tuple
@@ -1487,6 +1861,30 @@ def run_backtest(
             "rsi_div_lookback": rsi_div_lookback,
             "rsi_period": rsi_period,
             "ride_expired_winners": ride_expired_winners,
+            "early_poly_lookback": early_poly_lookback,
+            "early_poly_degree": early_poly_degree,
+            "early_vol_gate": early_vol_gate,
+            "early_entry_size": early_entry_size,
+            "reversal_atr_mult": reversal_atr_mult,
+            "reversal_vol_mult": reversal_vol_mult,
+            "reversal_lookback": reversal_lookback,
+            "reversal_entry_size": reversal_entry_size,
+            "reversal_short_enabled": reversal_short_enabled,
+            "diverg_slope_lookback": diverg_slope_lookback,
+            "diverg_baseline_lookback": diverg_baseline_lookback,
+            "diverg_slope_mult": diverg_slope_mult,
+            "diverg_entry_size": diverg_entry_size,
+            "diverg_short_enabled": diverg_short_enabled,
+            "early_enabled": early_enabled,
+            "reversal_enabled": reversal_enabled,
+            "diverg_enabled": diverg_enabled,
+            "waterfall_enabled": waterfall_enabled,
+            "waterfall_drop_pct": waterfall_drop_pct,
+            "waterfall_lookback": waterfall_lookback,
+            "waterfall_vol_mult": waterfall_vol_mult,
+            "waterfall_confirm_bars": waterfall_confirm_bars,
+            "waterfall_entry_size": waterfall_entry_size,
+            "waterfall_short_enabled": waterfall_short_enabled,
         },
         "period": period,
         "interval": interval,
@@ -1507,6 +1905,37 @@ def run_backtest(
 
     if include_candles:
         result["candles"] = candles
+        # Add Buy & Hold appreciation line
+        first_close = candles[0]["close"]
+        bnh_line = [{"time": c["date"], "value": round(c["close"], 4)} for c in candles]
+        overlays.append({
+            "type": "line",
+            "points": bnh_line,
+            "color": "#FFD700",
+            "label": "Buy & Hold",
+            "lineWidth": 1,
+            "lineStyle": 2,  # dashed
+        })
+        # Big markers for B&H entry and final value
+        bnh_markers = [
+            {
+                "time": candles[0]["date"],
+                "position": "belowBar",
+                "color": "#FFD700",
+                "shape": "arrowUp",
+                "text": f"B&H BUY ${first_close:,.2f}",
+                "size": 3,
+            },
+            {
+                "time": candles[-1]["date"],
+                "position": "aboveBar",
+                "color": "#FFD700",
+                "shape": "arrowDown",
+                "text": f"B&H ${candles[-1]['close']:,.2f} ({bnh:+.2f}%)",
+                "size": 3,
+            },
+        ]
+        result["bnh_markers"] = bnh_markers
         result["overlays"] = overlays
 
     return result
@@ -1598,6 +2027,32 @@ def main():
         time_exit_bars=time_exit,
         ch_trail_activate_pct=ch_trail_act,
         short_min_hold=short_hold,
+        early_poly_lookback=EARLY_POLY_LOOKBACK,
+        early_poly_degree=EARLY_POLY_DEGREE,
+        early_vol_gate=EARLY_VOL_GATE,
+        early_entry_size=EARLY_ENTRY_SIZE,
+        reversal_atr_mult=REVERSAL_ATR_MULT,
+        reversal_vol_mult=REVERSAL_VOL_MULT,
+        reversal_lookback=REVERSAL_LOOKBACK,
+        reversal_entry_size=REVERSAL_ENTRY_SIZE,
+        reversal_short_enabled=REVERSAL_SHORT_ENABLED,
+        diverg_slope_lookback=DIVERG_SLOPE_LOOKBACK,
+        diverg_baseline_lookback=DIVERG_BASELINE_LOOKBACK,
+        diverg_slope_mult=DIVERG_SLOPE_MULT,
+        diverg_slope_min_atr=DIVERG_SLOPE_MIN_ATR,
+        diverg_confirm_bars=DIVERG_CONFIRM_BARS,
+        diverg_entry_size=DIVERG_ENTRY_SIZE,
+        diverg_short_enabled=DIVERG_SHORT_ENABLED,
+        early_enabled=EARLY_ENABLED,
+        reversal_enabled=REVERSAL_ENABLED,
+        diverg_enabled=DIVERG_ENABLED,
+        waterfall_enabled=WATERFALL_ENABLED,
+        waterfall_drop_pct=WATERFALL_DROP_PCT,
+        waterfall_lookback=WATERFALL_LOOKBACK,
+        waterfall_vol_mult=WATERFALL_VOL_MULT,
+        waterfall_confirm_bars=WATERFALL_CONFIRM_BARS,
+        waterfall_entry_size=WATERFALL_ENTRY_SIZE,
+        waterfall_short_enabled=WATERFALL_SHORT_ENABLED,
         include_candles=args.chart,
     )
 
@@ -1642,7 +2097,7 @@ def main():
         from visualize import generate_chart_html
 
         chart_path = script_dir / f"curved_channel_chart_{args.symbol.replace('-','_')}_{args.period}.html"
-        generate_chart_html(result, result["candles"], chart_path)
+        generate_chart_html(result, result["candles"], chart_path, strategy_versions=STRATEGY_VERSIONS)
         print(f"  Chart saved to: {chart_path}")
         webbrowser.open(chart_path.as_uri())
 

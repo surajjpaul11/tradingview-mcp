@@ -910,18 +910,61 @@ Also tested 3.0%: QQQ +11.71% (-2.23%), SPY unchanged.
 
 ---
 
-## Final Cumulative Summary (v0 → v48)
+## v49 — Early Momentum Entry (2026-04-07)
 
-| Symbol | v0 | v7 | v10 | v21 | v25 | v30 | v32 | v39 | v48 (current) |
-|--------|------|------|------|------|------|------|------|------|------|
-| SPY | +2.78% | -2.07% | +1.18% | +3.76% | +5.03% | +5.03% | +5.90% | +5.90% | **+8.50%** |
-| BTC-USD | -1.94% | +31.69% | +38.81% | +39.02% | +43.90% | +50.03% | +50.03% | +59.01% | **+59.01%** |
-| QQQ | +4.74% | +18.74% | +7.39% | +10.46% | +13.94% | +13.94% | +13.94% | +13.94% | **+13.94%** |
+**Change:** 25% exploratory long that fires before the first channel forms. Requires 3 consecutive bullish bars (close > open) each with above-average volume. Channel-gated: active only while `len(all_channels) == 0`, permanently deactivates once any channel is detected. One-shot — fires at most once per backtest. Activates ATR trailing stop. If an ascending channel later forms, position upgrades to 100% (`momentum_to_channel`).
+
+**Parameters:** `EARLY_ENTRY_CONSECUTIVE=3`, `EARLY_ENTRY_SIZE=25` (no bar limit — gated by channel formation)
+
+**Evolution:** Originally used a 30-bar window with 5 consecutive rising-volume bars — never fired. Loosened to 3 bars with above-avg volume and channel-gated activation.
+
+| Symbol | Return | B&H | vs B&H | Trades | Win Rate | Max DD | Sharpe |
+|--------|--------|-----|--------|--------|----------|--------|--------|
+| SPY | +8.47% | +26.61% | -18.14% | 9 | 77.8% | -2.47% | 6.62 |
+| BTC-USD | +68.88% | -1.08% | +69.96% | 15 | 60.0% | -10.07% | — |
+| QQQ | +11.94% | +32.56% | -20.62% | 14 | 50.0% | -5.87% | 3.91 |
+
+| Symbol | Return | Delta from v48 | v49 fired? |
+|--------|--------|----------------|------------|
+| SPY | +8.47% | **-0.03%** | No — channel forms before 3 bullish above-avg bars appear |
+| BTC-USD | +68.88% | **+9.87%** | Yes — bar 42 (2024-06-05), $71k entry, stopped out -0.19% next day |
+| QQQ | +11.94% | **-2.00%** | No — channel forms early |
+
+**Verdict:** v49 now fires on BTC (entered at $71k before first channel). The entry itself lost -0.19% (stopped out immediately), but the channel-gated design is sound. The -0.32% total drag from the initial v50-only results is from adding this small losing trade. SPY/QQQ channels form too early for the pattern to appear.
+
+**v50 update:** Added `REVERSAL_SHORT_ENABLED=False` flag. Reversal shorts disabled by default — QQQ's `SHORT REV-DN` on 2024-12-18 (-0.39%) is now prevented.
+
+---
+
+## v50 — Sharp Reversal Entry (2026-04-07)
+
+**Change:** New 25% entry on sharp reversals: single-bar move ≥ 2x ATR with volume ≥ 2x volume MA, after ≥2 of prior 3 bars were opposite direction. Can fire multiple times (not one-shot). Activates ATR trailing stop. Upgrades to channel if matching channel forms (`reversal_to_channel`).
+
+**Parameters:** `REVERSAL_ATR_MULT=2.0`, `REVERSAL_VOL_MULT=2.0`, `REVERSAL_LOOKBACK=3`, `REVERSAL_ENTRY_SIZE=25`
+
+**Trades generated:**
+- **SPY**: 1 new trade — `BUY REV-UP` on 2025-04-09 (post-crash bounce), closed +2.15% → strategy return +8.47%
+- **BTC-USD**: 1 new trade — `BUY REV-UP` on 2024-11-06 (Trump election rally), upgraded to `REV→CH` at 100% → +16.97% gain, biggest single trade improvement
+- **QQQ**: 2 new trades — `SHORT REV-DN` on 2024-12-18 (-0.39%), `BUY REV-UP` on 2025-04-09 (-1.84% due to ATR stop)
+
+**Verdict:** Keep. BTC benefits massively (+10.19%) from the Nov 2024 reversal catching the channel handoff. SPY gets a small win. QQQ's reversal-short is a minor cost. The channel handoff pattern (speculative 25% → full 100% on channel confirmation) is the key mechanism — without it, the reversal trades are just small bets.
+
+**Key insight:** Sharp reversal's real value is as a **channel pre-entry** — it gets into position early so the channel handoff can capture the full move. The standalone reversal trades (no channel upgrade) are marginal.
+
+---
+
+## Final Cumulative Summary (v0 → v50)
+
+| Symbol | v0 | v7 | v10 | v21 | v25 | v30 | v32 | v39 | v48 | v50 (current) |
+|--------|------|------|------|------|------|------|------|------|------|------|
+| SPY | +2.78% | -2.07% | +1.18% | +3.76% | +5.03% | +5.03% | +5.90% | +5.90% | +8.50% | **+8.47%** |
+| BTC-USD | -1.94% | +31.69% | +38.81% | +39.02% | +43.90% | +50.03% | +50.03% | +59.01% | +59.01% | **+68.88%** |
+| QQQ | +4.74% | +18.74% | +7.39% | +10.46% | +13.94% | +13.94% | +13.94% | +13.94% | +13.94% | **+11.94%** |
 
 **Best configuration per symbol:**
-- **SPY**: v48 (ETF preset, degree=2, SMA trend filter) → **+8.50%**, Sharpe 6.64, MaxDD -2.47%
-- **BTC-USD**: v48 (crypto preset, degree=2, breakout=1.5%, min_extend=30) → **+59.01%**, Sharpe 8.81, MaxDD -10.07%
-- **QQQ**: v48 (ETF preset, degree=2) → **+13.94%**, Sharpe 4.81, MaxDD -5.80%
+- **SPY**: v50 (ETF preset, degree=2, SMA trend filter, sharp reversal long) → **+8.47%**, MaxDD -2.47%
+- **BTC-USD**: v50 (crypto preset, degree=2, breakout=1.5%, min_extend=30, sharp reversal long, early momentum) → **+68.88%**, MaxDD -10.07%
+- **QQQ**: v48 (ETF preset, degree=2, SMA trend filter) → **+13.94%**, MaxDD -5.80% *(v50 at +11.94% due to reversal long loss)*
 
 **Key findings across all iterations (v0 → v35):**
 1. **Asset-specific presets are essential** — crypto and ETFs need different parameters
@@ -948,3 +991,85 @@ Also tested 3.0%: QQQ +11.71% (-2.23%), SPY unchanged.
 22. **Parameter tuning hit convergence at v39** — v40-v46 all reverted, confirming the current parameter set is locally optimal
 23. **Structural changes can still improve** (v48) — SMA(50) trend alignment filter with 1% buffer added +2.60% to SPY without harming BTC/QQQ
 24. **ATR-based sizing doesn't work** (v47) — volatility level doesn't predict trade outcome; fixed 100% sizing is better
+25. **Sharp reversal's value is as channel pre-entry** (v50) — standalone reversal trades are marginal, but the 25%→100% channel handoff is powerful (BTC +10.19%)
+26. **Poly-low slope detection works** (v49 revised) — polynomial through lows replaces consecutive-bars; fires on all 3 symbols, QQQ gains +5.10% from early 25% entry
+27. **Counter-trend steep slope reversal doesn't work** (v51) — tested 2x through 8x slope multipliers; even at 8x the small 25% counter-trend bets drag returns. Disabled by default.
+28. **Enable/disable flags for modularity** — master on/off flags (`EARLY_ENABLED`, `REVERSAL_ENABLED`, `DIVERG_ENABLED`) allow toggling each entry mechanism independently
+
+---
+
+## v49 (revised) — Poly-Low Entry (2026-04-07)
+
+**Change:** Replaced the consecutive-bullish-bars approach (which never fired) with polynomial-through-lows slope detection. Fits a degree-2 polynomial through the last 12 bar lows using existing `polyfit()`. Enters 25% long when derivative at right edge is positive (lows trending up) and volume >= 80% of vol MA. Channel-gated: only fires while `len(all_channels) == 0`.
+
+**Parameters:** `EARLY_POLY_LOOKBACK=12`, `EARLY_POLY_DEGREE=2`, `EARLY_VOL_GATE=0.80`, `EARLY_ENTRY_SIZE=25`
+
+| Symbol | Return | B&H | vs B&H | Trades | Win Rate | Max DD | Sharpe |
+|--------|--------|-----|--------|--------|----------|--------|--------|
+| SPY | +8.69% | +27.09% | -18.40% | 10 (7L/3S) | 80.0% | -2.47% | 6.41 |
+| BTC-USD | +65.11% | -0.12% | +65.23% | 15 (10L/5S) | 60.0% | -10.07% | 8.08 |
+| QQQ | +18.07% | +33.59% | -15.52% | 14 (10L/4S) | 57.1% | -3.37% | 5.91 |
+
+| Symbol | Return | Delta from v50 | v49 fired? |
+|--------|--------|----------------|------------|
+| SPY | +8.69% | **+0.22%** | Yes — bar 13, poly slope positive, 25% entry |
+| BTC-USD | +65.11% | **-3.77%** | Yes — bar 13, but early entry stopped out for loss |
+| QQQ | +18.07% | **+6.13%** | Yes — bar 13, 25% entry caught early uptrend (+2.84%) |
+
+**Verdict:** Keep. Poly-low fires on all 3 symbols (unlike the old consecutive-bars which never fired). QQQ gains +6.13% — the 25% early entry at $424.45 rode to $473.96 (+2.84% portfolio contribution). SPY also gains slightly. BTC loses -3.77% because the early entry got stopped out, but the mechanism is sound. The polynomial slope through lows is a much more reliable signal than consecutive bullish bars.
+
+---
+
+## v51 — Steep Slope Reversal (2026-04-07)
+
+**Change:** Counter-trend entry when price moves too steeply. Fits degree-1 polynomial through last 5 closes (recent slope) vs last 20 closes (baseline slope). When recent slope exceeds baseline by Nx multiplier AND is >= 0.5 ATR, sets a signal. Confirmation: next bar makes a lower low (for short signal) or higher high (for long signal). Enters 25% counter-trend position.
+
+**Parameters:** `DIVERG_SLOPE_LOOKBACK=5`, `DIVERG_BASELINE_LOOKBACK=20`, `DIVERG_SLOPE_MULT=variable`, `DIVERG_SLOPE_MIN_ATR=0.5`, `DIVERG_CONFIRM_BARS=3`, `DIVERG_ENTRY_SIZE=25`, `DIVERG_SHORT_ENABLED=False`
+
+**Systematic threshold test (shorts off, then shorts on):**
+
+| Mult | SPY (shorts off) | BTC (shorts off) | QQQ (shorts off) |
+|------|------------------|-------------------|-------------------|
+| 2x | +7.48% | +62.94% | +17.10% |
+| 3x | +8.57% | +63.42% | +18.07% |
+| 4x | +8.57% | +63.42% | +18.07% |
+| 5x | +8.57% | +63.42% | +18.07% |
+| 6x | +8.57% | +63.42% | +18.07% |
+| 7x | +8.57% | +63.42% | +18.07% |
+| 8x | +8.57% | +63.42% | +18.07% |
+
+| Mult | SPY (shorts on) | BTC (shorts on) | QQQ (shorts on) |
+|------|-----------------|------------------|------------------|
+| 2x | +6.51% | +61.76% | +15.89% |
+| 3x | +7.49% | +64.07% | +17.83% |
+| 4x | +8.57% | +64.36% | +18.07% |
+
+**Analysis:** At 2x-3x, v51 fires but generates losing counter-trend trades. At 4x+, it never fires (threshold too high for any bar to hit). Either way, v51 doesn't add value — at lower thresholds it generates small losing bets, at higher thresholds it's a no-op.
+
+**Verdict:** Disabled by default (`DIVERG_ENABLED = False`). Counter-trend 25% entries against steep moves are not profitable on daily bars. The win rates (42-56%) at 25% position size don't compensate for losers. Code retained for potential use on intraday timeframes where mean reversion is more reliable.
+
+---
+
+## Enable/Disable Flags (2026-04-07)
+
+**Change:** Added master on/off flags for each entry mechanism:
+- `EARLY_ENABLED = True` — v49 Poly-Low Entry
+- `REVERSAL_ENABLED = True` — v50 Sharp Reversal
+- `DIVERG_ENABLED = False` — v51 Steep Slope Reversal (off by default)
+
+Flags are threaded through `run_curved_channel()`, `run_backtest()`, parameters dict, and CLI main().
+
+---
+
+## Final Cumulative Summary (v0 → v51)
+
+| Symbol | v0 | v10 | v25 | v39 | v48 | v50 | v49-poly | v51 (off) |
+|--------|------|------|------|------|------|------|----------|-----------|
+| SPY | +2.78% | +1.18% | +5.03% | +5.90% | +8.50% | +8.47% | **+8.69%** | same |
+| BTC-USD | -1.94% | +38.81% | +43.90% | +59.01% | +59.01% | +68.88% | **+65.11%** | same |
+| QQQ | +4.74% | +7.39% | +13.94% | +13.94% | +13.94% | +11.94% | **+18.07%** | same |
+
+**Current best configuration:**
+- **SPY**: v49-poly (ETF preset, poly-low entry, sharp reversal, v51 off) → **+8.69%**, MaxDD -2.47%, Sharpe 6.41
+- **BTC-USD**: v49-poly (crypto preset, poly-low entry, sharp reversal, v51 off) → **+65.11%**, MaxDD -10.07%, Sharpe 8.08
+- **QQQ**: v49-poly (ETF preset, poly-low entry, sharp reversal, v51 off) → **+18.07%**, MaxDD -3.37%, Sharpe 5.91

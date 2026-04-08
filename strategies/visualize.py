@@ -39,6 +39,11 @@ ENTRY_ABBREV = {
     "divergence_to_channel": "DIV\u2192CH",
     "waterfall_long": "WF-UP", "waterfall_short": "WF-DN",
     "waterfall_to_channel": "WF\u2192CH",
+    # Smart Hold entries
+    "initial_entry": "INIT", "vix_extreme_fear": "VIX-FEAR",
+    "vix_fear_declining": "VIX-DEC", "ma_reclaim": "MA-RCL",
+    "rsi_oversold_bounce": "RSI-BNC", "ema_momentum": "EMA-MOM",
+    "quick_reentry": "QUICK",
 }
 EXIT_ABBREV = {
     "atr_trailing_stop": "ATR-TS", "channel_trail_stop": "CH-TS",
@@ -46,6 +51,9 @@ EXIT_ABBREV = {
     "channel_break": "CH-BRK", "channel_flip": "CH-FLIP",
     "channel_expired": "CH-EXP", "time_exit": "TIME",
     "fallback_sma_exit": "SMA-X", "end_of_data": "EOD",
+    # Smart Hold exits
+    "ma_breakdown": "MA-BRK", "vix_accelerated_exit": "VIX-X",
+    "trailing_stop": "TRAIL",
 }
 
 
@@ -106,6 +114,14 @@ def generate_chart_html(
         "divergence_to_channel": "#7C4DFF",# purple (divergence upgrade)
         "waterfall_long": "#FF6D00",     # deep orange (waterfall recovery)
         "waterfall_to_channel": "#FF6D00",# deep orange (waterfall upgrade)
+        # Smart Hold entries
+        "initial_entry": "#26a69a",      # teal
+        "vix_extreme_fear": "#FF6D00",   # deep orange (fear buy)
+        "vix_fear_declining": "#FFB74D", # amber (fear declining buy)
+        "ma_reclaim": "#4CAF50",         # green (trend resume)
+        "rsi_oversold_bounce": "#2196F3",# blue (oversold bounce)
+        "ema_momentum": "#00BCD4",       # cyan (momentum)
+        "quick_reentry": "#7C4DFF",      # purple (quick re-entry)
     }
     # Sell/short colours: shades of red and orange
     SELL_COLORS = {
@@ -127,6 +143,10 @@ def generate_chart_html(
         "time_exit": "#FFAB40",          # amber
         "channel_flip": "#FF9800",       # orange
         "end_of_data": "#BDBDBD",        # grey
+        # Smart Hold exits
+        "ma_breakdown": "#ef5350",       # red
+        "vix_accelerated_exit": "#FF7043", # deep orange
+        "trailing_stop": "#FF5722",      # deep orange
     }
     COVER_COLORS = {
         "atr_trailing_stop": "#26a69a",  # teal

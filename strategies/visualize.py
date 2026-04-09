@@ -333,6 +333,10 @@ body {
 #vix-toggle:hover, #vix-toggle.active { background: rgba(255,152,0,0.15); border-color: #FF9800; }
 #rsi-toggle { color: #E040FB; border-color: #E040FB; }
 #rsi-toggle:hover, #rsi-toggle.active { background: rgba(224,64,251,0.15); border-color: #E040FB; }
+#legend-toggle { color: #81C784; border-color: #81C784; }
+#legend-toggle:hover, #legend-toggle.active { background: rgba(129,199,132,0.15); border-color: #81C784; }
+#trade-log-toggle { color: #FFD54F; border-color: #FFD54F; }
+#trade-log-toggle:hover, #trade-log-toggle.active { background: rgba(255,213,79,0.15); border-color: #FFD54F; }
 #legend-panel {
     display: none;
     position: absolute;

@@ -18,7 +18,8 @@ from .entries import (
     ema_momentum,
 )
 from .exits import (
-    profit_lock,  # proactive exit when gain >= 50% and SMA slope just turns negative
+    profit_lock,         # proactive exit when gain >= 50% and SMA slope just turns negative
+    macd_reversal_exit,  # exit on MACD histogram bearish crossover with 18%+ gain, 40+ bars held
     ma_breakdown,
     trailing_stop,
     end_of_data,
@@ -39,7 +40,8 @@ ENTRY_SIGNALS = [
 ]
 
 EXIT_SIGNALS = [
-    profit_lock,  # first: proactive exit on large gain + SMA slope turning negative
+    profit_lock,          # first: proactive exit on large gain + SMA slope turning negative
+    macd_reversal_exit,   # MACD histogram crosses negative with 18%+ gain and 40+ bars held
     ma_breakdown,
     trailing_stop,
     end_of_data,

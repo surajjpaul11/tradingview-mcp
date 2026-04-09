@@ -27,8 +27,8 @@
   "slippage_pct": 0.05,
   "final_capital": 27612.71,
   "total_return_pct": 176.13,
-  "buy_and_hold_return_pct": 103.56,
-  "vs_buy_and_hold_pct": 72.57,
+  "buy_and_hold_return_pct": 103.3,
+  "vs_buy_and_hold_pct": 72.83,
   "total_trades": 11,
   "winning_trades": 10,
   "losing_trades": 1,
@@ -43,6 +43,7 @@
   "vix_accelerated_exits": 3,
   "trailing_stop_exits": 1,
   "profit_lock_exits": 1,
+  "macd_reversal_exits": 0,
   "end_of_data_exits": 0,
   "trade_log": [
     {
@@ -191,5 +192,5 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-09T16:30:19.256971+00:00"
+  "timestamp": "2026-04-09T18:13:24.126642+00:00"
 }

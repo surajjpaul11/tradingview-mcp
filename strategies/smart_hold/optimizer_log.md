@@ -662,3 +662,88 @@ Final capital: $14,621.76 → **$14,641.94** (+$20.18)
 - Test profit_lock_threshold variants (40% or 60%) — Run #6 showed 50% was highly surgical for GOOGL's +88% trade; 40% might fire earlier on smaller winners
 - "Loss accelerator" exit: exit faster when gain is 20%+ and both SMA slope AND EMA slope are sharply negative (not just on slope crossover)
 - Consider a broader survey of ema_momentum entries on a 5y backtest window — the 2y window may not expose all false breakout scenarios
+
+---
+
+# Signal Optimization Run #8 — 2026-04-09 (macd_reversal_exit)
+
+## Baseline (smart-hold-v8 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +176.13%        | +72.57%             | -3.04%          |
+| SPY    | +50.92%         | +20.01%             | -0.43%          |
+| QQQ    | +46.42%         | +8.70%              | -1.56%          |
+
+## Gap Analysis
+
+Analyzed all 29 trades across GOOGL, SPY, QQQ trade logs for the three gap types:
+
+**A) Missed upside (5+ bars out, price rose >3%):**
+- QQQ: After T8 exit at 600.64 (2026-02-12 ma_breakdown), T9 entered at 609.24 (ema_momentum, bad) and exited at 601.58. T10 entered at 577.18. The gap at 600→609→601→577 shows strategy re-entered too early post-T8 exit.
+- GOOGL: fast_reentry/ma_reclaim timing well-optimized from previous runs.
+- SPY: All fast_reentry and ma_reclaim timings effective.
+
+**B) Premature exits (price continued up >2% within 3 bars):**
+- QQQ T8 (fast_reentry 2025-05-02 at 488.83, ma_breakdown exit 2026-02-12 at 600.64, +22.57%): QQQ reached 620.76 AFTER the exit (the next ma_reclaim entry price), indicating the ma_breakdown fired ~3% before the actual local peak. The macd_reversal_exit concept would catch this.
+- No other clear premature exits across GOOGL/SPY.
+
+**C) Pyramid gaps:** Not assessable from daily OHLCV (requires intraday data).
+
+**Additional patterns explored but rejected:**
+- **MACD guard on rsi_oversold_bounce**: Tested — blocked GOOGL T3 (2024-09-11, +5.42%) by causing ema_momentum to fire 5 days later at worse price. GOOGL regressed -31.55% total return. REVERTED.
+- **Volume guard on ema_momentum (below-SMA only)**: Tested — blocked GOOGL T4 (2024-09-25, +10.95%) due to below-average volume on that specific day. GOOGL regressed -9.85% total return. REVERTED.
+- **3-bar EMA confirmation on ema_momentum**: Tested — delayed GOOGL T10 (2026-03-10, +0.96%) by 1 day into a -0.63% trade. GOOGL regressed -4.35% total return. REVERTED.
+
+**Root cause of QQQ weakness**: QQQ T8 (fast_reentry, +22.57%) exits via ma_breakdown (3 closes below SMA), but MACD histogram crossed negative 3-4 bars BEFORE the ma_breakdown confirmation. At that crossover, QQQ was at ~621 vs exit at 600.64. A MACD-histogram-based exit would have captured an extra ~3.4% on this trade.
+
+## Signal Created: `macd_reversal_exit` (EXIT signal)
+
+**File:** `strategies/smart_hold/signals/exits/macd_reversal_exit.py`
+
+**Logic:** Fire when:
+1. Unrealized gain >= 18% (configurable: `macd_exit_min_gain`) — only medium/large winners
+2. Position held >= 40 bars (configurable: `macd_exit_min_bars`) — avoids early whipsaws
+3. MACD histogram just crossed negative: hist[i] < 0 AND hist[i-1] >= 0
+4. Fast EMA is declining (fast_ema[i] < fast_ema[i-1])
+5. SMA slope is negative (structural trend weakening)
+
+**Order in EXIT_SIGNALS:** Second (after profit_lock, before ma_breakdown).
+
+**Registered:** Added to registry.py as second EXIT signal.
+
+**Strategy.py changes:** Added `macd_reversal_exit` to exit_counts dict and display output.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline vs_BH | New vs_BH | Delta |
+|--------|----------------------|-----------------|-------|----------------|-----------|-------|
+| GOOGL  | +176.13%             | +176.13%        | 0.00% | +72.57%        | +72.84%   | +0.27% |
+| SPY    | +50.92%              | +50.92%         | 0.00% | +20.01%        | +20.15%   | +0.14% |
+| QQQ    | +46.42%              | **+47.68%**     | **+1.26%** | +8.70% | **+10.17%** | **+1.47%** |
+
+**QQQ trade changes from macd_reversal_exit firing:**
+- T8 (fast_reentry 2025-05-02): exits at 621.26 on 2026-01-16 via macd_reversal_exit (+26.79% vs +22.57% baseline, +4.22pp)
+- New T9 (ma_reclaim 2026-01-22 at 620.76): exits 600.64 on 2026-02-12 via ma_breakdown (-3.54% — new loss)
+- New T10 (ema_momentum 2026-03-05 at 608.91): exits 607.76 on 2026-03-09 via vix_accelerated_exit (-0.49% — new loss)
+- Net: +4.22% gain on T8 offset by -4.03% new losses = +0.19% direct improvement; compounding effect adds +1.26pp total
+
+**GOOGL**: macd_reversal_exit never fires (GOOGL's large winner T9 exits via profit_lock; other trades are <18% gain or <40 bars)
+**SPY**: macd_reversal_exit never fires (SPY T7 exits via vix_accelerated_exit before MACD can cross negative)
+
+## Decision: KEPT — committed to smart-hold-v9
+
+QQQ improved +1.47pp vs_BH, GOOGL and SPY unchanged. 0 symbols regressed.
+
+**Key learnings:**
+- The MACD histogram crossover (positive→negative) is a leading indicator vs the lagging 3-bar SMA breakdown confirmation
+- The 40-bar minimum holding period prevents the signal from firing on short-term trades where MACD noise is high
+- The 18% minimum gain threshold ensures only meaningful medium-to-large winners are affected
+- The new T9/T10 losses after macd_reversal_exit are unavoidable (strategy re-entered the declining market) but their combined cost (-4.03%) is less than the T8 gain improvement (+4.22%)
+- profit_lock handles the large winner (GOOGL T9, +88%); macd_reversal_exit fills the gap for medium winners (QQQ T8, +22%)
+
+**Next potential improvement ideas:**
+- Tune `macd_exit_min_gain` (currently 18%) — 15% might catch SPY T7 (19.37% peak was close) or similar medium winners
+- Tune `macd_exit_min_bars` (currently 40) — reducing to 30 might catch QQQ T8 earlier in future data
+- Test macd_reversal_exit on 5y backtest window to see if it fires on other large trades
+- Consider whether the new T9/T10 bad entries (after macd_reversal_exit) could be filtered by tightening ema_momentum's SMA slope guard for below-SMA entries

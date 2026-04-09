@@ -11,7 +11,7 @@
     "volatility_class": "high",
     "median_atr_pct": 3.43,
     "slope_lookback": 5,
-    "vix_exit_boost": 28.0,
+    "vix_exit_boost": 30.0,
     "vix_fear_entry": 26.0,
     "vix_extreme": 36.0,
     "trailing_stop_atr_mult": 5.5,
@@ -125,5 +125,5 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-09T03:06:43.202005+00:00"
+  "timestamp": "2026-04-09T03:18:55.193838+00:00"
 }

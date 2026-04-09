@@ -76,8 +76,11 @@ def mutate_params(params: dict, n_changes: int = None) -> tuple[dict, list[str]]
         default, lo, hi, step, typ = PARAM_SPACE[key]
         old_val = new_params[key]
 
-        # Random perturbation: ±1 to ±3 steps
-        n_steps = random.choice([-3, -2, -1, 1, 2, 3])
+        # 70% fine-tune (±1-2 steps), 30% explore (±3-5 steps)
+        if random.random() < 0.7:
+            n_steps = random.choice([-2, -1, 1, 2])
+        else:
+            n_steps = random.choice([-5, -4, -3, 3, 4, 5])
         new_val = old_val + n_steps * step
 
         # Clamp to bounds
@@ -174,7 +177,7 @@ def format_results(results: dict) -> str:
 
 
 def main():
-    random.seed(2026)
+    random.seed(int(time.time()))
 
     print("=" * 70)
     print("  Smart Hold Strategy Optimizer")
@@ -192,24 +195,38 @@ def main():
         print(f"    {sym}: {len(candles)} candles")
     print(f"    VIX: {len(vix)} candles")
 
-    # ── Baseline ──
-    current_params = get_default_params()
+    # ── Resume from best params if available, otherwise use defaults ──
+    if BEST_PARAMS_FILE.exists():
+        with open(BEST_PARAMS_FILE) as f:
+            saved = json.load(f)
+        current_params = saved["params"]
+        prev_improvement = saved.get("improvement_number", 0)
+        print(f"\n  Resuming from best_params.json (improvement #{prev_improvement})")
+    else:
+        current_params = get_default_params()
+        prev_improvement = 0
     current_results = evaluate(current_params, data)
 
     print(f"\n  Baseline results:")
     print(format_results(current_results))
 
-    # ── Initialize log ──
-    improvements = 0
-    log_lines = [
-        "# Smart Hold Optimizer Log\n",
-        f"Started: {datetime.now(timezone.utc).isoformat()}\n",
-        f"Tickers: {', '.join(TICKERS)}\n\n",
-        "## Baseline\n",
+    # ── Initialize log (append if resuming) ──
+    improvements = prev_improvement
+    if LOG_FILE.exists() and prev_improvement > 0:
+        log_lines = [f"\n\n---\n\n# Optimizer Run — {datetime.now(timezone.utc).isoformat()}\n\n"]
+        log_lines.append(f"Resuming from improvement #{prev_improvement}\n\n")
+    else:
+        log_lines = [
+            "# Smart Hold Optimizer Log\n\n",
+            f"Started: {datetime.now(timezone.utc).isoformat()}\n",
+            f"Tickers: {', '.join(TICKERS)}\n\n",
+        ]
+    log_lines.extend([
+        "## Starting Point\n",
         f"```\n{format_results(current_results)}\n```\n",
         f"Parameters: `{json.dumps(current_params)}`\n\n",
         "---\n\n",
-    ]
+    ])
 
     # ── Optimization loop ──
     for i in range(1, MAX_ITERATIONS + 1):
@@ -275,8 +292,9 @@ def main():
     ]
     log_lines.extend(summary)
 
-    # Write log
-    with open(LOG_FILE, "w") as f:
+    # Write log (append if resuming, else overwrite)
+    mode = "a" if prev_improvement > 0 else "w"
+    with open(LOG_FILE, mode) as f:
         f.writelines(log_lines)
 
     print(f"\n{'=' * 70}")

@@ -5,7 +5,7 @@
     "exit_ma": 50,
     "exit_confirm_bars": 3,
     "slope_lookback": 5,
-    "vix_exit_boost": 28.0,
+    "vix_exit_boost": 30.0,
     "vix_fear_entry": 26.0,
     "vix_extreme": 36.0,
     "vix_entry_decline": 4.5,
@@ -16,14 +16,14 @@
   },
   "results": {
     "GOOGL": {
-      "total_return_pct": 189.15,
+      "total_return_pct": 196.49,
       "buy_and_hold_return_pct": 102.63,
-      "vs_buy_and_hold_pct": 86.52,
+      "vs_buy_and_hold_pct": 93.86,
       "total_trades": 10,
       "win_rate_pct": 100.0,
       "max_drawdown_pct": 0.0,
       "profit_factor": Infinity,
-      "sharpe_ratio": 1.17
+      "sharpe_ratio": 1.2
     },
     "WDC": {
       "total_return_pct": 748.68,
@@ -56,7 +56,7 @@
       "sharpe_ratio": 1.37
     }
   },
-  "improvement_number": 6,
-  "iteration": 42,
-  "timestamp": "2026-04-09T03:06:43.217867+00:00"
+  "improvement_number": 7,
+  "iteration": 34,
+  "timestamp": "2026-04-09T03:18:55.210907+00:00"
 }

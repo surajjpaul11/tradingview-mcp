@@ -170,3 +170,94 @@ Parameters: `{"fast_ma": 10, "slow_ma": 50, "exit_ma": 50, "exit_confirm_bars": 
 ```
 
 Completed: 2026-04-09T03:06:43.658158+00:00
+
+
+---
+
+# Optimizer Run — 2026-04-09T03:18:54.886736+00:00
+
+Resuming from improvement #6
+
+## Starting Point
+```
+  GOOGL :  +189.15% (vs B&H: +86.52%, trades=10, win=100.0%, dd=0.0%)
+  WDC   :  +748.68% (vs B&H: +231.74%, trades=6, win=50.0%, dd=-20.97%)
+  SPY   :   +51.17% (vs B&H: +21.00%, trades=8, win=87.5%, dd=-0.43%)
+  QQQ   :   +54.54% (vs B&H: +17.49%, trades=10, win=70.0%, dd=-1.69%)
+```
+Parameters: `{"fast_ma": 9, "slow_ma": 65, "exit_ma": 50, "exit_confirm_bars": 3, "slope_lookback": 5, "vix_exit_boost": 28.0, "vix_fear_entry": 26.0, "vix_extreme": 36.0, "vix_entry_decline": 4.5, "reentry_ma_reclaim": 5, "rsi_oversold": 30, "trailing_stop_atr_mult": 5.5, "reentry_cooldown_bars": 2}`
+
+---
+
+*Iterations 1-10: 6 improvements so far*
+
+*Iterations 11-20: 6 improvements so far*
+
+*Iterations 21-30: 6 improvements so far*
+
+## Iteration 34 — IMPROVEMENT #7
+
+**Changes:** vix_exit_boost: 28.0 -> 30.0
+
+**Deltas:** GOOGL: +7.34%, WDC: +0.00%, SPY: +0.00%, QQQ: +0.00%
+
+```
+  GOOGL :  +196.49% (vs B&H: +93.86%, trades=10, win=100.0%, dd=0.0%)
+  WDC   :  +748.68% (vs B&H: +231.74%, trades=6, win=50.0%, dd=-20.97%)
+  SPY   :   +51.17% (vs B&H: +21.00%, trades=8, win=87.5%, dd=-0.43%)
+  QQQ   :   +54.54% (vs B&H: +17.49%, trades=10, win=70.0%, dd=-1.69%)
+```
+
+**Parameters:** `{"fast_ma": 9, "slow_ma": 65, "exit_ma": 50, "exit_confirm_bars": 3, "slope_lookback": 5, "vix_exit_boost": 30.0, "vix_fear_entry": 26.0, "vix_extreme": 36.0, "vix_entry_decline": 4.5, "reentry_ma_reclaim": 5, "rsi_oversold": 30, "trailing_stop_atr_mult": 5.5, "reentry_cooldown_bars": 2}`
+
+---
+
+*Iterations 31-40: 7 improvements so far*
+
+*Iterations 41-50: 7 improvements so far*
+
+*Iterations 51-60: 7 improvements so far*
+
+*Iterations 61-70: 7 improvements so far*
+
+*Iterations 71-80: 7 improvements so far*
+
+*Iterations 81-90: 7 improvements so far*
+
+*Iterations 91-100: 7 improvements so far*
+
+
+## Final Summary
+
+**Total iterations:** 100
+**Total improvements:** 7
+**Improvement rate:** 7.0%
+
+### Final Results
+```
+  GOOGL :  +196.49% (vs B&H: +93.86%, trades=10, win=100.0%, dd=0.0%)
+  WDC   :  +748.68% (vs B&H: +231.74%, trades=6, win=50.0%, dd=-20.97%)
+  SPY   :   +51.17% (vs B&H: +21.00%, trades=8, win=87.5%, dd=-0.43%)
+  QQQ   :   +54.54% (vs B&H: +17.49%, trades=10, win=70.0%, dd=-1.69%)
+```
+
+### Final Parameters
+```json
+{
+  "fast_ma": 9,
+  "slow_ma": 65,
+  "exit_ma": 50,
+  "exit_confirm_bars": 3,
+  "slope_lookback": 5,
+  "vix_exit_boost": 30.0,
+  "vix_fear_entry": 26.0,
+  "vix_extreme": 36.0,
+  "vix_entry_decline": 4.5,
+  "reentry_ma_reclaim": 5,
+  "rsi_oversold": 30,
+  "trailing_stop_atr_mult": 5.5,
+  "reentry_cooldown_bars": 2
+}
+```
+
+Completed: 2026-04-09T03:18:55.717064+00:00

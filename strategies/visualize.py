@@ -44,6 +44,7 @@ ENTRY_ABBREV = {
     "vix_fear_declining": "VIX-DEC", "ma_reclaim": "MA-RCL",
     "rsi_oversold_bounce": "RSI-BNC", "ema_momentum": "EMA-MOM",
     "quick_reentry": "QUICK",
+    "volume_capitulation": "VOL-CAP",
 }
 EXIT_ABBREV = {
     "atr_trailing_stop": "ATR-TS", "channel_trail_stop": "CH-TS",
@@ -124,6 +125,7 @@ def generate_chart_html(
         "rsi_oversold_bounce": "#2196F3",# blue (oversold bounce)
         "ema_momentum": "#00BCD4",       # cyan (momentum)
         "quick_reentry": "#7C4DFF",      # purple (quick re-entry)
+        "volume_capitulation": "#E040FB", # magenta-pink (capitulation buy)
     }
     # Sell/short colours: shades of red and orange
     SELL_COLORS = {
@@ -803,6 +805,7 @@ const ENTRY_NAMES = {
     'vix_fear_declining': 'VIX Fear Declining', 'ma_reclaim': 'MA Reclaim',
     'rsi_oversold_bounce': 'RSI Oversold Bounce', 'ema_momentum': 'EMA Momentum',
     'quick_reentry': 'Quick Re-entry',
+    'volume_capitulation': 'Volume Capitulation',
 };
 
 const tradeLogBody = document.getElementById('trade-log-body');
@@ -900,6 +903,7 @@ function toggleVersionLegend() {
         'rsi_oversold_bounce':   { abbrev: 'RSI-BNC',    name: 'RSI Oversold Bounce',      desc: 'RSI crossed back above 30 (oversold) with bullish candle.', side: 'long', color: '#2196F3' },
         'ema_momentum':          { abbrev: 'EMA-MOM',    name: 'EMA Momentum',             desc: 'Price above rising fast EMA for 2+ bars \u2014 momentum re-entry.', side: 'long', color: '#00BCD4' },
         'quick_reentry':         { abbrev: 'QUICK',      name: 'Quick Re-entry',           desc: 'Fast re-entry after brief exit when trend resumes quickly.', side: 'long', color: '#7C4DFF' },
+        'volume_capitulation':   { abbrev: 'VOL-CAP',    name: 'Volume Capitulation',      desc: 'Consecutive bars of declining price with increasing volume \u2014 selling climax washout.', side: 'long', color: '#E040FB' },
     };
     const EXIT_REGISTRY = {
         // Curved Channels exits (red-orange-yellow shades)

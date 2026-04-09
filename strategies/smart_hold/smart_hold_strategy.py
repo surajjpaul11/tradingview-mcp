@@ -53,6 +53,8 @@ VIX_ENTRY_DECLINE = 3.0   # VIX must drop this much from peak to confirm fear pe
 # Re-entry signals
 REENTRY_MA_RECLAIM = 2    # consecutive closes above SMA to confirm reclaim
 RSI_OVERSOLD = 30         # RSI oversold level for bounce entry
+CAPITULATION_BARS = 3     # consecutive bars of price decline + volume increase to trigger
+CAPITULATION_VOL_MULT = 2.0  # final bar volume must be >= this * volume MA
 
 # Risk management
 TRAILING_STOP_ATR_MULT = 6.0   # trailing stop = peak - N * ATR (very wide)
@@ -172,8 +174,11 @@ def run_smart_hold(
     slippage = p.get("slippage_pct", SLIPPAGE_PCT)
     initial_capital = p.get("initial_capital", INITIAL_CAPITAL)
     rsi_oversold = p.get("rsi_oversold", RSI_OVERSOLD)
+    cap_bars = p.get("capitulation_bars", CAPITULATION_BARS)
+    cap_vol_mult = p.get("capitulation_vol_mult", CAPITULATION_VOL_MULT)
 
     closes = [c["close"] for c in candles]
+    volumes = [c["volume"] for c in candles]
     n = len(candles)
 
     # Compute indicators
@@ -181,6 +186,7 @@ def run_smart_hold(
     slow_sma_vals = sma(closes, slow_ma_period)
     exit_sma_vals = sma(closes, exit_ma_period)
     rsi_vals = calc_rsi(closes, 14)
+    vol_sma_vals = sma(volumes, 20)  # 20-bar volume MA for capitulation detection
     atr_vals = calc_atr(candles, 14)
 
     # Compute ATR as % of price (rolling) for adaptive exit sensitivity
@@ -254,6 +260,14 @@ def run_smart_hold(
         "end_of_data": 0,
     }
 
+    # Import signal registry (support both direct execution and package import)
+    try:
+        from strategies.smart_hold.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS
+    except ImportError:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from strategies.smart_hold.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS
+
     for i in range(1, n):
         c = candles[i]
         close = c["close"]
@@ -261,126 +275,67 @@ def run_smart_hold(
         vix_val = vix_by_date.get(date)
         vix_peak = vix_peak_by_date.get(date)
 
+        # Build context dict for signal evaluation
+        in_chop = False
+        if not in_position and median_atr_pct < 2.5:
+            recent_exits = sum(1 for t in trades if t["exit_date"] >= candles[max(0, i - 30)]["date"])
+            in_chop = recent_exits >= 2
+
+        ctx = {
+            "i": i, "n": n,
+            "candle": c, "close": close,
+            "closes": closes, "volumes": volumes, "candles": candles,
+            "fast_ema": fast_ema_vals, "exit_sma": exit_sma_vals,
+            "rsi": rsi_vals, "atr": atr_vals, "vol_sma": vol_sma_vals,
+            "sma_200": sma_200_vals,
+            "vix_val": vix_val, "vix_peak": vix_peak,
+            "params": p, "warmup": warmup,
+            "in_chop": in_chop, "median_atr_pct": median_atr_pct, "vol_label": vol_label,
+            "trades": trades,
+            "peak_price": peak_price, "bars_below_ma": bars_below_ma,
+            "exit_confirm": exit_confirm, "slope_threshold": slope_threshold,
+            "trail_atr_mult_adj": trail_atr_mult_adj, "slope_lb": slope_lb,
+            "vix_exit_boost": vix_exit_boost,
+        }
+
         if not in_position:
             bars_since_exit += 1
             if bars_since_exit < cooldown:
                 continue
 
-            enter = False
-            reason = ""
-
-            # Chop detection: if 2+ exits in last 30 bars, disable ema_momentum
-            # to avoid whipsaws. Only for low and moderate-vol stocks (ATR < 2.5%).
-            # High-vol stocks already have 5+ confirm bars so they don't whipsaw as much.
-            in_chop = False
-            if median_atr_pct < 2.5:
-                recent_exits = sum(1 for t in trades if t["exit_date"] >= candles[max(0, i - 30)]["date"])
-                in_chop = recent_exits >= 2
-
-            # Signal 1: VIX extreme fear + bullish candle
-            if vix_val is not None and vix_val >= vix_extreme:
-                if close > c["open"]:
-                    enter = True
-                    reason = "vix_extreme_fear"
-
-            # Signal 2: VIX elevated + declining from peak (fear peaking)
-            if not enter and vix_val is not None and vix_peak is not None:
-                if vix_val >= vix_fear and vix_peak - vix_val >= vix_decline:
-                    if close > c["open"] and (rsi_vals[i] is not None and rsi_vals[i] < 45):
-                        enter = True
-                        reason = "vix_fear_declining"
-
-            # Signal 3: Price reclaims SMA with confirmation
-            if not enter and i >= warmup and exit_sma_vals[i] is not None:
-                above_count = 0
-                for j in range(max(0, i - reclaim_bars + 1), i + 1):
-                    if exit_sma_vals[j] is not None and closes[j] > exit_sma_vals[j]:
-                        above_count += 1
-                if above_count >= reclaim_bars:
-                    if fast_ema_vals[i] is not None and fast_ema_vals[i - 1] is not None:
-                        if fast_ema_vals[i] > fast_ema_vals[i - 1]:
-                            enter = True
-                            reason = "ma_reclaim"
-
-            # Signal 4: RSI oversold bounce
-            if not enter and rsi_vals[i] is not None and i > 0 and rsi_vals[i - 1] is not None:
-                if rsi_vals[i - 1] < rsi_oversold and rsi_vals[i] >= rsi_oversold:
-                    if close > c["open"]:
-                        enter = True
-                        reason = "rsi_oversold_bounce"
-
-            # Signal 5: Fast EMA reclaim with strong momentum
-            # DISABLED during chop to avoid whipsaws
-            if not enter and not in_chop and fast_ema_vals[i] is not None and i >= 3:
-                if (close > fast_ema_vals[i]
-                    and closes[i - 1] > fast_ema_vals[i - 1]
-                    and fast_ema_vals[i] > fast_ema_vals[i - 1]
-                    and fast_ema_vals[i - 1] > fast_ema_vals[i - 2]):
-                    enter = True
-                    reason = "ema_momentum"
-
-            if enter:
-                in_position = True
-                entry_price = close
-                entry_date = date
-                entry_reason = reason
-                peak_price = close
-                bars_below_ma = 0
+            # Evaluate entry signals (first match wins)
+            for sig in ENTRY_SIGNALS:
+                if sig.check(ctx):
+                    in_position = True
+                    entry_price = close
+                    entry_date = date
+                    entry_reason = sig.METADATA["name"]
+                    peak_price = close
+                    bars_below_ma = 0
+                    break
 
         else:
             # Update peak
             if close > peak_price:
                 peak_price = close
 
+            # Update bars_below_ma counter (engine state, not signal logic)
+            if exit_sma_vals[i] is not None:
+                if close < exit_sma_vals[i]:
+                    bars_below_ma += 1
+                else:
+                    bars_below_ma = 0
+            ctx["bars_below_ma"] = bars_below_ma
+
+            # Evaluate exit signals (first match wins)
             exit_signal = False
             exit_reason = ""
-
-            # Only use indicator-based exits after warmup
-            if i >= warmup:
-                # ── EXIT 1: MA breakdown (confirmed, adaptive to volatility) ──
-                if exit_sma_vals[i] is not None:
-                    if close < exit_sma_vals[i]:
-                        bars_below_ma += 1
-                        needed = exit_confirm
-                        # If VIX is elevated, exit 1 bar faster (min 2 bars)
-                        if vix_val is not None and vix_val >= vix_exit_boost:
-                            needed = max(2, needed - 1)
-
-                        if bars_below_ma >= needed:
-                            # Confirm: SMA slope is declining (adaptive threshold)
-                            if i >= slope_lb and exit_sma_vals[i - slope_lb] is not None:
-                                slope = (exit_sma_vals[i] - exit_sma_vals[i - slope_lb]) / exit_sma_vals[i - slope_lb]
-                                if slope < slope_threshold:
-                                    # Additional check: fast EMA must also be below SMA
-                                    if fast_ema_vals[i] is not None and fast_ema_vals[i] < exit_sma_vals[i]:
-                                        # For high-vol: also require 200 SMA declining (true bear market)
-                                        if vol_label == "high" and sma_200_vals[i] is not None and i >= 10 and sma_200_vals[i - 10] is not None:
-                                            sma200_slope = sma_200_vals[i] - sma_200_vals[i - 10]
-                                            if sma200_slope >= 0:
-                                                # 200 SMA still rising — skip exit, just a pullback
-                                                pass
-                                            else:
-                                                exit_signal = True
-                                        else:
-                                            exit_signal = True
-                                        if vix_val is not None and vix_val >= vix_exit_boost and needed < exit_confirm:
-                                            exit_reason = "vix_accelerated_exit"
-                                        else:
-                                            exit_reason = "ma_breakdown"
-                    else:
-                        bars_below_ma = 0
-
-            # ── EXIT 2: ATR trailing stop (catastrophic drop protection) ──
-            if not exit_signal and atr_vals[i] is not None and atr_vals[i] > 0:
-                trail_dist = atr_vals[i] * trail_atr_mult_adj
-                if close < peak_price - trail_dist:
+            for sig in EXIT_SIGNALS:
+                fired, reason = sig.check(ctx)
+                if fired:
                     exit_signal = True
-                    exit_reason = "trailing_stop"
-
-            # ── End of data ──
-            if i == n - 1 and not exit_signal:
-                exit_signal = True
-                exit_reason = "end_of_data"
+                    exit_reason = reason
+                    break
 
             if exit_signal:
                 gross_ret = (close - entry_price) / entry_price * 100

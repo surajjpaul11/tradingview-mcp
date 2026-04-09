@@ -43,10 +43,12 @@ def check(ctx: dict) -> bool:
         return False
 
     # SMA slope guard — reject entries when SMA is declining sharply
+    # Threshold tightened from -0.005 to -0.002 to block QQQ-style false MACD crossovers
+    # where SMA is falling ~0.29%/bar (slope ~-0.003) but price briefly pokes above SMA.
     slope_lb = ctx.get("slope_lb", 5)
     if i >= slope_lb and exit_sma[i] is not None and exit_sma[i - slope_lb] is not None:
         sma_slope = (exit_sma[i] - exit_sma[i - slope_lb]) / exit_sma[i - slope_lb]
-        if sma_slope < -0.005:
+        if sma_slope < -0.002:
             return False
 
     # Fast EMA must also be rising — confirm momentum is genuinely recovering

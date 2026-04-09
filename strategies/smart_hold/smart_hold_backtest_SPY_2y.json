@@ -27,8 +27,8 @@
   "slippage_pct": 0.05,
   "final_capital": 15092.14,
   "total_return_pct": 50.92,
-  "buy_and_hold_return_pct": 30.43,
-  "vs_buy_and_hold_pct": 20.49,
+  "buy_and_hold_return_pct": 30.91,
+  "vs_buy_and_hold_pct": 20.01,
   "total_trades": 8,
   "winning_trades": 7,
   "losing_trades": 1,
@@ -152,5 +152,5 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-09T15:45:29.478889+00:00"
+  "timestamp": "2026-04-09T16:30:22.058415+00:00"
 }

@@ -589,3 +589,76 @@ All 3 symbols improved, 0 regressed.
 - Test with different profit_lock_threshold values (40%, 60%) to see sensitivity
 - Consider adding a "loss_accelerator" exit: when gain >= 20% but trend is sharply reversing, exit faster
 - The macd_crossover SMA slope threshold is still -0.005 (too loose); tightening to -0.002 could block QQQ Feb 2026 bad entry
+
+---
+
+# Signal Optimization Run #7 — 2026-04-09 (ema_momentum + macd_crossover SMA slope guard tightening)
+
+## Baseline (smart-hold-v7 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +176.13%        | +74.05%             | -3.04%          |
+| SPY    | +50.92%         | +20.52%             | -0.43%          |
+| QQQ    | +46.22%         | +9.02%              | -1.69%          |
+
+## Gap Analysis
+
+**Primary target:** QQQ Trade 9 (`macd_crossover` / `ema_momentum`, 2026-02-25 at 616.68, -1.69%).
+- SMA50 slope at entry: -0.002906 (SMA declining at ~0.29%/bar over 5 bars)
+- Price barely above SMA50 by only 0.12% (616.68 vs SMA 615.97)
+- This is a false breakout: price poked above a declining SMA during a broader correction
+
+**Slope analysis across all ema_momentum entries:**
+
+| Entry | Return | Price > SMA? | Slope | Blocked by new filter? |
+|-------|--------|-------------|-------|----------------------|
+| GOOGL 2024-09-25 | +10.95% | No (price BELOW SMA) | -0.014552 | No — price below SMA exempts it |
+| GOOGL 2026-03-10 | +0.96%  | No (price BELOW SMA) | -0.001994 | No |
+| SPY 2024-08-12  | +11.12% | No (price BELOW SMA) | +0.000140 | No |
+| QQQ 2024-08-13  | -0.63%  | No (price BELOW SMA) | -0.001231 | No |
+| QQQ 2026-02-25  | -1.69%  | **Yes** | **-0.002906** | **Yes — blocked** |
+
+**Key insight:** All legitimate ema_momentum entries that are winners had price BELOW SMA50 — they represent genuine EMA-led recoveries where the faster MA leads the slower SMA. The only case where price > SMA at entry is the bad QQQ trade. The combined filter `price > SMA AND slope < -0.002` is perfectly surgical.
+
+**macd_crossover analysis:** The same -0.002 threshold also blocks QQQ's MACD crossover on 2026-02-25. Without the ema_momentum fix, MACD is blocked but ema_momentum fires instead (same date/price). Both fixes together are needed for full protection.
+
+## Changes Applied
+
+1. **`ema_momentum.py`** — Added SMA slope guard that activates only when `close > exit_sma`:
+   ```python
+   if exit_sma[i] is not None and close > exit_sma[i]:
+       if i >= slope_lb and exit_sma[i - slope_lb] is not None:
+           sma_slope = (exit_sma[i] - exit_sma[i - slope_lb]) / exit_sma[i - slope_lb]
+           if sma_slope < -0.002:
+               return False  # Price above declining SMA — false breakout
+   ```
+
+2. **`macd_crossover.py`** — Tightened existing slope guard from -0.005 to -0.002.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline max_dd | New max_dd | DD Delta |
+|--------|--------------------|-----------------|-------|----------------|-----------|----------|
+| GOOGL  | +176.13%           | +176.13%        | 0.00% | -3.04%         | -3.04%    | 0.00%    |
+| SPY    | +50.92%            | +50.92%         | 0.00% | -0.43%         | -0.43%    | 0.00%    |
+| QQQ    | +46.22%            | **+46.42%**     | **+0.20%** | -1.69%    | **-1.56%** | **+0.13%** |
+
+QQQ: Bad trade on 2026-02-25 at 616.68 blocked. Re-entry fires one day later (2026-02-26 at 609.24, ema_momentum) but exits at 601.58 (-1.56% instead of -1.69%). The false breakout entry is avoided; the subsequent genuine recovery attempt still runs.
+
+Final capital: $14,621.76 → **$14,641.94** (+$20.18)
+
+## Decision: KEPT — committed to smart-hold-v8
+
+1 symbol improved (QQQ +0.20%), 2 neutral, 0 regressed. Drawdown improvement on QQQ from -1.69% → -1.56%.
+
+**Key learnings:**
+- `ema_momentum` re-entries where price is already above SMA are the higher-risk entries — they represent false breakouts more often than recoveries
+- The `price > SMA AND slope < -0.002` combined guard is more surgical than either check alone
+- Blocking MACD alone is insufficient when ema_momentum fires as a fallback on the same day — both signals needed the guard
+- Even though the original MACD guard (-0.005 → -0.002) alone had zero effect, it correctly tightens future protection against similar patterns
+
+**Next potential improvement ideas:**
+- Test profit_lock_threshold variants (40% or 60%) — Run #6 showed 50% was highly surgical for GOOGL's +88% trade; 40% might fire earlier on smaller winners
+- "Loss accelerator" exit: exit faster when gain is 20%+ and both SMA slope AND EMA slope are sharply negative (not just on slope crossover)
+- Consider a broader survey of ema_momentum entries on a 5y backtest window — the 2y window may not expose all false breakout scenarios

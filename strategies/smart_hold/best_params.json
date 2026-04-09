@@ -1,0 +1,62 @@
+{
+  "params": {
+    "fast_ma": 9,
+    "slow_ma": 65,
+    "exit_ma": 50,
+    "exit_confirm_bars": 3,
+    "slope_lookback": 5,
+    "vix_exit_boost": 28.0,
+    "vix_fear_entry": 26.0,
+    "vix_extreme": 36.0,
+    "vix_entry_decline": 4.5,
+    "reentry_ma_reclaim": 5,
+    "rsi_oversold": 30,
+    "trailing_stop_atr_mult": 5.5,
+    "reentry_cooldown_bars": 2
+  },
+  "results": {
+    "GOOGL": {
+      "total_return_pct": 189.15,
+      "buy_and_hold_return_pct": 102.63,
+      "vs_buy_and_hold_pct": 86.52,
+      "total_trades": 10,
+      "win_rate_pct": 100.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": Infinity,
+      "sharpe_ratio": 1.17
+    },
+    "WDC": {
+      "total_return_pct": 748.68,
+      "buy_and_hold_return_pct": 516.94,
+      "vs_buy_and_hold_pct": 231.74,
+      "total_trades": 6,
+      "win_rate_pct": 50.0,
+      "max_drawdown_pct": -20.97,
+      "profit_factor": 27.35,
+      "sharpe_ratio": 0.7
+    },
+    "SPY": {
+      "total_return_pct": 51.17,
+      "buy_and_hold_return_pct": 30.17,
+      "vs_buy_and_hold_pct": 21.0,
+      "total_trades": 8,
+      "win_rate_pct": 87.5,
+      "max_drawdown_pct": -0.43,
+      "profit_factor": 103.42,
+      "sharpe_ratio": 1.54
+    },
+    "QQQ": {
+      "total_return_pct": 54.54,
+      "buy_and_hold_return_pct": 37.05,
+      "vs_buy_and_hold_pct": 17.49,
+      "total_trades": 10,
+      "win_rate_pct": 70.0,
+      "max_drawdown_pct": -1.69,
+      "profit_factor": 18.75,
+      "sharpe_ratio": 1.37
+    }
+  },
+  "improvement_number": 6,
+  "iteration": 42,
+  "timestamp": "2026-04-09T03:06:43.217867+00:00"
+}

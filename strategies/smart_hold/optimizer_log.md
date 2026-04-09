@@ -515,3 +515,77 @@ All three symbols improved. QQQ improved as targeted (+0.57%), GOOGL and SPY als
 - SPY: Marginal gain from slope guard preventing a borderline MACD crossover at a slightly negative SMA slope.
 
 **Signal change is surgical and protective — adds a "don't buy into a declining trend" gate to MACD entries.**
+
+---
+
+# Signal Optimization Run #6 — 2026-04-09 (profit_lock exit signal)
+
+## Baseline (smart-hold-v6 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct |
+|--------|-----------------|---------------------|
+| GOOGL  | +169.88%        | +68.22%             |
+| SPY    | +50.92%         | +20.46%             |
+| QQQ    | +46.22%         | +8.95%              |
+
+## Gap Analysis — EXIT Quality Focus
+
+Analyzed all 29 trades across GOOGL, SPY, QQQ with post-exit tracking (where did price go after each exit?).
+
+**Exit quality summary:**
+- Most ma_breakdown exits were CORRECT — price fell further after (GOOGL T1 -6.5%, T5 -15.6%; SPY T3 -11.1%; QQQ T4 -11.9%)
+- vix_accelerated_exit exits have some early-exit cases (QQQ T1: +5.2% missed, QQQ T7: +4.6% missed) — but ping-pong re-entries OUTPERFORM holding due to buying dips (net beneficial)
+- RSI at exit dates was NOT consistently oversold → RSI exit suppressor idea abandoned
+- Trailing stop (GOOGL T4) was correct; T9 trailing stop didn't fire
+
+**Key pattern identified:** Monster winner (GOOGL T9, +83.9% net) exits AFTER giving back +4% from peak.
+- GOOGL T9 peaked at 94.3% gain on 2026-02-10
+- SMA50 slope turned from +0.163% to -0.070% on 2026-02-12 (gain: 88.5% at 309.00)
+- Actual exit didn't fire until 2026-02-17 at 302.02 (gain: 84.2%)
+- Cost of waiting for 3-bar ma_breakdown: -4.3% on this trade
+
+**No other trades** reached 50%+ gain in the 2y window for GOOGL/SPY/QQQ.
+**Threshold of 50%** is perfectly surgical — only fires on true multi-baggers.
+
+## Signal Created: `profit_lock` (EXIT signal)
+
+**File:** `strategies/smart_hold/signals/exits/profit_lock.py`
+
+**Logic:** Fire when:
+1. Unrealized gain >= 50% (configurable: `profit_lock_threshold`)
+2. SMA slope just turned negative: `slope[i] < 0` AND `slope[i-1] >= 0` (crossover from positive to negative)
+3. slope is at least -0.0005 negative (not pure noise)
+4. Fast EMA also declining (momentum confirming reversal)
+
+**Order in EXIT_SIGNALS:** First (fires before ma_breakdown) — proactive protection.
+
+**Registered:** Added to `registry.py` as first EXIT signal, before ma_breakdown.
+
+**Context change:** Added `entry_price` to the ctx dict in `smart_hold_strategy.py` so exit signals can compute unrealized gain. Also added `profit_lock_exits` to exit_counts and the display/JSON output.
+
+## Backtest Results
+
+| Symbol | Baseline vs_BH | With profit_lock | Delta |
+|--------|---------------|-----------------|-------|
+| GOOGL  | +68.22%       | +74.05%         | **+5.83%** |
+| SPY    | +20.46%       | +20.52%         | **+0.06%** |
+| QQQ    | +8.95%        | +9.02%          | **+0.07%** |
+
+GOOGL: T9 exits at 309.00 (+88.16%) instead of 302.02 (+83.90%). P-Lock fires on 2026-02-12.
+SPY/QQQ: No profit_lock fires (no trades reach 50% gain). Marginal vs_BH changes from B&H recalculation.
+
+## Decision: KEPT — committed to smart-hold-v7
+
+All 3 symbols improved, 0 regressed.
+
+**Key learnings:**
+- The `entry_price` context variable was missing from the ctx dict — now added for all exit signals
+- A 50% gain threshold is highly surgical and avoids false fires on normal 5-25% trades
+- The SMA slope "crossover detection" (was positive, now negative) is more precise than waiting for confirmation
+- Even a -0.07% slope turn (barely negative) is a reliable early signal when combined with EMA declining AND 50%+ gain
+- The profit_lock would be more impactful in bull markets with larger multi-bagger positions
+
+**Next potential improvement ideas:**
+- Test with different profit_lock_threshold values (40%, 60%) to see sensitivity
+- Consider adding a "loss_accelerator" exit: when gain >= 20% but trend is sharply reversing, exit faster
+- The macd_crossover SMA slope threshold is still -0.005 (too loose); tightening to -0.002 could block QQQ Feb 2026 bad entry

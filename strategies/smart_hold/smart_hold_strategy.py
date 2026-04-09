@@ -282,6 +282,7 @@ def run_smart_hold(
         "ma_breakdown": 0,
         "vix_accelerated_exit": 0,
         "trailing_stop": 0,
+        "profit_lock": 0,
         "end_of_data": 0,
     }
 
@@ -322,6 +323,7 @@ def run_smart_hold(
             "exit_confirm": exit_confirm, "slope_threshold": slope_threshold,
             "trail_atr_mult_adj": trail_atr_mult_adj, "slope_lb": slope_lb,
             "vix_exit_boost": vix_exit_boost,
+            "entry_price": entry_price if in_position else None,
         }
 
         if not in_position:
@@ -488,6 +490,7 @@ def run_smart_hold(
         "ma_breakdown_exits": exit_counts.get("ma_breakdown", 0),
         "vix_accelerated_exits": exit_counts.get("vix_accelerated_exit", 0),
         "trailing_stop_exits": exit_counts.get("trailing_stop", 0),
+        "profit_lock_exits": exit_counts.get("profit_lock", 0),
         "end_of_data_exits": exit_counts.get("end_of_data", 0),
         "trade_log": trades,
         "overlays": [
@@ -571,7 +574,7 @@ def main():
     print(f"  Profit Factor:    {result['profit_factor']}")
     print(f"  Sharpe Ratio:     {result['sharpe_ratio']}")
     print(f"  Max Drawdown:     {result['max_drawdown_pct']}%")
-    print(f"  Exits:            MA Break: {result['ma_breakdown_exits']}  |  VIX Accel: {result['vix_accelerated_exits']}  |  Trail Stop: {result['trailing_stop_exits']}  |  EOD: {result['end_of_data_exits']}")
+    print(f"  Exits:            MA Break: {result['ma_breakdown_exits']}  |  VIX Accel: {result['vix_accelerated_exits']}  |  Trail Stop: {result['trailing_stop_exits']}  |  P-Lock: {result['profit_lock_exits']}  |  EOD: {result['end_of_data_exits']}")
     print(f"\n  Trade Log:")
     for t in result["trade_log"]:
         print(f"    LONG  {t['entry_date']} -> {t['exit_date']}  "

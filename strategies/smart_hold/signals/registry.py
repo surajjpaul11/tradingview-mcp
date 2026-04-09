@@ -11,6 +11,7 @@ from .entries import (
     ma_reclaim,
     rsi_oversold_bounce,
     # volume_capitulation,  # DISABLED: catches false bottoms in 2y backtest
+    macd_crossover,
     ema_momentum,
 )
 from .exits import (
@@ -26,6 +27,7 @@ ENTRY_SIGNALS = [
     ma_reclaim,
     rsi_oversold_bounce,
     # volume_capitulation,
+    macd_crossover,
     ema_momentum,
 ]
 

@@ -124,6 +124,30 @@ def calc_atr(candles: list[dict], period: int = 14) -> list[float | None]:
     return ema(trs, period)
 
 
+def calc_macd(
+    closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9
+) -> tuple[list, list]:
+    """MACD(fast, slow, signal). Returns (macd_line, signal_line), values are None before warmup."""
+    n = len(closes)
+    fast_ema_vals = ema(closes, fast)
+    slow_ema_vals = ema(closes, slow)
+
+    macd_line: list[float | None] = [None] * n
+    for i in range(slow - 1, n):
+        if fast_ema_vals[i] is not None and slow_ema_vals[i] is not None:
+            macd_line[i] = fast_ema_vals[i] - slow_ema_vals[i]
+
+    # EMA of macd_line for signal — pad Nones with 0 then mask out early bars
+    macd_fill = [v if v is not None else 0.0 for v in macd_line]
+    signal_raw = ema(macd_fill, signal)
+    signal_line: list[float | None] = [None] * n
+    first_valid = slow - 1 + signal - 1  # first bar where signal is meaningful
+    for i in range(first_valid, n):
+        signal_line[i] = signal_raw[i]
+
+    return macd_line, signal_line
+
+
 def calc_rsi(values: list[float], period: int = 14) -> list[float | None]:
     out = [None] * len(values)
     if len(values) < period + 1:
@@ -188,6 +212,7 @@ def run_smart_hold(
     rsi_vals = calc_rsi(closes, 14)
     vol_sma_vals = sma(volumes, 20)  # 20-bar volume MA for capitulation detection
     atr_vals = calc_atr(candles, 14)
+    macd_line_vals, macd_signal_vals = calc_macd(closes, 12, 26, 9)
 
     # Compute ATR as % of price (rolling) for adaptive exit sensitivity
     atr_pct = [None] * n
@@ -288,6 +313,7 @@ def run_smart_hold(
             "fast_ema": fast_ema_vals, "exit_sma": exit_sma_vals,
             "rsi": rsi_vals, "atr": atr_vals, "vol_sma": vol_sma_vals,
             "sma_200": sma_200_vals,
+            "macd_line": macd_line_vals, "macd_signal": macd_signal_vals,
             "vix_val": vix_val, "vix_peak": vix_peak,
             "params": p, "warmup": warmup,
             "in_chop": in_chop, "median_atr_pct": median_atr_pct, "vol_label": vol_label,

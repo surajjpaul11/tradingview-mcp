@@ -42,6 +42,13 @@ def check(ctx: dict) -> bool:
     if exit_sma[i] is not None and close < exit_sma[i]:
         return False
 
+    # SMA slope guard — reject entries when SMA is declining sharply
+    slope_lb = ctx.get("slope_lb", 5)
+    if i >= slope_lb and exit_sma[i] is not None and exit_sma[i - slope_lb] is not None:
+        sma_slope = (exit_sma[i] - exit_sma[i - slope_lb]) / exit_sma[i - slope_lb]
+        if sma_slope < -0.005:
+            return False
+
     # Fast EMA must also be rising — confirm momentum is genuinely recovering
     fast_ema = ctx["fast_ema"]
     if fast_ema[i] is None or fast_ema[i - 1] is None:

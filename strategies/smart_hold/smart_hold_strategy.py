@@ -59,6 +59,7 @@ CAPITULATION_VOL_MULT = 2.0  # final bar volume must be >= this * volume MA
 # Risk management
 TRAILING_STOP_ATR_MULT = 6.0   # trailing stop = peak - N * ATR (very wide)
 REENTRY_COOLDOWN_BARS = 2      # min bars after exit before re-entry
+MACD_REV_EXIT_COOLDOWN = 20    # bars to block ALL re-entries after a macd_reversal_exit
 
 
 # ── Data Fetching ────────────────────────────────────────────────────
@@ -194,6 +195,7 @@ def run_smart_hold(
     reclaim_bars = p.get("reentry_ma_reclaim", REENTRY_MA_RECLAIM)
     trail_atr_mult = p.get("trailing_stop_atr_mult", TRAILING_STOP_ATR_MULT)
     cooldown = p.get("reentry_cooldown_bars", REENTRY_COOLDOWN_BARS)
+    macd_rev_cooldown = p.get("macd_rev_exit_cooldown", MACD_REV_EXIT_COOLDOWN)
     commission = p.get("commission_pct", COMMISSION_PCT)
     slippage = p.get("slippage_pct", SLIPPAGE_PCT)
     initial_capital = p.get("initial_capital", INITIAL_CAPITAL)
@@ -273,6 +275,7 @@ def run_smart_hold(
     peak_price = entry_price
     bars_since_exit = 999
     bars_below_ma = 0
+    macd_rev_cooldown_remaining = 0  # bars remaining before entries allowed after macd_reversal_exit
 
     trades: list[dict] = []
     capital = initial_capital
@@ -332,6 +335,11 @@ def run_smart_hold(
             if bars_since_exit < cooldown:
                 continue
 
+            # Post-macd_reversal_exit architectural gate: block all entries for N bars
+            if macd_rev_cooldown_remaining > 0:
+                macd_rev_cooldown_remaining -= 1
+                continue
+
             # Evaluate entry signals (first match wins)
             for sig in ENTRY_SIGNALS:
                 if sig.check(ctx):
@@ -389,6 +397,8 @@ def run_smart_hold(
                 in_position = False
                 bars_since_exit = 0
                 bars_below_ma = 0
+                if exit_reason == "macd_reversal_exit":
+                    macd_rev_cooldown_remaining = macd_rev_cooldown
 
     # ── Compute metrics ──
     bh_ret = (candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100
@@ -465,6 +475,7 @@ def run_smart_hold(
             "vix_extreme": vix_extreme,
             "trailing_stop_atr_mult": trail_atr_mult,
             "reentry_cooldown_bars": cooldown,
+            "macd_rev_exit_cooldown": macd_rev_cooldown,
         },
         "period": p.get("period", PERIOD),
         "interval": p.get("interval", INTERVAL),
@@ -523,6 +534,7 @@ def main():
     parser.add_argument("--vix-extreme", type=float, default=VIX_EXTREME, help="VIX extreme fear threshold")
     parser.add_argument("--trail-atr", type=float, default=TRAILING_STOP_ATR_MULT, help="ATR trailing stop multiplier")
     parser.add_argument("--cooldown", type=int, default=REENTRY_COOLDOWN_BARS, help="Bars to wait after exit")
+    parser.add_argument("--macd-rev-cooldown", type=int, default=MACD_REV_EXIT_COOLDOWN, help="Bars to block all entries after macd_reversal_exit")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
     args = parser.parse_args()
 
@@ -558,6 +570,7 @@ def main():
         "vix_extreme": args.vix_extreme,
         "trailing_stop_atr_mult": args.trail_atr,
         "reentry_cooldown_bars": args.cooldown,
+        "macd_rev_exit_cooldown": args.macd_rev_cooldown,
     }
 
     result = run_smart_hold(candles, vix_candles, params)

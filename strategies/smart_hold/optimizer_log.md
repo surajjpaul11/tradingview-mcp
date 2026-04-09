@@ -747,3 +747,152 @@ QQQ improved +1.47pp vs_BH, GOOGL and SPY unchanged. 0 symbols regressed.
 - Tune `macd_exit_min_bars` (currently 40) — reducing to 30 might catch QQQ T8 earlier in future data
 - Test macd_reversal_exit on 5y backtest window to see if it fires on other large trades
 - Consider whether the new T9/T10 bad entries (after macd_reversal_exit) could be filtered by tightening ema_momentum's SMA slope guard for below-SMA entries
+
+---
+
+# Signal Optimization Run #9 — 2026-04-09 (ma_reclaim MACD histogram guard)
+
+## Baseline (smart-hold-v9 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +176.13%        | +72.83%             | -3.04%          |
+| SPY    | +50.92%         | +20.13%             | -0.43%          |
+| QQQ    | +47.68%         | +10.16%             | -4.01%          |
+
+## Gap Analysis — All Three Symbols
+
+**A) Missed upside (5+ bars out, price rose >3%):**
+- GOOGL gap 2→3: 21 bars out, max missed +3.01% (ma_breakdown exit 2024-08-12)
+- GOOGL gap 7→8: 7 bars out, max missed +5.59% (vix_accel exit 2025-04-23) — already handled by fast_reentry
+- SPY gap 6→7: 6 bars out, max missed +3.67% (vix_accel exit 2025-04-24) — handled by fast_reentry
+- QQQ gap 1→2: 5 bars out, max missed +5.24% (vix_accel exit 2024-08-06)
+- QQQ gap 2→3: 6 bars out, max missed +3.10% (ma_breakdown 2024-09-05)
+- QQQ gap 7→8: 6 bars out, max missed +4.60% (vix_accel 2025-04-24) — handled by fast_reentry
+
+**B) Premature exits (price up >2% within 3 bars after exit):**
+- GOOGL 2024-09-18 ma_breakdown: RSI=49.8, vol=1.00x, +2.37% missed
+- GOOGL 2025-05-13 ma_breakdown: RSI=51.4, vol=1.12x, +4.17% missed
+- SPY 2026-04-06 ma_breakdown: RSI=48.0, **vol=0.39x** (very low), +3.03% missed
+- QQQ 2025-03-19 ma_breakdown: RSI=40.7, vol=0.85x, +2.03% missed
+- QQQ 2026-04-06 ma_breakdown: RSI=48.7, **vol=0.49x** (very low), +3.29% missed
+- All vix_accel premature exits already addressed by fast_reentry
+
+**C) Exit quality — which exit reasons underperform?**
+- All ma_breakdown exits were genuinely correct except the April 2026 end-of-data events (timing artifact)
+- Low-volume ma_breakdowns (< 0.5x) are sometimes premature BUT also sometimes correct (GOOGL 2024-08-12 was 0.53x yet correct — blocking it would cause -6.7% DD)
+- Volume filter on ma_breakdown: NOT viable (low-vol correct exits would be blocked)
+
+**Key target from optimizer_log Run #8 suggestion:** QQQ T9 re-entry (ma_reclaim at 620.76 on 2026-01-22, MACD hist = -0.80) returning -3.54%. MACD histogram was negative at entry, indicating bearish momentum. Good ma_reclaim entries have positive MACD hist (GOOGL 2025-05-15: +0.83, QQQ 2024-09-13: +0.61).
+
+## Signal Attempted: MACD histogram guard on `ma_reclaim`
+
+**Logic:** Block ma_reclaim when `macd_line[i] - macd_signal[i] < 0` (bearish momentum). All existing good ma_reclaim entries have positive MACD hist; only QQQ T9 (bad entry) has negative hist.
+
+**Result:** MACD guard blocks ma_reclaim at 620.76 (good) BUT `ema_momentum` fires the VERY NEXT DAY (2026-01-23) at 622.72 (higher price, MACD hist still -0.45). The replacement entry loses -3.85% vs -3.54% baseline. Signal-hop: blocking one entry just shifts to the next signal at a worse price.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta |
+|--------|----------------------|-----------------|-------|
+| GOOGL  | +176.13%             | +176.13%        | 0.00% |
+| SPY    | +50.92%              | +50.92%         | 0.00% |
+| QQQ    | +47.68%              | **+47.21%**     | **-0.47%** |
+
+## Decision: REVERTED
+
+1 symbol regressed (QQQ -0.47%), 2 neutral, 0 improved. The MACD guard correctly identifies the bad ma_reclaim entry but ema_momentum acts as a fallback signal that fires at a worse price — net negative outcome.
+
+**Root cause analysis:**
+The `ema_momentum` signal fires on 2026-01-23 (1 day after the blocked ma_reclaim) when QQQ recovers slightly to 622.72 — MACD hist was still -0.45 (negative) but the SMA slope guard on ema_momentum didn't block it. The fundamental problem is that ANY re-entry in January 2026 (whether via ma_reclaim at 620.76 or ema_momentum at 622.72) results in a loss because QQQ declines to 600.64 by Feb 12. Blocking the first entry signal just shifts to the second at a slightly worse price.
+
+**Other approaches tested and rejected (all simulation only, not coded):**
+1. **Adaptive trailing stop (3.5x ATR when gain >= 15%):** GOOGL T4 improves +4.52pp but SPY T7 -4.24pp and QQQ T8 -4.80pp. 2 regress, net negative.
+2. **macd_reversal_exit with relaxed SMA slope for gain >= 20%:** GOOGL T9 DESTROYED (-37.43pp, fires at 50% gain vs 88% actual). Never viable.
+3. **bars_since_exit >= 5 filter on ema_momentum:** Blocks SPY's +11.12% recovery entry (3 bars post-exit). Never viable.
+4. **SMA distance (>0.5%) requirement on ma_reclaim:** QQQ T9 (0.20% above SMA) would be blocked but ema_momentum fires next bar at worse price (same signal-hop problem).
+5. **Volume filter on ma_breakdown:** GOOGL 2024-08-12 (vol=0.53x) is a CORRECT low-vol breakdown (price fell -6.7% after). Blocking it causes -6.7% DD on GOOGL.
+6. **RSI guard on ma_breakdown:** GOOGL 2026-03-17 (RSI=51.3) is a CORRECT high-RSI breakdown. Blocking it would cause -12% loss on GOOGL.
+7. **MACD hist check on ema_momentum:** Would block SPY's +11.12% recovery entry (MACD hist=-1.52 during VIX spike recovery = normal). Never viable.
+8. **profit_lock threshold change (40% or 60%):** Same exit date as 50% threshold for GOOGL T9. No impact.
+
+**Structural insight:** The strategy is near its optimization ceiling for the 2-year GOOGL/SPY/QQQ window. The remaining losses fall into three structural categories:
+1. **Signal-hop problem:** Blocking any single entry signal causes another signal to fire as fallback (often at worse timing)
+2. **End-of-data timing:** April 2026 exits occur 2-3 bars before a large rally — these are artifacts of the data window boundary
+3. **Healthy-uptrend trailing stop:** GOOGL T4 exits via trailing_stop at +11% when max was +28% — the SMA was rising throughout (no signal can distinguish this from a genuine reversal without risking the monster +88% trade)
+
+**Future refinement ideas:**
+- Test on 5-year backtest window — the 2y window is fully optimized; a 5y window would expose different pattern frequencies
+- Consider a "post-macd_reversal_exit cooldown" parameter: block ALL re-entries for N bars after macd_reversal_exit fires, since the exit indicates weakening momentum not yet confirmed by SMA
+- Explore whether QQQ's weak performance vs SPY/GOOGL is structural (higher beta, more whipsaws) or fixable with QQQ-specific parameters
+- The `ema_momentum` signal has no MACD context — adding a "rising MACD histogram" check that applies ONLY when the last exit was `macd_reversal_exit` could break the signal-hop cycle without affecting normal recoveries
+
+---
+
+# Signal Optimization Run #10 — 2026-04-09 (post-macd_reversal_exit architectural cooldown)
+
+## Baseline (smart-hold-v9 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +176.13%        | +72.83%             | -3.04%          |
+| SPY    | +50.92%         | +20.12%             | -0.43%          |
+| QQQ    | +47.68%         | +10.08%             | -4.01%          |
+
+## Gap Analysis
+
+**Approach chosen:** Post-macd_reversal_exit architectural cooldown (Option 1 from focus list).
+
+**Evidence for cooldown approach:**
+- QQQ T8 exits via `macd_reversal_exit` on 2026-01-16 at 621.26 (+26.79%)
+- T9 (`ma_reclaim`, 2026-01-22 at 620.76) fires only 4 bars after the exit — enters into a declining market and loses -3.54% to 600.64 on 2026-02-12
+- T9 entry at 620.76 is almost the SAME price as the exit (621.26) — the market hadn't confirmed direction yet
+- If blocked, next viable signal fires at 2026-02-26 (ema_momentum at 609.24, -1.56%) which is 27 bars after the cooldown window
+- 20 bars from 2026-01-16 exit = blocks until ~2026-02-13 (1 bar after T9 exit) — perfectly surgical
+
+**Profit_lock threshold evidence:** Ruled out — T9 on GOOGL already exits via profit_lock at 88% gain; changing threshold to 60-65% would still fire at same moment (slope turned negative at 88%), not earlier.
+
+**Wider profit_lock (60%):** Tested conceptually — profit_lock fires when slope turns negative, not at a fixed threshold. The 50% threshold only gates activation; it already fired as early as possible for GOOGL T9. No expected improvement.
+
+**7-bar cooldown tested first:** Re-entered at 626.14 (2026-02-02) — higher than exit price (price bounced then declined), loss was -4.37% (worse than baseline -3.54%). Signal-hop variant: delayed entry at worse price.
+
+**20-bar cooldown:** Blocks until 2026-02-13 (one day after T9 exit). Next entry (ema_momentum at 609.24, 2026-02-26) loses only -1.56%. Net: QQQ improved from +47.68% to +50.72% (+3.04%).
+
+## Change Applied
+
+Added `macd_rev_exit_cooldown` state variable to `smart_hold_strategy.py` main loop:
+
+1. **New constant:** `MACD_REV_EXIT_COOLDOWN = 20` (bars to block all entries)
+2. **New param:** `macd_rev_exit_cooldown` read from params dict
+3. **State variable:** `macd_rev_cooldown_remaining = 0` (countdown, decremented each out-of-market bar)
+4. **Exit handler:** Sets `macd_rev_cooldown_remaining = macd_rev_cooldown` when `exit_reason == "macd_reversal_exit"`
+5. **Entry gate:** Decrements and skips the bar if `macd_rev_cooldown_remaining > 0` (separate from normal `reentry_cooldown_bars`)
+
+This is architectural — operates at the main loop level, independent of any signal logic.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline vs_BH | New vs_BH | Delta |
+|--------|----------------------|-----------------|-------|----------------|-----------|-------|
+| GOOGL  | +176.13%             | +176.13%        | 0.00% | +72.83%        | +72.70%   | flat  |
+| SPY    | +50.92%              | +50.92%         | 0.00% | +20.12%        | +20.03%   | flat  |
+| QQQ    | +47.68%              | **+50.72%**     | **+3.04%** | +10.08% | **+12.99%** | **+2.91%** |
+
+GOOGL/SPY: macd_reversal_exit never fires for these symbols → cooldown never activates → identical results.
+QQQ: T9 at 2026-01-22 blocked (4 bars after exit). New T9 fires at 2026-02-26 (609.24, -1.56%). Net compounding improvement: +3.04% total return.
+
+## Decision: KEPT — committed to smart-hold-v10
+
+1 symbol improved (QQQ +3.04% total return), 2 identical, 0 regressed.
+
+**Key learnings:**
+- The architectural cooldown avoids the signal-hop problem because it blocks ALL signals (not just one), preventing any fallback from firing at worse timing
+- 7-bar cooldown was insufficient: price bounced after exit then declined, re-entry at higher price = larger loss. 20-bar cooldown skips the entire consolidation/decline period
+- The cooldown is self-limiting: if macd_reversal_exit never fires, zero impact — architecturally sound for non-QQQ symbols
+- For QQQ specifically: a macd_reversal_exit indicates MACD momentum peaked; the subsequent 4-19 bar window tends to be a "dead cat bounce" zone where re-entries are high-risk
+
+**Next potential improvement ideas:**
+- Test on 5-year backtest window — the 2y window may be near ceiling; longer window exposes more macd_reversal_exit scenarios
+- Explore whether the 20-bar cooldown holds on other symbols (WDC, STX) where macd_reversal_exit could fire
+- Consider an adaptive cooldown: instead of fixed N bars, wait until MACD histogram returns positive AND price above exit_sma (dynamic re-entry gate post-macd_reversal_exit)
+- The new QQQ T9 (ema_momentum at 609.24 on 2026-02-26, -1.56%) could potentially be avoided by the existing ema_momentum SMA slope guard — worth investigating

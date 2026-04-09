@@ -432,14 +432,17 @@ def run_smart_hold(
         bars_in += (exit_idx - entry_idx)
     time_in_market = round(bars_in / n * 100, 1) if n > 0 else 0.0
 
-    # Build SMA overlay for charting
+    # Build overlays for charting
     sma_overlay = []
     ema_overlay = []
+    rsi_overlay = []
     for j in range(n):
         if exit_sma_vals[j] is not None:
             sma_overlay.append({"time": candles[j]["date"], "value": round(exit_sma_vals[j], 4)})
         if fast_ema_vals[j] is not None:
             ema_overlay.append({"time": candles[j]["date"], "value": round(fast_ema_vals[j], 4)})
+        if rsi_vals[j] is not None:
+            rsi_overlay.append({"time": candles[j]["date"], "value": round(rsi_vals[j], 2)})
 
     result = {
         "symbol": p.get("symbol", ""),
@@ -488,8 +491,9 @@ def run_smart_hold(
         "end_of_data_exits": exit_counts.get("end_of_data", 0),
         "trade_log": trades,
         "overlays": [
-            {"label": f"SMA({exit_ma_period})", "color": "#FF9800", "data": sma_overlay},
-            {"label": f"EMA({fast_ma_period})", "color": "#2196F3", "data": ema_overlay},
+            {"label": f"SMA({exit_ma_period})", "color": "#FF9800", "type": "line", "points": sma_overlay},
+            {"label": f"EMA({fast_ma_period})", "color": "#2196F3", "type": "line", "points": ema_overlay},
+            {"label": "RSI(14)", "color": "#E040FB", "type": "rsi_panel", "points": rsi_overlay},
         ],
         "data_source": "Yahoo Finance",
         "disclaimer": "Past performance does not guarantee future results. For educational use only.",

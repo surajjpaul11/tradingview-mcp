@@ -533,6 +533,7 @@ body {
 </div>
 <div id="toolbar-buttons">
     <button id="vix-toggle" class="toolbar-btn" onclick="toggleVix()" style="display:none">VIX</button>
+    <button id="rsi-toggle" class="toolbar-btn" onclick="toggleRsi()" style="display:none">RSI</button>
     <button id="legend-toggle" class="toolbar-btn" onclick="toggleLegendPanel()">Legend</button>
     <button id="trade-log-toggle" class="toolbar-btn" onclick="toggleTradeLog()">Trade Log</button>
 </div>
@@ -700,8 +701,44 @@ if (MARKERS.length > 0) {
 const legendEl = document.getElementById('legend');
 let legendHTML = '';
 
+let rsiSeries = null;
+let rsiVisible = false;
+
 OVERLAYS.forEach(overlay => {
-    if (overlay.type === 'line' && overlay.points && overlay.points.length > 1) {
+    const pts = overlay.points || overlay.data || [];
+    const type = overlay.type || 'line';
+
+    if (type === 'rsi_panel' && pts.length > 1) {
+        document.getElementById('rsi-toggle').style.display = '';
+        rsiSeries = chart.addLineSeries({
+            color: overlay.color || '#E040FB',
+            lineWidth: 1,
+            lastValueVisible: true,
+            priceLineVisible: false,
+            crosshairMarkerVisible: true,
+            priceScaleId: 'rsi',
+            title: 'RSI(14)',
+            visible: false,
+        });
+        chart.priceScale('rsi').applyOptions({
+            scaleMargins: { top: 0.75, bottom: 0.0 },
+            borderVisible: true,
+            borderColor: '#E040FB',
+            textColor: '#E040FB',
+            visible: false,
+        });
+        rsiSeries.setData(pts);
+        // Reference lines
+        rsiSeries.createPriceLine({ price: 70, color: 'rgba(224,64,251,0.4)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Overbought' });
+        rsiSeries.createPriceLine({ price: 30, color: 'rgba(224,64,251,0.4)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Oversold' });
+        rsiSeries.createPriceLine({ price: 50, color: 'rgba(224,64,251,0.15)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+
+        if (overlay.label) {
+            legendHTML += '<div class="legend-item">' +
+                '<div class="legend-swatch" style="background:' + (overlay.color || '#E040FB') + '"></div>' +
+                '<span>' + overlay.label + '</span></div>';
+        }
+    } else if ((type === 'line' || type === 'default') && pts.length > 1) {
         const lineSeries = chart.addLineSeries({
             color: overlay.color || '#787b86',
             lineWidth: overlay.lineWidth || 2,
@@ -710,14 +747,14 @@ OVERLAYS.forEach(overlay => {
             priceLineVisible: false,
             crosshairMarkerVisible: false,
         });
-        lineSeries.setData(overlay.points);
+        lineSeries.setData(pts);
 
         if (overlay.label) {
             legendHTML += '<div class="legend-item">' +
                 '<div class="legend-swatch" style="background:' + overlay.color + '"></div>' +
                 '<span>' + overlay.label + '</span></div>';
         }
-    } else if (overlay.type === 'marker_points' && overlay.points && overlay.points.length > 0) {
+    } else if (type === 'marker_points' && pts.length > 0) {
         const ptSeries = chart.addLineSeries({
             color: 'rgba(0,0,0,0)',
             lineWidth: 0,
@@ -726,10 +763,9 @@ OVERLAYS.forEach(overlay => {
             crosshairMarkerVisible: false,
             pointMarkersVisible: false,
         });
-        ptSeries.setData(overlay.points);
+        ptSeries.setData(pts);
 
-        // Draw circle markers using the series markers API
-        const ptMarkers = overlay.points.map(p => ({
+        const ptMarkers = pts.map(p => ({
             time: p.time,
             position: 'inBar',
             color: overlay.color || '#FFFFFF',
@@ -747,6 +783,14 @@ OVERLAYS.forEach(overlay => {
         }
     }
 });
+
+function toggleRsi() {
+    if (!rsiSeries) return;
+    rsiVisible = !rsiVisible;
+    document.getElementById('rsi-toggle').classList.toggle('active', rsiVisible);
+    rsiSeries.applyOptions({ visible: rsiVisible });
+    chart.priceScale('rsi').applyOptions({ visible: rsiVisible });
+}
 
 legendEl.innerHTML = legendHTML;
 

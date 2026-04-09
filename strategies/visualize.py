@@ -62,6 +62,7 @@ def generate_chart_html(
     candles: list[dict],
     output_path: Path,
     strategy_versions: dict | None = None,
+    vix_candles: list[dict] | None = None,
 ) -> Path:
     """
     Generate a self-contained HTML chart file.
@@ -72,6 +73,7 @@ def generate_chart_html(
         candles: raw OHLCV candle list (from fetch_ohlcv())
         output_path: where to write the HTML file
         strategy_versions: optional dict of version tags to (label, description, type) tuples
+        vix_candles: optional VIX OHLCV candle list for VIX overlay
 
     Returns:
         Path to the written HTML file.
@@ -116,8 +118,8 @@ def generate_chart_html(
         "waterfall_to_channel": "#FF6D00",# deep orange (waterfall upgrade)
         # Smart Hold entries
         "initial_entry": "#26a69a",      # teal
-        "vix_extreme_fear": "#FF6D00",   # deep orange (fear buy)
-        "vix_fear_declining": "#FFB74D", # amber (fear declining buy)
+        "vix_extreme_fear": "#7C4DFF",   # purple (fear buy)
+        "vix_fear_declining": "#B388FF", # violet (fear declining buy)
         "ma_reclaim": "#4CAF50",         # green (trend resume)
         "rsi_oversold_bounce": "#2196F3",# blue (oversold bounce)
         "ema_momentum": "#00BCD4",       # cyan (momentum)
@@ -232,6 +234,12 @@ def generate_chart_html(
         for tag, (label, desc, mtype) in strategy_versions.items():
             versions_for_html[tag] = {"label": label, "description": desc, "type": mtype}
 
+    # Build VIX line data for overlay
+    vix_line_data = []
+    if vix_candles:
+        for vc in vix_candles:
+            vix_line_data.append({"time": vc["date"], "value": round(vc["close"], 2)})
+
     html = _HTML_TEMPLATE
     html = html.replace("__CANDLES_JSON__", json.dumps(candles_lw))
     html = html.replace("__MARKERS_JSON__", json.dumps(markers))
@@ -240,6 +248,7 @@ def generate_chart_html(
     html = html.replace("__META_JSON__", json.dumps(meta))
     html = html.replace("__TRADES_JSON__", json.dumps(trades))
     html = html.replace("__VERSIONS_JSON__", json.dumps(versions_for_html))
+    html = html.replace("__VIX_JSON__", json.dumps(vix_line_data))
 
     output_path.write_text(html, encoding="utf-8")
     return output_path
@@ -299,10 +308,15 @@ body {
 .stat-value.positive { color: #26a69a; }
 .stat-value.negative { color: #ef5350; }
 .stat-value.neutral  { color: #d1d4dc; }
-#trade-log-toggle {
+#toolbar-buttons {
     position: absolute;
     top: 12px;
     right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+.toolbar-btn {
     background: #2a2e39;
     color: #d1d4dc;
     border: 1px solid #363a45;
@@ -310,23 +324,9 @@ body {
     border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
-    z-index: 10;
 }
-#trade-log-toggle:hover { background: #363a45; }
-#legend-toggle {
-    position: absolute;
-    top: 12px;
-    right: 120px;
-    background: #2a2e39;
-    color: #4dd0e1;
-    border: 1px solid #363a45;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    z-index: 10;
-}
-#legend-toggle:hover { background: #363a45; color: #80deea; }
+.toolbar-btn:hover { background: #363a45; }
+.toolbar-btn.active { background: #363a45; border-color: #d1d4dc; }
 #legend-panel {
     display: none;
     position: absolute;
@@ -529,8 +529,11 @@ body {
     <h1 id="title"></h1>
     <div id="stats"></div>
 </div>
-<button id="legend-toggle" onclick="toggleLegendPanel()">&#9432; Legend</button>
-<button id="trade-log-toggle" onclick="toggleTradeLog()">Trade Log</button>
+<div id="toolbar-buttons">
+    <button id="vix-toggle" class="toolbar-btn" onclick="toggleVix()" style="display:none">VIX</button>
+    <button id="legend-toggle" class="toolbar-btn" onclick="toggleLegendPanel()">Legend</button>
+    <button id="trade-log-toggle" class="toolbar-btn" onclick="toggleTradeLog()">Trade Log</button>
+</div>
 <div id="chart-container">
     <div id="legend-panel">
         <h3>Chart Legend Reference</h3>
@@ -556,6 +559,7 @@ const OVERLAYS = __OVERLAYS_JSON__;
 const VOLUME = __VOLUME_JSON__;
 const META = __META_JSON__;
 const VERSIONS = __VERSIONS_JSON__;
+const VIX_DATA = __VIX_JSON__;
 
 // --- Time conversion ---
 function parseTime(dateStr) {
@@ -573,6 +577,7 @@ OVERLAYS.forEach(o => {
     if (o.points) o.points.forEach(p => p.time = parseTime(p.time));
 });
 VOLUME.forEach(v => v.time = parseTime(v.time));
+VIX_DATA.forEach(v => v.time = parseTime(v.time));
 
 // --- Header ---
 document.getElementById('title').textContent =
@@ -645,6 +650,44 @@ chart.priceScale('volume').applyOptions({
     scaleMargins: { top: 0.8, bottom: 0 },
 });
 volumeSeries.setData(VOLUME);
+
+// --- VIX Overlay (separate right price scale) ---
+let vixSeries = null;
+let vixVisible = false;
+if (VIX_DATA.length > 0) {
+    document.getElementById('vix-toggle').style.display = '';
+    vixSeries = chart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 2,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        priceScaleId: 'vix',
+        title: 'VIX',
+        visible: false,
+    });
+    chart.priceScale('vix').applyOptions({
+        scaleMargins: { top: 0.05, bottom: 0.3 },
+        borderVisible: true,
+        borderColor: '#FF9800',
+        textColor: '#FF9800',
+        visible: false,
+    });
+    vixSeries.setData(VIX_DATA);
+
+    // Add horizontal lines at key VIX levels
+    vixSeries.createPriceLine({ price: 25, color: 'rgba(255,152,0,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Exit Boost' });
+    vixSeries.createPriceLine({ price: 30, color: 'rgba(255,87,34,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Fear' });
+    vixSeries.createPriceLine({ price: 35, color: 'rgba(244,67,54,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Extreme' });
+}
+
+function toggleVix() {
+    if (!vixSeries) return;
+    vixVisible = !vixVisible;
+    document.getElementById('vix-toggle').classList.toggle('active', vixVisible);
+    vixSeries.applyOptions({ visible: vixVisible });
+    chart.priceScale('vix').applyOptions({ visible: vixVisible });
+}
 
 // --- Trade Markers ---
 if (MARKERS.length > 0) {
@@ -755,6 +798,11 @@ const ENTRY_NAMES = {
     'divergence_to_channel': 'Divergence \u2192 Channel',
     'waterfall_long': 'Waterfall Recovery Long', 'waterfall_short': 'Waterfall Short',
     'waterfall_to_channel': 'Waterfall \u2192 Channel',
+    // Smart Hold
+    'initial_entry': 'Initial Entry', 'vix_extreme_fear': 'VIX Extreme Fear',
+    'vix_fear_declining': 'VIX Fear Declining', 'ma_reclaim': 'MA Reclaim',
+    'rsi_oversold_bounce': 'RSI Oversold Bounce', 'ema_momentum': 'EMA Momentum',
+    'quick_reentry': 'Quick Re-entry',
 };
 
 const tradeLogBody = document.getElementById('trade-log-body');
@@ -816,80 +864,124 @@ function toggleVersionLegend() {
     body.innerHTML = html;
 })();
 
-// --- Legend Panel Content ---
+// --- Legend Panel Content (dynamic — built from all known marker types) ---
 (function buildLegendPanel() {
     const body = document.getElementById('legend-panel-body');
-    const entryAbbrevs = [
-        ['BUY CH-LONG',   'CH-LONG',  'Channel Long',        'Price bouncing off ascending channel support with bullish close. Requires volume, 2-bar confirmation, channel maturity, and SMA trend alignment.', 'v1 v8 v21 v25 v48'],
-        ['SHORT CH-SHORT','CH-SHORT', 'Channel Short',       'Price rejecting off descending channel resistance with bearish close. Requires SMA(200) filter and volume confirmation.', 'v3 v8'],
-        ['BUY BRK-UP',    'BRK-UP',   'Breakout Long',       'Price broke above upper channel boundary beyond breakout threshold. Captures explosive upside moves with ATR trailing stop.', 'v2'],
-        ['SHORT BRK-DN',  'BRK-DN',   'Breakout Short',      'Price broke below lower channel boundary beyond breakout threshold. Requires SMA(200) short filter.', 'v2 v3'],
-        ['BUY SMA',       'SMA',      'Fallback SMA',        'No channel active \u2014 price crossed above SMA(50) after cooldown. Keeps capital working during trendless periods.', 'v5'],
-        ['BUY RE-BRK',    'RE-BRK',   'Breakout Re-entry',   'Existing long broke above channel resistance. Position closed and re-opened at 200% to ride breakout momentum.', 'v2'],
-        ['SHORT BRK-SH',  'BRK-SH',   'Break Short',         'Long position flipped to short after convincing channel breakdown through support.', 'v2 v3'],
-        ['BUY SMA\u2192CH','SMA\u2192CH','SMA to Channel',   'Originally entered via SMA fallback, then a channel formed around the position. Upgraded to channel-based exit management.', 'v5 v1 v8 v21 v25 v48'],
-        ['BUY EARLY',    'EARLY',   'Poly-Low Entry',      'Polynomial through recent lows has positive slope + volume \u226580% of MA. 25% pre-channel exploratory long with ATR stop.', 'v49'],
-        ['BUY REV-UP',   'REV-UP',  'Sharp Reversal Long',  'Large bullish bar (\u22652x ATR) with high volume (\u22652x MA) after bearish bars. 25% speculative long with ATR stop.', 'v50'],
-        ['SHORT REV-DN', 'REV-DN',  'Sharp Reversal Short', 'Large bearish bar (\u22652x ATR) with high volume (\u22652x MA) after bullish bars. 25% speculative short with ATR stop.', 'v50'],
-        ['BUY DIV-UP',   'DIV-UP',  'Vol Divergence Long',  'Price dropping steeply with declining volume \u2014 bullish divergence. Enter long on reversal/sideways confirmation.', 'v51'],
-        ['SHORT DIV-DN', 'DIV-DN',  'Vol Divergence Short', 'Price rising steeply with declining volume \u2014 bearish divergence. Enter short on reversal/sideways confirmation.', 'v51'],
-        ['BUY EARLY\u2192CH','EARLY\u2192CH','Poly-Low\u2192Channel', 'Originally entered via poly-low entry, then ascending channel confirmed. Upgraded to 100% with channel management.', 'v49 v1 v8 v21 v25 v48'],
-        ['BUY REV\u2192CH',  'REV\u2192CH', 'Reversal\u2192Channel','Originally entered via sharp reversal, then channel confirmed in same direction. Upgraded to channel management.', 'v50 v1 v8 v21 v25 v48'],
-        ['BUY DIV\u2192CH',  'DIV\u2192CH', 'Divergence\u2192Channel','Originally entered via volume divergence, then channel confirmed in same direction. Upgraded to channel management.', 'v51 v1 v8 v21 v25 v48'],
-    ];
-    const exitAbbrevs = [
-        ['EXIT ATR-TS',  'ATR-TS', 'ATR Trailing Stop',   'Price hit ATR-based trailing stop. Longs: 2.0x ATR trail. Shorts: 1.5x ATR (tighter).', 'v2 (longs), v2 v23 (shorts)'],
-        ['EXIT CH-TS',   'CH-TS',  'Channel Trail Stop',  'In-channel trailing stop triggered after position reached +2% profit. Uses tighter 1.5x ATR.', 'v9'],
-        ['EXIT BRK-UP',  'BRK-UP', 'Breakout Up',         'Price broke above upper channel \u2014 closes existing long to re-enter bigger at 200%.', 'v2'],
-        ['EXIT BRK-DN',  'BRK-DN', 'Breakout Down',       'Price broke below lower channel. Protective exit for longs; may trigger short entry.', 'v2'],
-        ['EXIT CH-BRK',  'CH-BRK', 'Channel Break',       'Price violated channel boundary by more than tolerance but less than breakout threshold.', '\u2014'],
-        ['EXIT CH-FLIP', 'CH-FLIP','Channel Flip',         'Channel direction changed while position was open. Exits to avoid fighting the new trend.', '\u2014'],
-        ['EXIT CH-EXP',  'CH-EXP', 'Channel Expired',     'Channel expired and position was not profitable. Winners ride on with ATR trail (v10).', 'v10'],
-        ['EXIT TIME',    'TIME',   'Time Exit',            'Position held max bars (20) without reaching +1% profit. Frees capital for new opportunities.', '\u2014'],
-        ['EXIT SMA-X',   'SMA-X',  'Fallback SMA Exit',   'SMA-entered position closed when price dropped below SMA(50). Min 3-bar hold before exit.', 'v5 v32'],
-        ['EXIT EOD',     'EOD',    'End of Data',          'Backtest ended with open position. Force-closed at final price. Not a strategy signal.', '\u2014'],
-    ];
-    function versionPills(str, type) {
-        return str.split(' ').map(v => {
-            if (v.startsWith('v')) return '<span class="lp-vtag-pill ' + type + '">' + v + '</span>';
-            return '<span class="lp-vtag-plain">' + v + '</span>';
-        }).join('');
+
+    // Complete registry of all entry/exit types across all strategies
+    // Colors match the chart marker colors exactly (BUY_COLORS / SELL_COLORS / EXIT_COLORS in Python)
+    const ENTRY_REGISTRY = {
+        // Curved Channels — buy entries (green-blue shades)
+        'channel_long':          { abbrev: 'CH-LONG',    name: 'Channel Long',             desc: 'Price bouncing off ascending channel support with bullish close.', side: 'long', color: '#26a69a' },
+        'sma_to_channel':        { abbrev: 'SMA\u2192CH',name: 'SMA to Channel',           desc: 'SMA fallback entry upgraded to channel-based exit management.', side: 'long', color: '#26a69a' },
+        'fallback_sma':          { abbrev: 'SMA',        name: 'Fallback SMA',             desc: 'No channel active \u2014 price crossed above SMA(50) after cooldown.', side: 'long', color: '#4CAF50' },
+        'breakout_long':         { abbrev: 'BRK-UP',     name: 'Breakout Long',            desc: 'Price broke above upper channel boundary. Captures explosive upside moves.', side: 'long', color: '#00E676' },
+        'breakout_reentry':      { abbrev: 'RE-BRK',     name: 'Breakout Re-entry',        desc: 'Existing long broke above channel resistance. Re-opened at 200%.', side: 'long', color: '#00E676' },
+        'early_momentum':        { abbrev: 'EARLY',      name: 'Poly-Low Entry',           desc: 'Polynomial through recent lows has positive slope + volume. 25% exploratory long.', side: 'long', color: '#2196F3' },
+        'momentum_to_channel':   { abbrev: 'EARLY\u2192CH', name: 'Poly-Low \u2192 Channel', desc: 'Poly-low entry upgraded to channel management.', side: 'long', color: '#2196F3' },
+        'sharp_reversal_long':   { abbrev: 'REV-UP',     name: 'Sharp Reversal Long',      desc: 'Large bullish bar (\u22652x ATR) with high volume after bearish bars.', side: 'long', color: '#00BCD4' },
+        'reversal_to_channel':   { abbrev: 'REV\u2192CH',   name: 'Reversal \u2192 Channel', desc: 'Sharp reversal entry upgraded to channel management.', side: 'long', color: '#00BCD4' },
+        'vol_divergence_long':   { abbrev: 'DIV-UP',     name: 'Vol Divergence Long',      desc: 'Price dropping with declining volume \u2014 bullish divergence.', side: 'long', color: '#7C4DFF' },
+        'divergence_to_channel': { abbrev: 'DIV\u2192CH',   name: 'Divergence \u2192 Channel', desc: 'Volume divergence entry upgraded to channel management.', side: 'long', color: '#7C4DFF' },
+        'waterfall_long':        { abbrev: 'WF-UP',      name: 'Waterfall Recovery Long',  desc: 'Waterfall recovery entry on long side.', side: 'long', color: '#FF6D00' },
+        'waterfall_to_channel':  { abbrev: 'WF\u2192CH', name: 'Waterfall \u2192 Channel', desc: 'Waterfall entry upgraded to channel management.', side: 'long', color: '#FF6D00' },
+        // Curved Channels — short entries (red-orange shades)
+        'channel_short':         { abbrev: 'CH-SHORT',   name: 'Channel Short',            desc: 'Price rejecting off descending channel resistance with bearish close.', side: 'short', color: '#ef5350' },
+        'breakout_short':        { abbrev: 'BRK-DN',     name: 'Breakout Short',           desc: 'Price broke below lower channel boundary.', side: 'short', color: '#FF5722' },
+        'break_short':           { abbrev: 'BRK-SH',     name: 'Break Short',              desc: 'Long position flipped to short after channel breakdown.', side: 'short', color: '#FF9800' },
+        'sharp_reversal_short':  { abbrev: 'REV-DN',     name: 'Sharp Reversal Short',     desc: 'Large bearish bar (\u22652x ATR) with high volume after bullish bars.', side: 'short', color: '#E91E63' },
+        'vol_divergence_short':  { abbrev: 'DIV-DN',     name: 'Vol Divergence Short',     desc: 'Price rising with declining volume \u2014 bearish divergence.', side: 'short', color: '#AB47BC' },
+        'waterfall_short':       { abbrev: 'WF-DN',      name: 'Waterfall Short',          desc: 'Waterfall short entry.', side: 'short', color: '#D500F9' },
+        // Smart Hold entries (green-blue shades for buys)
+        'initial_entry':         { abbrev: 'INIT',       name: 'Initial Entry',            desc: 'Buy on first bar \u2014 start fully invested like buy & hold.', side: 'long', color: '#26a69a' },
+        'vix_extreme_fear':      { abbrev: 'VIX-FEAR',   name: 'VIX Extreme Fear',         desc: 'VIX \u2265 35 (extreme fear) + bullish candle. Peak panic buy signal.', side: 'long', color: '#7C4DFF' },
+        'vix_fear_declining':    { abbrev: 'VIX-DEC',    name: 'VIX Fear Declining',       desc: 'VIX \u2265 30 but declining from peak \u2014 fear is peaking, enter on reversal.', side: 'long', color: '#B388FF' },
+        'ma_reclaim':            { abbrev: 'MA-RCL',     name: 'MA Reclaim',               desc: 'Price reclaimed SMA with consecutive closes above + rising fast EMA.', side: 'long', color: '#4CAF50' },
+        'rsi_oversold_bounce':   { abbrev: 'RSI-BNC',    name: 'RSI Oversold Bounce',      desc: 'RSI crossed back above 30 (oversold) with bullish candle.', side: 'long', color: '#2196F3' },
+        'ema_momentum':          { abbrev: 'EMA-MOM',    name: 'EMA Momentum',             desc: 'Price above rising fast EMA for 2+ bars \u2014 momentum re-entry.', side: 'long', color: '#00BCD4' },
+        'quick_reentry':         { abbrev: 'QUICK',      name: 'Quick Re-entry',           desc: 'Fast re-entry after brief exit when trend resumes quickly.', side: 'long', color: '#7C4DFF' },
+    };
+    const EXIT_REGISTRY = {
+        // Curved Channels exits (red-orange-yellow shades)
+        'atr_trailing_stop':     { abbrev: 'ATR-TS',     name: 'ATR Trailing Stop',        desc: 'Price hit ATR-based trailing stop.', color: '#ef5350' },
+        'channel_trail_stop':    { abbrev: 'CH-TS',      name: 'Channel Trail Stop',       desc: 'In-channel trailing stop after +2% profit.', color: '#FF7043' },
+        'breakout_up':           { abbrev: 'BRK-UP',     name: 'Breakout Up',              desc: 'Price broke above upper channel \u2014 exit to re-enter at higher size.', color: '#FF5722' },
+        'breakout_down':         { abbrev: 'BRK-DN',     name: 'Breakout Down',            desc: 'Price broke below lower channel.', color: '#FF5722' },
+        'channel_break':         { abbrev: 'CH-BRK',     name: 'Channel Break',            desc: 'Price violated channel boundary beyond tolerance.', color: '#FF9800' },
+        'channel_flip':          { abbrev: 'CH-FLIP',    name: 'Channel Flip',             desc: 'Channel direction changed while position was open.', color: '#FF9800' },
+        'channel_expired':       { abbrev: 'CH-EXP',     name: 'Channel Expired',          desc: 'Channel expired and position was not profitable.', color: '#FFD54F' },
+        'time_exit':             { abbrev: 'TIME',        name: 'Time Exit',                desc: 'Position held max bars without reaching profit target.', color: '#FFAB40' },
+        'fallback_sma_exit':     { abbrev: 'SMA-X',      name: 'Fallback SMA Exit',        desc: 'SMA-entered position closed when price dropped below SMA.', color: '#FFAB40' },
+        'end_of_data':           { abbrev: 'EOD',         name: 'End of Data',              desc: 'Backtest ended with open position. Force-closed at final price.', color: '#BDBDBD' },
+        // Smart Hold exits (red-orange shades)
+        'ma_breakdown':          { abbrev: 'MA-BRK',     name: 'MA Breakdown',             desc: 'Confirmed close below SMA with declining slope + EMA below SMA. Adaptive to volatility.', color: '#ef5350' },
+        'vix_accelerated_exit':  { abbrev: 'VIX-X',      name: 'VIX Accelerated Exit',     desc: 'MA breakdown exit triggered 1 bar faster due to elevated VIX (\u2265 25).', color: '#FF7043' },
+        'trailing_stop':         { abbrev: 'TRAIL',       name: 'Trailing Stop',            desc: 'ATR trailing stop hit \u2014 catastrophic drop protection (6x ATR from peak).', color: '#FF5722' },
+    };
+
+    // Find which entry/exit types actually appear in the trade log
+    const usedEntries = new Set();
+    const usedExits = new Set();
+    TRADE_LOG.forEach(t => {
+        if (t.entry_reason) usedEntries.add(t.entry_reason);
+        if (t.exit_reason) usedExits.add(t.exit_reason);
+    });
+
+    // Helper: convert hex color to rgba for background tint
+    function hexToRgba(hex, alpha) {
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
+
+    // Build entry table (only showing types that appear in this chart's trades)
     let html = '<h4>Entry Markers</h4>' +
-        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th><th>Versions</th></tr>';
-    entryAbbrevs.forEach(r => {
-        const isBuy = r[0].startsWith('BUY');
-        const markerCls = isBuy ? 'buy' : 'sell';
+        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th></tr>';
+    usedEntries.forEach(key => {
+        const info = ENTRY_REGISTRY[key];
+        if (!info) return;
+        const prefix = info.side === 'long' ? 'BUY' : 'SHORT';
+        const c = info.color;
         html += '<tr>' +
-            '<td><span class="lp-marker ' + markerCls + '">' + r[0] + '</span></td>' +
-            '<td><span class="lp-abbrev entry">' + r[1] + '</span></td>' +
-            '<td class="lp-name">' + r[2] + '</td>' +
-            '<td class="lp-desc">' + r[3] + '</td>' +
-            '<td>' + versionPills(r[4], 'entry') + '</td></tr>';
-    });
-    html += '</table><h4>Exit Markers</h4>' +
-        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th><th>Versions</th></tr>';
-    exitAbbrevs.forEach(r => {
-        html += '<tr>' +
-            '<td><span class="lp-marker sell">' + r[0] + '</span></td>' +
-            '<td><span class="lp-abbrev exit">' + r[1] + '</span></td>' +
-            '<td class="lp-name">' + r[2] + '</td>' +
-            '<td class="lp-desc">' + r[3] + '</td>' +
-            '<td>' + versionPills(r[4], 'exit') + '</td></tr>';
-    });
-    html += '</table><h4>Strategy Version Tags</h4>' +
-        '<table><tr><th>Tag</th><th>Label</th><th>Type</th><th>Description</th></tr>';
-    const tags = Object.keys(VERSIONS).sort((a, b) => parseInt(a.replace('v',''),10) - parseInt(b.replace('v',''),10));
-    tags.forEach(tag => {
-        const v = VERSIONS[tag];
-        const typeCls = (v.type === 'exit_type') ? 'exit' : 'entry';
-        html += '<tr>' +
-            '<td><span class="lp-vtag-pill ' + typeCls + '">' + tag + '</span></td>' +
-            '<td class="lp-name">' + v.label + '</td>' +
-            '<td class="lp-vtype">' + v.type.replace(/_/g,' ') + '</td>' +
-            '<td class="lp-desc">' + v.description + '</td></tr>';
+            '<td><span class="lp-marker" style="background:' + hexToRgba(c, 0.15) + ';color:' + c + '">' + prefix + ' ' + info.abbrev + '</span></td>' +
+            '<td><span class="lp-abbrev" style="color:' + c + '">' + info.abbrev + '</span></td>' +
+            '<td class="lp-name">' + info.name + '</td>' +
+            '<td class="lp-desc">' + info.desc + '</td></tr>';
     });
     html += '</table>';
+
+    // Build exit table
+    html += '<h4>Exit Markers</h4>' +
+        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th></tr>';
+    usedExits.forEach(key => {
+        const info = EXIT_REGISTRY[key];
+        if (!info) return;
+        const c = info.color;
+        html += '<tr>' +
+            '<td><span class="lp-marker" style="background:' + hexToRgba(c, 0.15) + ';color:' + c + '">EXIT ' + info.abbrev + '</span></td>' +
+            '<td><span class="lp-abbrev" style="color:' + c + '">' + info.abbrev + '</span></td>' +
+            '<td class="lp-name">' + info.name + '</td>' +
+            '<td class="lp-desc">' + info.desc + '</td></tr>';
+    });
+    html += '</table>';
+
+    // Version tags (if any)
+    const tags = Object.keys(VERSIONS).sort((a, b) => parseInt(a.replace('v',''),10) - parseInt(b.replace('v',''),10));
+    if (tags.length > 0) {
+        html += '<h4>Strategy Version Tags</h4>' +
+            '<table><tr><th>Tag</th><th>Label</th><th>Type</th><th>Description</th></tr>';
+        tags.forEach(tag => {
+            const v = VERSIONS[tag];
+            const typeCls = (v.type === 'exit_type') ? 'exit' : 'entry';
+            html += '<tr>' +
+                '<td><span class="lp-vtag-pill ' + typeCls + '">' + tag + '</span></td>' +
+                '<td class="lp-name">' + v.label + '</td>' +
+                '<td class="lp-vtype">' + v.type.replace(/_/g,' ') + '</td>' +
+                '<td class="lp-desc">' + v.description + '</td></tr>';
+        });
+        html += '</table>';
+    }
     body.innerHTML = html;
 })();
 

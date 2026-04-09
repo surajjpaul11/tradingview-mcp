@@ -58,8 +58,8 @@
   "period": "2y",
   "interval": "1d",
   "candles_analyzed": 730,
-  "date_from": "2024-04-08",
-  "date_to": "2026-04-08",
+  "date_from": "2024-04-09",
+  "date_to": "2026-04-09",
   "initial_capital": 10000.0,
   "commission_pct": 0.1,
   "slippage_pct": 0.05,
@@ -88,8 +88,8 @@
   "profit_factor": 4.75,
   "sharpe_ratio": 8.08,
   "expectancy_pct": 3.62,
-  "buy_and_hold_return_pct": 0.01,
-  "vs_buy_and_hold_pct": 65.1,
+  "buy_and_hold_return_pct": 2.9,
+  "vs_buy_and_hold_pct": 62.21,
   "trade_log": [
     {
       "entry_date": "2024-04-24",
@@ -436,22 +436,22 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-08T06:12:38.291680+00:00",
+  "timestamp": "2026-04-09T02:57:20.829375+00:00",
   "bnh_markers": [
     {
-      "time": "2024-04-08",
+      "time": "2024-04-09",
       "position": "belowBar",
       "color": "#FFD700",
       "shape": "arrowUp",
-      "text": "B&H BUY $71,631.36",
+      "text": "B&H BUY $69,139.02",
       "size": 3
     },
     {
-      "time": "2026-04-08",
+      "time": "2026-04-09",
       "position": "aboveBar",
       "color": "#FFD700",
       "shape": "arrowDown",
-      "text": "B&H $71,638.57 (+0.01%)",
+      "text": "B&H $71,143.92 (+2.90%)",
       "size": 3
     }
   ]

@@ -354,7 +354,7 @@ def run_smart_hold(
                                     # Additional check: fast EMA must also be below SMA
                                     if fast_ema_vals[i] is not None and fast_ema_vals[i] < exit_sma_vals[i]:
                                         # For high-vol: also require 200 SMA declining (true bear market)
-                                        if vol_label == "high" and sma_200_vals[i] is not None and i >= 10:
+                                        if vol_label == "high" and sma_200_vals[i] is not None and i >= 10 and sma_200_vals[i - 10] is not None:
                                             sma200_slope = sma_200_vals[i] - sma_200_vals[i - 10]
                                             if sma200_slope >= 0:
                                                 # 200 SMA still rising — skip exit, just a pullback
@@ -603,6 +603,15 @@ def main():
         json.dump(json_result, f, indent=2)
     print(f"  Full results saved to: {fname}\n")
 
+    # Save VIX data locally for reuse across strategies
+    if vix_candles:
+        vix_data_dir = script_dir.parent / "data"
+        vix_data_dir.mkdir(exist_ok=True)
+        vix_path = vix_data_dir / f"vix_{args.period}.json"
+        with open(vix_path, "w") as f:
+            json.dump(vix_candles, f, indent=2)
+        print(f"  VIX data saved to: {vix_path}")
+
     if args.chart:
         # Import the shared visualizer
         strategies_dir = script_dir.parent
@@ -610,7 +619,7 @@ def main():
         from strategies.visualize import generate_chart_html
 
         chart_path = script_dir / f"smart_hold_chart_{args.symbol.replace('-', '_')}_{args.period}.html"
-        generate_chart_html(result=result, candles=candles, output_path=chart_path)
+        generate_chart_html(result=result, candles=candles, output_path=chart_path, vix_candles=vix_candles)
         print(f"  Chart saved to: {chart_path}\n")
 
 

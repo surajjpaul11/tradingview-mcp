@@ -8,6 +8,7 @@ Order matters: first matching entry signal wins.
 from .entries import (
     vix_extreme_fear,
     vix_fear_declining,
+    fast_reentry,  # v2: added close > exit_sma guard + bars_since_exit >= 3 + vix_decline threshold 8.0
     ma_reclaim,
     rsi_oversold_bounce,
     # volume_capitulation,  # DISABLED: catches false bottoms in 2y backtest
@@ -24,6 +25,7 @@ from .exits import (
 ENTRY_SIGNALS = [
     vix_extreme_fear,
     vix_fear_declining,
+    fast_reentry,  # v2: see import note above
     ma_reclaim,
     rsi_oversold_bounce,
     # volume_capitulation,

@@ -1514,3 +1514,121 @@ if i >= 20 and sma_200_vals[i] is not None and sma_200_vals[i - 20] is not None:
 - rsi_oversold_bounce was added to bear regime exemptions (same as v15): it fires at oversold levels and benefits from the bear context, unlike ema_momentum which can fire at false breakouts
 
 **Architecture note:** The gate uses the same design pattern as `macd_rev_exit_cooldown` — an engine-level state variable that controls the entry evaluation loop. Zero changes to signal files.
+
+---
+
+# Signal Optimization Run #17 — 2026-04-10 (vix_recovery_below_sma)
+
+## Baseline (smart-hold-v13 state, 2y window, fresh 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +197.73%        | +93.75%             | 0.0%            |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+### A) Missed upside (5+ bars out, price rose >3%)
+No new unaddressed gaps — all major missed-upside gaps handled in prior runs.
+
+### B) Premature exits (price up >2% within 3 bars)
+Same as Run #14 analysis: remaining premature exits are structurally unblockable
+(VIX exits with negative MACD or dist>-3%; trailing stop gap for GOOGL T4).
+
+### C) Signal gap: fast_reentry vs below-SMA VIX recoveries
+
+`fast_reentry` (committed in v5) requires `close > exit_sma` to prevent below-SMA
+re-entries in structural downtrends (the root cause of QQQ regression in Run #1).
+However, this creates a gap: after a VIX spike exit, when price recovers above the
+fast EMA but is still below the slower SMA, no signal captures this sub-SMA recovery.
+
+**Identified instances (2y window):**
+
+| Symbol | Exit date | Exit price | New entry | Entry price | Gap | Improvement |
+|--------|-----------|------------|-----------|-------------|-----|-------------|
+| GOOGL  | 2025-04-23 | 155.35 (vix_accel) | 2025-04-28 | 160.61 | 3 bars early vs fast_reentry at 164.03 | +3.42 entry price improvement |
+| SPY    | 2024-08-07 | 518.66 (vix_accel) | 2024-08-12 | 533.27 | Same bar as ema_momentum (neutral) | 0.00 |
+| QQQ    | 2024-08-06 | 439.53 (vix_accel) | 2024-08-13 | 462.58 | Same bar as ema_momentum (neutral) | 0.00 |
+
+**Root cause of GOOGL improvement:** GOOGL T7 exits vix_accel on 2025-04-23 at 155.35.
+By 2025-04-28 (3 bars later), fast EMA is rising for 2 consecutive bars, price (160.61)
+is above EMA, RSI=52.8, VIX=25.15 (down 26.85pts from peak ~52) — all conditions met
+except close > exit_sma (SMA≈164). fast_reentry requires SMA reclaim, so doesn't fire
+until 2025-05-02 at 164.03 (above SMA). The 3-bar, 2.1% better entry on the +88%
+profit_lock trade compounds to +6.35pp improvement.
+
+**Root cause of SPY/QQQ neutrality:** In both August 2024 scenarios, the EMA was not
+rising for 2 consecutive bars until the same bar that ema_momentum fires. The VIX spike
+caused the EMA to decline for 1-2 bars after the exit, then reverse — so the 2-bar
+consecutive rising EMA condition wasn't met until the existing ema_momentum entry bar.
+
+**false_breakdown_reclaim re-evaluation:** Also tested re-enabling false_breakdown_reclaim
+(disabled in v3) since `reentry_ma_reclaim=5` is now active (was 2 at v3 testing).
+FBR would need to fire within 5 bars of a ma_breakdown exit AND have 2 bars above SMA.
+QQQ T2 (ma_breakdown 2024-09-05): SMA not crossed until bar 5 from exit (2024-09-12),
+FBR would need bar 6 (2024-09-13) for 2 consecutive bars above SMA — outside FBR window.
+FBR confirmed neutral for 2y window even with reentry_ma_reclaim=5.
+
+## Signal Created: `vix_recovery_below_sma`
+
+**File:** `strategies/smart_hold/signals/entries/vix_recovery_below_sma.py`
+
+**Logic:** Fire when:
+1. Last exit was `vix_accelerated_exit` — same as fast_reentry
+2. bars_since_exit >= 3 — avoid too-early bounces
+3. VIX dropped >= 8pt from peak — same normalization as fast_reentry
+4. VIX now below vix_fear_entry threshold (fear genuinely subsiding)
+5. close <= exit_sma — COMPLEMENTARY to fast_reentry (which requires close > exit_sma)
+6. fast EMA rising for 2 consecutive bars — sustained momentum reversal, not single-bar spike
+7. close > fast_ema — price above the fast EMA (short-term trend has turned)
+8. RSI in [40, 65] — recovery zone, not oversold or overbought
+9. in_chop bypass — same rationale as fast_reentry: VIX-spike exits cause natural chop, not structural
+
+**Registry position:** After `fast_reentry`, before `ma_reclaim`. Mutually exclusive with
+fast_reentry by the SMA condition (one checks close > SMA, other checks close <= SMA).
+
+**Registered:** Added to registry.py ENTRY_SIGNALS list.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline vs_BH | New vs_BH | Delta |
+|--------|----------------------|-----------------|-------|----------------|-----------|-------|
+| GOOGL  | +197.73%             | **+204.08%**    | **+6.35%** | +93.75%   | **+100.10%** | **+6.35pp** |
+| SPY    | +63.60%              | +63.60%         | 0.00% | +31.35%        | +31.35%   | 0.00% |
+| QQQ    | +65.42%              | +65.42%         | 0.00% | +26.23%        | +26.23%   | 0.00% |
+
+**GOOGL trade changes:**
+- T8 (formerly fast_reentry 2025-05-02 at 164.03): now enters via vix_recovery_below_sma 2025-04-28 at 160.61
+- Same profit_lock exit at 309.00 on 2026-02-12
+- Return: 92.09% net vs 88.08% net — +4.01pp on this trade, +6.35pp compounded total return
+
+**SPY:** vix_recovery_below_sma fires on 2024-08-12 at 533.27 (same bar/price as ema_momentum) — 0 change
+**QQQ:** vix_recovery_below_sma fires on 2024-08-13 at 462.58 (same bar/price as ema_momentum) — 0 change
+
+## Decision: KEPT — committed to smart-hold-v17
+
+1 symbol improved (GOOGL +6.35pp vs_BH), 2 neutral, 0 regressed. Precedent from v9/v10
+(1 improved, 2 neutral = KEPT). GOOGL passes 100% vs_BH for the first time.
+
+**Key learnings:**
+- fast_reentry's close > exit_sma guard (added in v5 to fix QQQ regression) leaves a
+  genuine gap for below-SMA recoveries after VIX spikes. This signal fills that gap.
+- The 2-bar consecutive EMA rising condition is the critical precision filter: prevents
+  single-bar dead-cat bounces from firing, and naturally aligns the signal with the first
+  genuine momentum recovery bar.
+- The signal is architecturally mutually exclusive with fast_reentry: by the SMA condition,
+  they cannot fire on the same bar for the same symbol — zero signal-hop risk.
+- SPY and QQQ saw the signal fire at identical bars as ema_momentum (neutral) because their
+  VIX spikes resulted in slower EMA recoveries (2-bar consecutive rising not met until
+  ema_momentum bar) vs GOOGL's faster EMA reversal (met 3 bars before SMA reclaim).
+
+**Next potential improvement ideas:**
+- Test on 5-year backtest window — more VIX spike recovery scenarios may be exposed
+- Consider whether the RSI lower bound [40] should be [38] or [42] — tested cases had RSI 43-53 at firing
+- QQQ's remaining losses (T8: -1.56%, T9: -0.49% post-macd_reversal_exit cooldown) remain
+  structurally difficult — ema_momentum below-SMA entries during declining market confirmed
+  infeasible to block without causing signal-hop at worse prices (Run #14 analysis)
+- The trailing stop gap (GOOGL T4: peaked at +27.8%, exited at +10.95%) remains open;
+  ATR-based tightening was rejected in Run #14 (SPY/QQQ regression). A percentage-from-
+  peak-gain approach was not formally coded — could be worth testing.

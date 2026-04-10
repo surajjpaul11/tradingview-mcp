@@ -1,5 +1,5 @@
 """
-Hyperbolic Runner Strategy v1
+Hyperbolic Runner Strategy v2
 ==============================
 Designed for stocks making explosive multi-hundred-percent moves (e.g., SNDK, WULF).
 
@@ -50,6 +50,11 @@ CONSOLIDATION_ATR_BARS = 5
 
 COOLDOWN_AFTER_LOSS = 20
 COOLDOWN_AFTER_WIN = 5
+
+# Pyramid parameters (v2)
+PYRAMID_ADD_SIZE = 0.5     # Each pyramid add = 50% of base allocation
+MAX_PYRAMID_SIZE = 1.5     # Max total_size (base 1.0 + one add of 0.5)
+PYRAMID_COOLDOWN = 5       # Bars between pyramid adds
 
 CLUSTER_MOVE_PCT = 10.0    # What counts as a "big move" for cluster detection
 CLUSTER_WINDOW = 30        # Bars to look back for cluster detection
@@ -193,6 +198,7 @@ def run_hyperbolic_runner(
     cooldown_win = p.get("cooldown_after_win", COOLDOWN_AFTER_WIN)
 
     closes = [c["close"] for c in candles]
+    volumes = [c["volume"] for c in candles]
     n = len(candles)
 
     # Compute indicators
@@ -201,6 +207,7 @@ def run_hyperbolic_runner(
     rsi_vals = calc_rsi(closes, rsi_period)
     atr_vals = calc_atr(candles, atr_period)
     macd_line_vals, macd_signal_vals = calc_macd(closes, 12, 26, 9)
+    vol_sma_vals = sma(volumes, 20)  # 20-bar volume MA for pyramid/exit signals
 
     # Compute median ATR for consolidation detection
     valid_atrs = [a for a in atr_vals if a is not None]
@@ -209,6 +216,10 @@ def run_hyperbolic_runner(
         median_atr = sorted_atrs[len(sorted_atrs) // 2]
     else:
         median_atr = 1.0
+
+    pyramid_add_size = p.get("pyramid_add_size", PYRAMID_ADD_SIZE)
+    max_pyramid_size = p.get("max_pyramid_size", MAX_PYRAMID_SIZE)
+    pyramid_cooldown = p.get("pyramid_cooldown", PYRAMID_COOLDOWN)
 
     # State — do NOT enter on first bar (unlike Smart Hold)
     warmup = max(fast_ema_period, slow_sma_period, rsi_period) + 1
@@ -220,6 +231,13 @@ def run_hyperbolic_runner(
     bars_since_exit = 999
     last_trade_was_win = False
 
+    # Pyramid state (v2)
+    total_size = 1.0           # Current position size multiplier (1.0 = base)
+    weighted_entry_price = 0.0 # Weighted average cost basis (used for trailing stop reference)
+    pyramid_lots: list[dict] = []  # Each lot: {"size": float, "price": float}
+    pyramid_count = 0          # Adds fired this trade
+    bars_since_pyramid = 999   # Bars since last pyramid add (for cooldown)
+
     trades: list[dict] = []
     capital = initial_capital
     cost_pct = (commission + slippage) * 100  # as percent
@@ -227,15 +245,16 @@ def run_hyperbolic_runner(
     exit_counts = {
         "hard_breakdown": 0,
         "trailing_stop": 0,
+        "volume_momentum_exit": 0,
         "end_of_data": 0,
     }
 
     # Import signal registry
     try:
-        from strategies.hyperbolic_runner.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS
+        from strategies.hyperbolic_runner.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS, PYRAMID_SIGNALS
     except ImportError:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-        from strategies.hyperbolic_runner.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS
+        from strategies.hyperbolic_runner.signals.registry import ENTRY_SIGNALS, EXIT_SIGNALS, PYRAMID_SIGNALS
 
     for i in range(1, n):
         c = candles[i]
@@ -251,6 +270,7 @@ def run_hyperbolic_runner(
             "exit_sma_vals": exit_sma_vals,
             "rsi_vals": rsi_vals,
             "atr_vals": atr_vals,
+            "vol_sma_vals": vol_sma_vals,
             "macd_line": macd_line_vals,
             "macd_signal": macd_signal_vals,
             "params": p,
@@ -259,6 +279,11 @@ def run_hyperbolic_runner(
             "peak_price": peak_price,
             "in_position": in_position,
             "entry_price": entry_price if in_position else None,
+            "entry_date": entry_date if in_position else "",
+            "weighted_entry_price": weighted_entry_price if in_position else None,
+            "total_size": total_size,
+            "pyramid_count": pyramid_count,
+            "bars_since_pyramid": bars_since_pyramid,
             "bars_since_exit": bars_since_exit,
             "trades": trades,
         }
@@ -285,6 +310,12 @@ def run_hyperbolic_runner(
                     entry_date = date
                     entry_reason = sig.METADATA["name"]
                     peak_price = close
+                    # Reset pyramid state for new trade
+                    total_size = 1.0
+                    weighted_entry_price = close
+                    pyramid_lots = [{"size": 1.0, "price": close}]
+                    pyramid_count = 0
+                    bars_since_pyramid = 999
                     break
 
         else:
@@ -293,6 +324,25 @@ def run_hyperbolic_runner(
                 peak_price = close
 
             ctx["peak_price"] = peak_price
+            bars_since_pyramid += 1
+
+            # Pyramid evaluation — scale into position on momentum surges (v2)
+            if total_size < max_pyramid_size:
+                ctx["bars_since_pyramid"] = bars_since_pyramid
+                ctx["weighted_entry_price"] = weighted_entry_price
+                ctx["total_size"] = total_size
+                for sig in PYRAMID_SIGNALS:
+                    if sig.check(ctx):
+                        # Add new lot: track it separately for correct P&L
+                        pyramid_lots.append({"size": pyramid_add_size, "price": close})
+                        new_size = total_size + pyramid_add_size
+                        weighted_entry_price = (weighted_entry_price * total_size + close * pyramid_add_size) / new_size
+                        total_size = new_size
+                        pyramid_count += 1
+                        bars_since_pyramid = 0
+                        ctx["weighted_entry_price"] = weighted_entry_price
+                        ctx["total_size"] = total_size
+                        break
 
             # Evaluate exit signals (first match wins)
             exit_signal = False
@@ -305,8 +355,19 @@ def run_hyperbolic_runner(
                     break
 
             if exit_signal:
-                gross_ret = (close - entry_price) / entry_price * 100
-                net_ret = gross_ret - cost_pct * 2
+                # P&L sums each lot's profit relative to the base (first lot) capital.
+                # This correctly credits pyramid adds as ADDITIONAL profit on top of the base:
+                #   base lot: (exit - entry) / entry * 100%
+                #   pyramid lot (size 0.5): 0.5 * (exit - add_price) / entry * 100%
+                # So a profitable pyramid add INCREASES total return (as expected).
+                base_price = pyramid_lots[0]["price"] if pyramid_lots else entry_price
+                gross_ret = sum(
+                    lot["size"] * (close - lot["price"]) / base_price * 100
+                    for lot in pyramid_lots
+                ) if pyramid_lots else (close - entry_price) / entry_price * 100
+                # Costs: 2x commission/slippage for base entry+exit, plus 1x per pyramid add (open only)
+                total_cost = cost_pct * 2 + pyramid_count * cost_pct
+                net_ret = gross_ret - total_cost
                 capital *= (1 + net_ret / 100)
 
                 last_trade_was_win = net_ret > 0
@@ -314,6 +375,7 @@ def run_hyperbolic_runner(
                 trades.append({
                     "entry_date": entry_date,
                     "entry_price": round(entry_price, 2),
+                    "weighted_entry_price": round(weighted_entry_price, 2),
                     "exit_date": date,
                     "exit_price": round(close, 2),
                     "side": "long",
@@ -321,13 +383,21 @@ def run_hyperbolic_runner(
                     "exit_reason": exit_reason,
                     "return_pct": round(net_ret, 2),
                     "gross_return_pct": round(gross_ret, 2),
-                    "cost_pct": round(-cost_pct * 2, 2),
-                    "strategy": "hyperbolic_runner",
+                    "cost_pct": round(-total_cost, 2),
+                    "pyramid_adds": pyramid_count,
+                    "final_size": round(total_size, 2),
+                    "strategy": "hyperbolic_runner_v2",
                 })
                 exit_counts[exit_reason] = exit_counts.get(exit_reason, 0) + 1
 
                 in_position = False
                 bars_since_exit = 0
+                # Reset pyramid state
+                total_size = 1.0
+                weighted_entry_price = 0.0
+                pyramid_lots = []
+                pyramid_count = 0
+                bars_since_pyramid = 999
 
     # ── Compute metrics ──
     bh_ret = (candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100
@@ -388,10 +458,11 @@ def run_hyperbolic_runner(
 
     result = {
         "symbol": p.get("symbol", ""),
-        "strategy": "hyperbolic_runner",
+        "strategy": "hyperbolic_runner_v2",
         "strategy_label": (
-            f"Hyperbolic Runner v1 (EMA={fast_ema_period}, SMA={slow_sma_period}, "
+            f"Hyperbolic Runner v2 (EMA={fast_ema_period}, SMA={slow_sma_period}, "
             f"ATR trail={p.get('atr_mult', ATR_MULT)}x, "
+            f"Pyramid add={pyramid_add_size}x up to {max_pyramid_size}x, "
             f"Cooldown loss={cooldown_loss}/win={cooldown_win})"
         ),
         "parameters": {
@@ -438,6 +509,7 @@ def run_hyperbolic_runner(
         "max_drawdown_pct": round(max_dd, 2),
         "time_in_market_pct": time_in_market,
         "hard_breakdown_exits": exit_counts.get("hard_breakdown", 0),
+        "volume_momentum_exits": exit_counts.get("volume_momentum_exit", 0),
         "trailing_stop_exits": exit_counts.get("trailing_stop", 0),
         "end_of_data_exits": exit_counts.get("end_of_data", 0),
         "trade_log": trades,
@@ -472,7 +544,7 @@ def main():
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
-    print(f"  Hyperbolic Runner Strategy v1 — {args.symbol}")
+    print(f"  Hyperbolic Runner Strategy v2 — {args.symbol}")
     print(f"  Fast EMA: {args.fast_ema}  |  Slow SMA: {args.slow_sma}")
     print(f"  ATR Trail: {args.atr_mult}x  |  Cooldown: loss={args.cooldown_loss} / win={args.cooldown_win} bars")
     print(f"{'='*60}")
@@ -523,12 +595,13 @@ def main():
     print(f"  Profit Factor:    {result['profit_factor']}")
     print(f"  Sharpe Ratio:     {result['sharpe_ratio']}")
     print(f"  Max Drawdown:     {result['max_drawdown_pct']}%")
-    print(f"  Exits:            Hard Breakdown: {result['hard_breakdown_exits']}  |  Trailing Stop: {result['trailing_stop_exits']}  |  EOD: {result['end_of_data_exits']}")
+    print(f"  Exits:            Hard Breakdown: {result['hard_breakdown_exits']}  |  Vol Momentum: {result['volume_momentum_exits']}  |  Trailing Stop: {result['trailing_stop_exits']}  |  EOD: {result['end_of_data_exits']}")
     print(f"\n  Trade Log:")
     for t in result["trade_log"]:
+        pyramid_tag = f" [+{t['pyramid_adds']}x pyramid]" if t.get("pyramid_adds", 0) > 0 else ""
         print(f"    LONG  {t['entry_date']} -> {t['exit_date']}  "
               f"${t['entry_price']:>10,.2f} -> ${t['exit_price']:>10,.2f}  "
-              f"{t['return_pct']:+7.2f}%  [{t['exit_reason']}] ({t['entry_reason']})")
+              f"{t['return_pct']:+7.2f}%  [{t['exit_reason']}] ({t['entry_reason']}){pyramid_tag}")
 
     print(f"\n{'='*60}\n")
 

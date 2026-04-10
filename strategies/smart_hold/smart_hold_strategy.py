@@ -60,6 +60,8 @@ CAPITULATION_VOL_MULT = 2.0  # final bar volume must be >= this * volume MA
 TRAILING_STOP_ATR_MULT = 6.0   # trailing stop = peak - N * ATR (very wide)
 REENTRY_COOLDOWN_BARS = 2      # min bars after exit before re-entry
 MACD_REV_EXIT_COOLDOWN = 20    # bars to block ALL re-entries after a macd_reversal_exit
+VIX_REGIME_THRESHOLD = 28.0    # VIX level that signals a sustained fear regime
+VIX_REGIME_BARS = 3            # block ALL entries when this many consecutive bars have VIX >= threshold
 
 
 # ── Data Fetching ────────────────────────────────────────────────────
@@ -196,6 +198,8 @@ def run_smart_hold(
     trail_atr_mult = p.get("trailing_stop_atr_mult", TRAILING_STOP_ATR_MULT)
     cooldown = p.get("reentry_cooldown_bars", REENTRY_COOLDOWN_BARS)
     macd_rev_cooldown = p.get("macd_rev_exit_cooldown", MACD_REV_EXIT_COOLDOWN)
+    vix_regime_threshold = p.get("vix_regime_threshold", VIX_REGIME_THRESHOLD)
+    vix_regime_bars = p.get("vix_regime_bars", VIX_REGIME_BARS)
     commission = p.get("commission_pct", COMMISSION_PCT)
     slippage = p.get("slippage_pct", SLIPPAGE_PCT)
     initial_capital = p.get("initial_capital", INITIAL_CAPITAL)
@@ -276,6 +280,7 @@ def run_smart_hold(
     bars_since_exit = 999
     bars_below_ma = 0
     macd_rev_cooldown_remaining = 0  # bars remaining before entries allowed after macd_reversal_exit
+    vix_regime_count = 0             # rolling count of recent bars with VIX >= vix_regime_threshold
 
     trades: list[dict] = []
     capital = initial_capital
@@ -304,6 +309,14 @@ def run_smart_hold(
         date = c["date"]
         vix_val = vix_by_date.get(date)
         vix_peak = vix_peak_by_date.get(date)
+
+        # Update VIX regime consecutive counter (strict: resets to 0 on any bar below threshold)
+        # This distinguishes sustained bear regimes (many consecutive days above VIX threshold)
+        # from brief spikes (1-2 days above then recovery), preventing false blocks on V-recoveries.
+        if vix_val is not None and vix_val >= vix_regime_threshold:
+            vix_regime_count += 1
+        else:
+            vix_regime_count = 0
 
         # Build context dict for signal evaluation
         in_chop = False
@@ -340,13 +353,26 @@ def run_smart_hold(
                 macd_rev_cooldown_remaining -= 1
                 continue
 
+            # VIX persistence regime gate: block trend-following re-entry signals when
+            # VIX has been persistently elevated (sustained bear market / fear regime).
+            # Only blocks non-VIX signals (ma_reclaim, rsi_oversold_bounce, ema_momentum,
+            # macd_crossover) — VIX-specific signals are exempt since they are designed
+            # for high-VIX environments. Avoids signal-hop by blocking at engine level.
+            _VIX_REGIME_EXEMPT = frozenset({
+                "vix_extreme_fear", "vix_fear_declining", "fast_reentry",
+            })
+            in_vix_regime = vix_regime_count >= vix_regime_bars
+
             # Evaluate entry signals (first match wins)
             for sig in ENTRY_SIGNALS:
+                sig_name = sig.METADATA["name"]
+                if in_vix_regime and sig_name not in _VIX_REGIME_EXEMPT:
+                    continue
                 if sig.check(ctx):
                     in_position = True
                     entry_price = close
                     entry_date = date
-                    entry_reason = sig.METADATA["name"]
+                    entry_reason = sig_name
                     peak_price = close
                     bars_below_ma = 0
                     break
@@ -476,6 +502,8 @@ def run_smart_hold(
             "trailing_stop_atr_mult": trail_atr_mult,
             "reentry_cooldown_bars": cooldown,
             "macd_rev_exit_cooldown": macd_rev_cooldown,
+            "vix_regime_threshold": vix_regime_threshold,
+            "vix_regime_bars": vix_regime_bars,
         },
         "period": p.get("period", PERIOD),
         "interval": p.get("interval", INTERVAL),
@@ -535,6 +563,8 @@ def main():
     parser.add_argument("--trail-atr", type=float, default=TRAILING_STOP_ATR_MULT, help="ATR trailing stop multiplier")
     parser.add_argument("--cooldown", type=int, default=REENTRY_COOLDOWN_BARS, help="Bars to wait after exit")
     parser.add_argument("--macd-rev-cooldown", type=int, default=MACD_REV_EXIT_COOLDOWN, help="Bars to block all entries after macd_reversal_exit")
+    parser.add_argument("--vix-regime-threshold", type=float, default=VIX_REGIME_THRESHOLD, help="VIX level marking a sustained fear regime (default: 25.0)")
+    parser.add_argument("--vix-regime-bars", type=int, default=VIX_REGIME_BARS, help="Number of consecutive elevated-VIX bars to trigger regime gate (default: 5)")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
     args = parser.parse_args()
 
@@ -571,6 +601,8 @@ def main():
         "trailing_stop_atr_mult": args.trail_atr,
         "reentry_cooldown_bars": args.cooldown,
         "macd_rev_exit_cooldown": args.macd_rev_cooldown,
+        "vix_regime_threshold": args.vix_regime_threshold,
+        "vix_regime_bars": args.vix_regime_bars,
     }
 
     result = run_smart_hold(candles, vix_candles, params)

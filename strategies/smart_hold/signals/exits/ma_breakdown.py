@@ -3,13 +3,22 @@
 Adaptive to volatility (more confirmation bars for volatile stocks).
 Returns 'vix_accelerated_exit' as the reason when VIX accelerates the exit.
 
-Guard: MACD histogram positive-momentum suppressor.
-When MACD histogram > 1.0 (strongly bullish momentum), the exit is suppressed — price is
-below SMA but MACD is accelerating upward, indicating a short-term dip during a recovery,
-not a genuine structural breakdown. Threshold 1.0 was calibrated on 2y backtest:
+Guard: MACD histogram positive-momentum suppressor (two conditions, either is sufficient).
+
+Condition 1 (v11): hist > 1.0 AND dist > -3%
+  Blocks exits when MACD momentum is strongly bullish — price is near SMA but MACD is
+  accelerating hard upward, indicating a short-term dip in a recovering market.
   - SPY 2026-04-06: hist=+1.14 (blocked — +3.5% improvement)
   - GOOGL 2026-04-07: hist=+1.78 (blocked — +4.8% improvement)
-  - All other exits: hist < 1.0 (unblocked — preserves correct protective exits)
+  - QQQ 2025-04-15: hist=+1.54, dist=-6.67% — NOT blocked (dist<-3%, genuine crash)
+
+Condition 2 (v12): hist > 0 AND hist_prev < 0 AND dist > -3%
+  Blocks exits when MACD histogram just crossed from negative to positive (fresh momentum
+  crossover) while price is near SMA. The crossover signals the start of a new bullish
+  momentum cycle — exiting during bar-1 of a MACD-positive phase is premature.
+  - QQQ 2026-04-06: hist=+0.698, hist_prev=-0.242 (blocked — +4.06% improvement)
+  - GOOGL 2026-03-17: hist=+0.930, hist_prev=+0.463 — NOT blocked (already positive, no crossover)
+  - All other exits: hist_prev >= 0 or dist < -3% — unaffected
 """
 
 METADATA = {
@@ -72,21 +81,32 @@ def check(ctx: dict) -> tuple[bool, str]:
             if sma200_slope >= 0:
                 return False, ""
 
-    # MACD histogram positive-momentum suppressor.
-    # When MACD is strongly accelerating upward (hist > 1.0) AND price is within 3% of SMA,
-    # the dip below SMA is a short-term pullback in a recovering market, NOT a genuine
-    # structural breakdown. Block exit to avoid premature exits during recoveries.
-    # Two conditions required to avoid false suppression:
-    #   1. hist > 1.0 — filters out mild positive readings during VIX-spike dead-cat bounces
-    #   2. close > exit_sma * 0.97 — when price is far below SMA (>3%), the breakdown IS real
-    #      even with positive MACD (e.g. QQQ Apr 2025 tariff shock: hist=+1.54, dist=-6.7%)
+    # MACD histogram positive-momentum suppressor (two conditions, OR logic).
+    # Both require: close > exit_sma * 0.97 (price within 3% of SMA)
+    # When price is far below SMA (>3% down), the breakdown IS real even with positive MACD
+    # (e.g. QQQ Apr 2025 tariff shock: hist=+1.54, dist=-6.7% — correctly not blocked).
+    #
+    # Condition 1 (v11): hist > 1.0
+    #   Strongly positive MACD — price is near SMA but momentum is hard upward.
+    #
+    # Condition 2 (v12): hist > 0 AND hist_prev < 0
+    #   MACD histogram just crossed from negative to positive (fresh momentum crossover).
+    #   Bar-1 of a positive MACD cycle after a bearish phase — exiting now is premature.
+    #   QQQ 2026-04-06: hist=+0.698, hist_prev=-0.242 → next 3 bars +3.69% (correctly blocked)
     macd_line = ctx["macd_line"]
     macd_signal = ctx["macd_signal"]
     if macd_line[i] is not None and macd_signal[i] is not None:
         macd_hist = macd_line[i] - macd_signal[i]
         sma_val = exit_sma[i]
-        if macd_hist > 1.0 and sma_val is not None and close > sma_val * 0.97:
-            return False, ""
+        if sma_val is not None and close > sma_val * 0.97:
+            # Condition 1: strongly positive MACD (v11 rule)
+            if macd_hist > 1.0:
+                return False, ""
+            # Condition 2: fresh MACD histogram crossover negative->positive (v12 rule)
+            if macd_hist > 0 and i > 0 and macd_line[i - 1] is not None and macd_signal[i - 1] is not None:
+                macd_hist_prev = macd_line[i - 1] - macd_signal[i - 1]
+                if macd_hist_prev < 0:
+                    return False, ""
 
     # Determine reason
     if vix_val is not None and vix_val >= vix_exit_boost and needed < exit_confirm:

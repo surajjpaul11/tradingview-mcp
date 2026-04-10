@@ -980,3 +980,85 @@ All 3 symbols improved, 0 regressed.
 - Tune the distance filter: 3% → 4% might also block QQQ 2025-04-24 (dist=-2.89%) more conservatively; but already blocked at 3%
 - QQQ T9 (ema_momentum 2026-02-26, -1.56%) still fires post-20bar-cooldown; the adaptive cooldown idea remains untried
 - Test whether the guard helps on WDC and STX which have higher volatility and more frequent MACD swings
+- v12 idea: add a second guard condition — MACD histogram just crossed from negative to positive (hist>0 AND hist_prev<0 AND dist>-3%) — to catch QQQ T10 (2026-04-06) pattern
+
+---
+
+# Signal Optimization Run #12 — 2026-04-10 (MACD histogram zero-crossing suppressor on ma_breakdown)
+
+## Baseline (smart-hold-v11 state, 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +188.79%        | +84.81%             | -3.04%          |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +59.53%         | +20.33%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+**A) Missed upside (5+ bars out, price rose >3%):**
+- GOOGL: Gap T2→T3 (21 bars, +3.01% missed after ma_breakdown exit 2024-08-12) — already ruled out in v11 (blocking causes -6.7% DD)
+- No new unaddressed gaps of >3% over 5+ bars across GOOGL/SPY/QQQ.
+
+**B) Premature exits (price up >2% within 3 bars):**
+- GOOGL T3 (2024-09-18, ma_breakdown, hist=0.897, dist=-3.83%): +2.37% missed — hist <1.0 AND dist <-3%: not blocked by v11 guard
+- GOOGL T7 (2025-04-23, vix_accel, hist=0.750, dist=-5.93%): +4.25% missed — dist <-3%, not blockable without risking other exits
+- GOOGL T8 (2025-05-13, ma_breakdown, hist=0.175, dist=-0.05%): +4.17% missed — hist too low
+- QQQ T10 (2026-04-06, ma_breakdown, hist=0.698, dist=-2.34%): +3.69% missed — hist <1.0 but dist within -3%
+
+**C) Exit quality with MACD hist trajectories:**
+- Cross-referencing all exits: GOOGL T10 (hist=0.930, dist=-2.45%) is a CORRECT exit (price fell -12% after)
+  - Key differentiator from QQQ T10: hist_prev=0.463 (already positive) vs QQQ T10 hist_prev=-0.242 (crossing from negative)
+  - QQQ T10 is on bar-1 of a fresh positive MACD cycle — premature exit signal
+
+**Root cause of QQQ T10 premature exit:**
+QQQ 2026-04-06: MACD hist rose from -2.565 (6 bars prior) through -0.242 (prior bar) to +0.698 (exit bar). The histogram crossed from negative to positive on the same bar as the ma_breakdown fired. The exit fired on bar-1 of fresh MACD momentum — the next 3 bars rose +3.69%, eventually reaching +5.72% by EOD.
+
+## Change Applied
+
+Added a second condition (OR logic) to the MACD histogram suppressor in `strategies/smart_hold/signals/exits/ma_breakdown.py`:
+
+**Condition 1 (v11, unchanged):** `hist > 1.0 AND dist > -3%`
+- Catches strongly positive MACD momentum during recoveries
+
+**Condition 2 (v12, new):** `hist > 0 AND hist_prev < 0 AND dist > -3%`
+- Catches exits on bar-1 of a fresh MACD histogram crossover (negative→positive)
+- The crossover signals the START of a new bullish momentum cycle — exiting now is premature
+
+**Surgical precision verified:**
+- QQQ T10 (hist=0.698, hist_prev=-0.242): blocked by C2 (correctly premature, +3.69% post-3bar)
+- GOOGL T10 (hist=0.930, hist_prev=+0.463): NOT blocked by C2 (hist_prev already positive, correctly exits before -12% drop)
+- SPY T5 (hist=0.715, dist=-6.03%): NOT blocked (dist<-3%, genuine distressed exit)
+- All other exits: unchanged
+
+**No other files modified.** `macd_line[i-1]` and `macd_signal[i-1]` already accessible in ctx dict.
+
+## Backtest Results
+
+| Symbol | Baseline vs_BH | New vs_BH | Delta | Baseline total_return | New total_return | Delta |
+|--------|---------------|-----------|-------|-----------------------|-----------------|-------|
+| GOOGL  | +84.81%       | +84.81%   | 0.00% | +188.79%              | +188.79%        | 0.00% |
+| SPY    | +31.35%       | +31.35%   | 0.00% | +63.60%               | +63.60%         | 0.00% |
+| QQQ    | +20.33%       | **+26.23%** | **+5.90%** | +59.53%        | **+65.42%**     | **+5.89%** |
+
+**QQQ trade change:**
+- T10 entry 2026-03-31 @ 577.18: previously exited 2026-04-06 @ 588.50 (+1.66%, ma_breakdown)
+- New: C2 guard blocks the exit; position holds to 2026-04-09 @ 610.19 (+5.42%, end_of_data)
+- Net gain: +3.76% on trade, +5.90pp compounded vs_BH improvement
+
+## Decision: KEPT — committed to smart-hold-v12
+
+1 improved (QQQ +5.90pp), 2 neutral, 0 regressed. Consistent with v5/v8/v9/v10 precedent (all kept at 1 improved, 0 regressed).
+
+**Key learnings:**
+- The MACD histogram zero-crossing (negative→positive) is a distinct and cleaner pattern than the absolute threshold — it captures bar-1 of a fresh momentum cycle where exits are structurally premature
+- The hist_prev check cleanly differentiates GOOGL T10 (hist already positive for days, correct exit) from QQQ T10 (hist crossed zero that bar, premature exit)
+- The combined guard now handles two qualitatively different false-exit scenarios: (1) MACD strongly accelerating (C1: hist>1.0) and (2) MACD just turning positive from negative (C2: crossover)
+- Zero signal-hop risk: exit suppressor pattern — when blocked, position simply holds
+- The 3% SMA distance filter (dist>-3%) is the shared safety net for both conditions: prevents blocking exits during genuine crash events regardless of MACD reading
+
+**Next potential improvement ideas:**
+- Test on 5-year backtest window — longer window would expose more MACD crossover scenarios
+- Investigate whether the hist>0 AND hist_prev<0 crossover pattern also improves trailing_stop or profit_lock (though neither showed premature exits in 2y data)
+- Consider whether any GOOGL T3 (hist=0.897, hist_prev=0.647) or T7 (hist=0.750, hist_prev=0.463) improvements are possible — both have positive hist_prev so C2 doesn't help; would require lowering C1 threshold to ~0.7, but that blocks GOOGL T10 (correct exit)
+- The remaining losers (GOOGL T8: ma_breakdown at SMA with low hist=0.175; QQQ T4: ma_breakdown with negative hist) appear structurally unblockable without harming other trades

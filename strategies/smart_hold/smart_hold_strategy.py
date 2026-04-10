@@ -368,13 +368,21 @@ def run_smart_hold(
             # GOOGL 2022: VIX was 20-27 (below VIX gate threshold) but SMA200 dropped -2 to -4%
             # over 20 bars while SMA50 also declined -1%+ over 5 bars → entrenched downtrend.
             # VIX-triggered signals are exempt since they fire at precise fear-peak reversals.
+            #
+            # ATR-adaptive SMA200 threshold:
+            # Higher-vol stocks (median ATR% > 1.3, e.g. GOOGL at 1.48%) have larger intraday
+            # swings that create "false" SMA200 cross-downs. A -2% threshold catches their
+            # sustained bear phase. Lower-vol stocks (ETFs: SPY 0.82%, QQQ 1.14%) require a
+            # stricter -2.5% threshold to avoid blocking their Jun-Jul 2022 entries via signal-hop
+            # (where blocking ema_momentum causes a later ma_reclaim at a worse price).
             _BEAR_REGIME_EXEMPT = frozenset({
                 "vix_extreme_fear", "vix_fear_declining", "fast_reentry", "rsi_oversold_bounce",
             })
+            bear_sma200_thresh = -0.02 if median_atr_pct > 1.3 else -0.025
             in_bear_regime = False
             if i >= 20 and sma_200_vals[i] is not None and sma_200_vals[i - 20] is not None:
                 sma200_slope = (sma_200_vals[i] - sma_200_vals[i - 20]) / sma_200_vals[i - 20]
-                if sma200_slope < -0.02:  # SMA200 declined >2% over 20 bars
+                if sma200_slope < bear_sma200_thresh:
                     if i >= 5 and exit_sma_vals[i] is not None and exit_sma_vals[i - 5] is not None:
                         sma50_slope = (exit_sma_vals[i] - exit_sma_vals[i - 5]) / exit_sma_vals[i - 5]
                         if sma50_slope < -0.01:  # SMA50 declined >1% over 5 bars

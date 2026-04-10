@@ -9,7 +9,8 @@ from .entries import (
     vix_extreme_fear,
     vix_fear_declining,
     fast_reentry,  # v2: added close > exit_sma guard + bars_since_exit >= 3 + vix_decline threshold 8.0
-    # false_breakdown_reclaim,  # DISABLED: 0 improve / 3 neutral (fires same bar as ma_reclaim with default reentry_ma_reclaim=2)
+    vix_recovery_below_sma,  # v17: re-enter below SMA after VIX spike; complements fast_reentry (which requires above-SMA)
+    # false_breakdown_reclaim,  # DISABLED: 0 improve / 3 neutral (fires same bar as ma_reclaim with default reentry_ma_reclaim=2; at reentry_ma_reclaim=5, QQQ T2 still neutral because SMA not reclaimed until bar 6 of the FBR window — outside max_bars=5)
     # pyramid_momentum,  # DISABLED: too aggressive, causes -29% GOOGL regression (14 trades vs 11, multiple bad entries during recoveries)
     ma_reclaim,
     rsi_oversold_bounce,
@@ -30,6 +31,7 @@ ENTRY_SIGNALS = [
     vix_extreme_fear,
     vix_fear_declining,
     fast_reentry,  # v2: see import note above
+    vix_recovery_below_sma,  # v17: see import note above
     # false_breakdown_reclaim,  # DISABLED: see import note above
     # pyramid_momentum,  # DISABLED: see import note above
     ma_reclaim,

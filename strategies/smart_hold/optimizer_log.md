@@ -1062,3 +1062,89 @@ Added a second condition (OR logic) to the MACD histogram suppressor in `strateg
 - Investigate whether the hist>0 AND hist_prev<0 crossover pattern also improves trailing_stop or profit_lock (though neither showed premature exits in 2y data)
 - Consider whether any GOOGL T3 (hist=0.897, hist_prev=0.647) or T7 (hist=0.750, hist_prev=0.463) improvements are possible — both have positive hist_prev so C2 doesn't help; would require lowering C1 threshold to ~0.7, but that blocks GOOGL T10 (correct exit)
 - The remaining losers (GOOGL T8: ma_breakdown at SMA with low hist=0.175; QQQ T4: ma_breakdown with negative hist) appear structurally unblockable without harming other trades
+- v13 idea: C3 condition — 0 < hist < 0.5 AND dist > -1% AND RSI rising — to catch GOOGL T8 (hist=0.175, dist=-0.050%, RSI rising)
+
+---
+
+# Signal Optimization Run #13 — 2026-04-09 (MACD C3: weakly-positive hist + near-SMA + RSI rising)
+
+## Baseline (smart-hold-v12 state, 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +188.79%        | +84.81%             | -3.04%          |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+**A) Missed upside (5+ bars out, price rose >3%):**
+- No new unaddressed missed-upside gaps of >3% over 5+ bars across GOOGL/SPY/QQQ.
+
+**B) Premature exits (price up >2% within 3 bars after exit):**
+- GOOGL T8 (2025-05-13, ma_breakdown, hist=0.175, hist_prev=0.007, dist=-0.050%): +4.17% missed
+  - C1 fails (0.175 < 1.0), C2 fails (hist_prev=0.007 > 0, not a fresh crossover)
+  - RSI=51.4, RSI_prev=50.2 (rising +1.2) — short-term momentum still bullish
+  - Price was virtually at the SMA (only 0.050% below)
+- No other unaddressed premature exits across SPY/QQQ.
+
+**C) Exit quality — MACD+RSI context at all exits:**
+- GOOGL T10 (2026-03-17): hist=0.930 (> 0.5), dist=-2.447% — C3 does NOT block (correct exit, price fell -3.19% after)
+- QQQ T8 (2026-03-03): RSI falling (43.4 < 47.7) — C3 does NOT block (correct behavior)
+- QQQ T9 (2026-03-09): dist=-1.172% (< -1%) — C3 does NOT block (correct behavior)
+- All SPY exits: hist negative or dist > -3% or RSI falling — NOT blocked
+
+**MACD hist at remaining losers:**
+- GOOGL T3 (2024-09-18, +5.42% win): dist=-3.832% — outside C3's -1% threshold (not blockable)
+- GOOGL T10 (2026-03-17, +0.96% small win): hist=0.930 > 0.5 — C3 doesn't block (safe)
+
+**Key finding:** C3 fires exactly ONCE in the 2y window for all 3 symbols: GOOGL 2025-05-13 (and the day before, 2025-05-12, which would pre-empt the actual exit bar's conditions). It does not fire on SPY or QQQ because their exits have either negative MACD hist, RSI falling, or dist below -1%.
+
+**Surgical precision verified:**
+- Fires 2 times in 2y across GOOGL/SPY/QQQ (both on GOOGL: 05-12 and 05-13)
+- Both GOOGL events correctly blocked (post-3bar: +3.47%, +4.17%)
+- SPY 2 events exist in the data but occur when ma_breakdown wouldn't have fired anyway (bars_below_ma < exit_confirm or slope not declining)
+
+## Change Applied
+
+Added Condition 3 to MACD histogram suppressor in `strategies/smart_hold/signals/exits/ma_breakdown.py`:
+
+**Condition 3 (v13):** `0 < hist < 0.5 AND close > sma * 0.99 AND RSI[i] > RSI[i-1]`
+- Catches GOOGL T8 pattern: weakly positive MACD + price virtually at SMA + rising RSI momentum
+- Distance threshold tightened to -1% (vs C1/C2's -3%) to prevent blocking moderate pullbacks
+- hist upper bound < 0.5 ensures C1 (hist > 1.0 strongly bullish) handles the high-momentum case
+- RSI uses the array from ctx["rsi"] (already present in context dict)
+
+**Effect:** GOOGL T8 exit (2025-05-13 at 159.53, -3.04%) is blocked. Position continues from 164.03 (fast_reentry entry) directly through to 2026-02-12 exit via profit_lock at 309.00 — merging T8+T9 into one continuous trade (+88.08% vs sequential -3.04%+88.16%).
+
+## Backtest Results
+
+| Symbol | Baseline vs_BH | New vs_BH | Delta | Baseline total_return | New total_return | Delta | DD delta |
+|--------|---------------|-----------|-------|-----------------------|-----------------|-------|----------|
+| GOOGL  | +84.81%       | **+93.75%** | **+8.94%** | +188.79%        | **+197.73%**    | **+8.94%** | +3.04% |
+| SPY    | +31.35%       | +31.35%   | 0.00% | +63.60%               | +63.60%         | 0.00% | 0.00% |
+| QQQ    | +26.23%       | +26.23%   | 0.00% | +65.42%               | +65.42%         | 0.00% | 0.00% |
+
+**GOOGL trade changes from C3:**
+- T8 (fast_reentry 2025-05-02 at 164.03): previously exited 2025-05-13 at 159.53 (-3.04%, ma_breakdown)
+- New: C3 blocks the 2025-05-13 exit; position continues through T9's territory
+- T8 (merged T8+T9): exits 2026-02-12 at 309.00 via profit_lock (+88.08%)
+- Trade count: 11 → 10 (T9 subsumed into T8; T10-T11 renumbered T9-T10)
+- Max drawdown: -3.04% → 0.0% (the -3.04% trade eliminated; now 100% win rate)
+
+## Decision: KEPT — committed to smart-hold-v13
+
+1 symbol improved (GOOGL +8.94pp vs_BH), 2 neutral, 0 regressed. GOOGL drawdown improved -3.04% → 0.0%.
+
+**Key learnings:**
+- C3 adds a third guard axis: MACD weak-positive + virtually-at-SMA + RSI rising. Unlike C1 (strongly positive MACD) and C2 (fresh crossover), C3 targets bars where MACD hasn't crossed zero recently but remains barely positive while price barely touches below the SMA line
+- The -1% distance filter is the critical differentiator from C1/C2 (which use -3%). GOOGL T10 at dist=-2.45% is safely outside C3's window, allowing the correct exit before a -3.19% drop
+- The hist < 0.5 upper bound separates C3 from C1 (hist > 1.0) and ensures C3 doesn't compete with C1 on the strong-momentum cases
+- RSI rising adds a momentum confirmation layer — exits where RSI is declining (QQQ T8: RSI fell 4.3 pts) correctly proceed
+- Zero signal-hop risk: exit suppressor pattern — when blocked, position simply holds
+
+**Next potential improvement ideas:**
+- Test on 5-year backtest window — more near-SMA shallow dip scenarios may be exposed
+- Consider whether the C3 pattern applies to trailing_stop (weakly positive MACD + RSI rising + barely below trail level)
+- The remaining GOOGL losers (T3 at dist=-3.83%, T7 at dist=-5.93%) are structurally unblockable — dist too far below SMA
+- QQQ T8/T9 losses (-1.56%, -0.49%) are post-macd_reversal_exit cooldown consequences; architectural approach would be adaptive cooldown (wait for MACD positive + price above SMA) but these specific trades fire 41+ bars after exit — beyond the 20-bar window

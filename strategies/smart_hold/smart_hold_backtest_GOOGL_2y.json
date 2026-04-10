@@ -16,7 +16,9 @@
     "vix_extreme": 35.0,
     "trailing_stop_atr_mult": 6.0,
     "reentry_cooldown_bars": 2,
-    "macd_rev_exit_cooldown": 20
+    "macd_rev_exit_cooldown": 20,
+    "vix_regime_threshold": 28.0,
+    "vix_regime_bars": 3
   },
   "period": "2y",
   "interval": "1d",
@@ -180,5 +182,5 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-10T04:21:51.831553+00:00"
+  "timestamp": "2026-04-10T08:21:05.804988+00:00"
 }

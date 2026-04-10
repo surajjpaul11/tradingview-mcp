@@ -237,9 +237,8 @@ def run_smart_hold(
     # Low vol (<1.5% ATR): use base confirm bars, slope < 0
     # Med vol (1.5-3%): add 2 bars, slope < 0
     # High vol (>3%): add 4 bars, require stronger slope decline + EMA well below SMA
-    # For high-vol stocks: require much more confirmation AND the 200 SMA to be declining
-    # This prevents exiting during normal pullbacks in strong uptrends
-    sma_200_vals = sma(closes, 200) if median_atr_pct > 3.0 else [None] * n
+    # Always compute SMA200 — used for exit logic (high-vol) AND bear market regime gate
+    sma_200_vals = sma(closes, 200)
 
     if median_atr_pct > 3.0:
         vol_extra_bars = 5
@@ -363,10 +362,30 @@ def run_smart_hold(
             })
             in_vix_regime = vix_regime_count >= vix_regime_bars
 
+            # Bear market regime gate: block trend-following entries when both SMA200 (20-bar)
+            # and SMA50 (5-bar) are steeply declining. This catches the "churning in a bear"
+            # problem where ma_reclaim / ema_momentum repeatedly trigger false recoveries.
+            # GOOGL 2022: VIX was 20-27 (below VIX gate threshold) but SMA200 dropped -2 to -4%
+            # over 20 bars while SMA50 also declined -1%+ over 5 bars → entrenched downtrend.
+            # VIX-triggered signals are exempt since they fire at precise fear-peak reversals.
+            _BEAR_REGIME_EXEMPT = frozenset({
+                "vix_extreme_fear", "vix_fear_declining", "fast_reentry", "rsi_oversold_bounce",
+            })
+            in_bear_regime = False
+            if i >= 20 and sma_200_vals[i] is not None and sma_200_vals[i - 20] is not None:
+                sma200_slope = (sma_200_vals[i] - sma_200_vals[i - 20]) / sma_200_vals[i - 20]
+                if sma200_slope < -0.02:  # SMA200 declined >2% over 20 bars
+                    if i >= 5 and exit_sma_vals[i] is not None and exit_sma_vals[i - 5] is not None:
+                        sma50_slope = (exit_sma_vals[i] - exit_sma_vals[i - 5]) / exit_sma_vals[i - 5]
+                        if sma50_slope < -0.01:  # SMA50 declined >1% over 5 bars
+                            in_bear_regime = True
+
             # Evaluate entry signals (first match wins)
             for sig in ENTRY_SIGNALS:
                 sig_name = sig.METADATA["name"]
                 if in_vix_regime and sig_name not in _VIX_REGIME_EXEMPT:
+                    continue
+                if in_bear_regime and sig_name not in _BEAR_REGIME_EXEMPT:
                     continue
                 if sig.check(ctx):
                     in_position = True

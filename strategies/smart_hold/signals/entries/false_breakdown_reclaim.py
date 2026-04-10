@@ -40,7 +40,7 @@ METADATA = {
 }
 
 _DEBUG = False
-_DEBUG_WINDOW = ("2025-05-10", "2025-05-20")
+_DEBUG_WINDOW = ("2024-09-05", "2024-09-15")
 
 
 def check(ctx: dict) -> bool:
@@ -88,14 +88,17 @@ def check(ctx: dict) -> bool:
         _dbg(f"SKIP: bars_since={bars_since} < 2 (too soon)")
         return False
 
-    # Price must close above exit SMA for at least 2 consecutive bars (structural reclaim)
+    # Price must close above exit SMA for at least 1 bar (single-bar SMA breach is enough
+    # in the false-breakdown context because the bars_since_exit <= 5 window ensures this
+    # is a rapid recovery, not a sustained reclaim attempt that might fail).
+    # Using 1 bar (vs 2 in ma_reclaim) lets us fire 1 bar earlier on fast V-recoveries.
     exit_sma = ctx["exit_sma"]
-    if exit_sma[i] is None or exit_sma[i - 1] is None:
+    if exit_sma[i] is None:
         _dbg("SKIP: exit_sma is None")
         return False
 
     closes = ctx["closes"]
-    reclaim_bars = 2
+    reclaim_bars = 1
     reclaim_count = 0
     for j in range(max(0, i - reclaim_bars + 1), i + 1):
         if exit_sma[j] is not None and closes[j] > exit_sma[j]:

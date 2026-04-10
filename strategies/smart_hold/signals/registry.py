@@ -10,7 +10,8 @@ from .entries import (
     vix_fear_declining,
     fast_reentry,  # v2: added close > exit_sma guard + bars_since_exit >= 3 + vix_decline threshold 8.0
     vix_recovery_below_sma,  # v17: re-enter below SMA after VIX spike; complements fast_reentry (which requires above-SMA)
-    # false_breakdown_reclaim,  # DISABLED: 0 improve / 3 neutral (fires same bar as ma_reclaim with default reentry_ma_reclaim=2; at reentry_ma_reclaim=5, QQQ T2 still neutral because SMA not reclaimed until bar 6 of the FBR window — outside max_bars=5)
+    # ma_breakdown_recovery,  # DISABLED v20 candidate: regressed GOOGL -14.26% (fires during genuine failed recoveries); see optimizer_log.md
+    false_breakdown_reclaim,  # v20 candidate: 1-bar SMA reclaim (was 2-bar) to fire 1 bar earlier on QQQ false breakdowns
     # pyramid_momentum,  # DISABLED: too aggressive, causes -29% GOOGL regression (14 trades vs 11, multiple bad entries during recoveries)
     ma_reclaim,
     rsi_oversold_bounce,
@@ -21,6 +22,8 @@ from .entries import (
 from .exits import (
     profit_lock,         # proactive exit when gain >= 50% and SMA slope just turns negative
     macd_reversal_exit,  # exit on MACD histogram bearish crossover with 18%+ gain, 40+ bars held
+    # peak_gain_trail,   # DISABLED v18: peak-gain trail regressed GOOGL -5.39% (T1 premature exit); see optimizer_log.md
+    # ema_sma_cross_exit,  # DISABLED v19: EMA/SMA death cross exit regressed SPY -2.92%, QQQ -7.82%; see optimizer_log.md
     ma_breakdown,
     trailing_stop,
     end_of_data,
@@ -32,7 +35,8 @@ ENTRY_SIGNALS = [
     vix_fear_declining,
     fast_reentry,  # v2: see import note above
     vix_recovery_below_sma,  # v17: see import note above
-    # false_breakdown_reclaim,  # DISABLED: see import note above
+    # ma_breakdown_recovery,  # DISABLED: see import note above
+    false_breakdown_reclaim,  # v20 candidate: see import note above
     # pyramid_momentum,  # DISABLED: see import note above
     ma_reclaim,
     rsi_oversold_bounce,
@@ -44,6 +48,8 @@ ENTRY_SIGNALS = [
 EXIT_SIGNALS = [
     profit_lock,          # first: proactive exit on large gain + SMA slope turning negative
     macd_reversal_exit,   # MACD histogram crosses negative with 18%+ gain and 40+ bars held
+    # peak_gain_trail,    # DISABLED: see import note above
+    # ema_sma_cross_exit, # DISABLED: see import note above
     ma_breakdown,
     trailing_stop,
     end_of_data,

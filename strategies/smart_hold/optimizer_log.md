@@ -1631,4 +1631,320 @@ fast_reentry by the SMA condition (one checks close > SMA, other checks close <=
   infeasible to block without causing signal-hop at worse prices (Run #14 analysis)
 - The trailing stop gap (GOOGL T4: peaked at +27.8%, exited at +10.95%) remains open;
   ATR-based tightening was rejected in Run #14 (SPY/QQQ regression). A percentage-from-
-  peak-gain approach was not formally coded — could be worth testing.
+  peak-gain approach was formally coded in Run #18 but also rejected — see below.
+
+---
+
+# Signal Optimization Run #18 — 2026-04-10 (peak_gain_trail exit signal)
+
+## Baseline (smart-hold-v17 state, 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +204.08%        | +100.10%            | 0.0%            |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+### A) Missed upside (5+ bars out, price rose >3%)
+No new unaddressed gaps — all major missed-upside gaps handled in prior runs.
+
+### B) Premature exits (price up >2% within 3 bars)
+Same as Run #17: remaining premature exits are structurally unblockable.
+
+### C) Trailing stop gap (GOOGL T4)
+
+Dominant gap identified from optimizer_log: GOOGL T4 (ema_momentum 2024-09-25 at 161.49):
+- Peak gain: ~27.8% (~$206.49 around early Feb 2025)
+- Trailing stop fired at 179.66 (+10.95%) on 2025-02-21
+- Peak-to-exit drop: (206.49 - 179.66) / 206.49 = 13.0%
+- A "percentage-from-peak" exit would fire at 206.49 * 0.88 = 181.71 — potentially
+  capturing slightly more gain than the ATR trailing stop.
+
+## Signal Created: `peak_gain_trail`
+
+**File:** `strategies/smart_hold/signals/exits/peak_gain_trail.py`
+
+**Initial design (current gain based, v1):**
+Used `unrealized_gain_pct >= min_gain (15%)` AND `drop from peak >= 12%`.
+Discovered logical impossibility: at 15% min gain and 12% trail, the conditions require
+a PEAK gain >= 30.7% (1.15/0.88 = 1.307) for both to be simultaneously satisfiable.
+GOOGL T4 only peaked at 27.8%, so the v1 design could NEVER fire on the target trade.
+
+**Redesigned (peak gain based, v2):**
+Used `peak_gain_pct >= 20%` (how much the position EVER gained at its best) AND
+`drop from peak >= 12%`. This correctly activates when the position peaked at 20%+
+and has since retraced 12%+ from that peak.
+
+**Result:** The signal fired TWICE in the 2y window:
+- T1 (initial_entry, 2024-04-10 at 156.14): exited prematurely at 167.28 on 2024-07-25
+  via peak_gain_trail, instead of the baseline 170.29 via ma_breakdown on 2024-07-30
+  → GOOGL GOOGL regressed: saved ~5 days of hold but at 2% worse exit price
+- T4 (ema_momentum, 2024-09-25 at 161.49): peak_gain_trail fired at 179.66 on 2025-02-21
+  via the same bar/price as the baseline trailing_stop → ZERO improvement
+  (GOOGL T4 price gapped from above 181.71 directly to 179.66 in a single daily close)
+
+## Backtest Results
+
+| Symbol | Baseline vs_BH | New vs_BH | Delta |
+|--------|---------------|-----------|-------|
+| GOOGL  | +100.10%      | +94.71%   | **-5.39%** |
+| SPY    | +31.35%       | +31.35%   | 0.00% |
+| QQQ    | +26.23%       | +26.23%   | 0.00% |
+
+## Decision: REVERTED
+
+GOOGL regressed -5.39%, SPY/QQQ unchanged. 1 regress, 2 neutral, 0 improve → REVERTED.
+
+**Root cause analysis:**
+1. **T1 false fire:** GOOGL T1 (initial_entry, 156.14 → 170.29 over 109 bars) had a
+   peak gain of ~22-25% during Q2 2024 rally. The 12% from-peak threshold fired at ~167-168
+   before the ma_breakdown confirmation at 170.29. The peak_gain_trail exited 5 bars early
+   at a 2% worse price, demonstrating the signal is too aggressive for trades that haven't
+   yet formed a genuine trend reversal.
+
+2. **T4 gap-down:** GOOGL T4's price moved from above 181.71 (trigger level) directly to
+   179.66 in a single daily close — the signal fires at the same bar/price as trailing_stop.
+   The expected improvement (firing a few bars earlier at ~181.71) was eliminated by the
+   gap-down nature of the move. Peak-to-exit drawdowns in GOOGL are often gap-downs, not
+   gradual declines, so a percentage-from-peak exit provides no timing advantage over the ATR stop.
+
+3. **Structural barrier:** Any peak-gain trail exit that is sensitive enough to capture
+   GOOGL T4's 13% drawdown-from-peak will also fire on GOOGL T1's ~22% peak gain during
+   the initial rally. Without a reliable way to distinguish "genuine reversal" from "healthy
+   consolidation below peak," the signal causes premature exits on winning trades.
+
+**Signal file retained** (`peak_gain_trail.py`) and commented out in `registry.py`.
+
+**Future refinement ideas:**
+- Add SMA slope guard: only fire when exit_sma slope is negative (ensures structural trend has
+  actually broken, not just a consolidation below the peak). This would likely block T1 (SMA
+  still rising at 170 area during Q2 2024) while allowing T4 (SMA slope negative in Feb 2025).
+- Add requirement: `fast_ema < exit_sma` (EMA below SMA) to confirm structural breakdown.
+  Combined with peak-trail, this creates a tighter trailing stop that requires SMA confirmation.
+- Test on 5y window where more 20-40% peak gains occur — may expose patterns not in 2y window.
+- The trailing stop gap (GOOGL T4) appears to be genuinely hard to improve: the gap-down nature
+  of the exit means any "earlier" exit would need to fire several bars BEFORE the price gap,
+  which requires lookahead into the reversal that isn't available from daily OHLCV alone.
+
+---
+
+# Signal Optimization Run #19 — 2026-04-10 (ema_sma_cross_exit signal)
+
+## Baseline (smart-hold-v17 state, 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +204.08%        | +100.10%            | 0.0%            |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+### A) Missed upside (5+ bars out, price rose >3%)
+- GOOGL T7->T8: +3.4% (already addressed by vix_recovery_below_sma in v17)
+- QQQ T1->T2: +5.2% (already addressed by vix_recovery_below_sma — neutral for QQQ)
+- QQQ T2->T3: +3.1% (ma_breakdown on Sep 5, re-entered Sep 13 at higher price — false breakdown)
+- No new unaddressed missed-upside gaps except QQQ T2->T3.
+
+### B) Premature exits (price continued up >2% within 3 bars)
+- QQQ T2->T3: ma_breakdown 2024-09-05 @ 461.04, re-entered 2024-09-13 @ 475.34 (+3.1% higher).
+  This is a genuine false breakdown. false_breakdown_reclaim (DISABLED) was evaluated —
+  optimizer_log confirms FBR is neutral in 2y window (SMA not reclaimed until bar 6 of
+  the 5-bar FBR window — outside max_bars=5).
+- All other exits confirmed correct (market continued lower after exit).
+
+### C) Pyramid gaps
+- GOOGL T4: peak gain ~27.8% (peak ~206.49), trailing_stop fired at 179.66 (+10.95%).
+  Dominant exit quality gap — already known from Run #18. ATR stop fires late due to gap-down.
+- No intraday pyramid opportunities detected in daily OHLCV data.
+
+### Exit quality analysis
+- Premature exit dominant gap: exit signals for trades with 8-30% gain fire too late
+  (ma_breakdown requires 3-5 bar SMA confirmation), giving back 2-3% while waiting.
+- SPY T6 (vix_fear_declining 527.25): 225 bars held, +28.64% gross, exited via vix_accel_exit.
+  macd_reversal_exit requires SMA slope negative — SPY SMA was flat/positive when MACD
+  crossed negative, blocking macd_reversal_exit. vix_accel_exit fired instead (correct exit).
+- QQQ T7 (vix_fear_declining 444.48): 179 bars held, +39.77% gross, exited correctly via
+  macd_reversal_exit at 621.26.
+
+## Signal Created: `ema_sma_cross_exit`
+
+**File:** `strategies/smart_hold/signals/exits/ema_sma_cross_exit.py`
+
+**Logic:** Fire when ALL of:
+1. unrealized_gain_pct >= 8% (protects meaningful winners only)
+2. bars_held >= 20 (avoids whipsaw on fresh entries)
+3. fast_ema[i] just crossed BELOW exit_sma (EMA was >= SMA last bar, now < SMA)
+4. MACD histogram is negative (hist < 0)
+5. MACD histogram is declining vs prior bar (worsening momentum)
+6. RSI < 50 (price losing upward momentum)
+7. SMA slope <= 0.001 over slope_lb bars (not a dip in a strong uptrend)
+8. bars_below_ma >= 1 (price has already breached SMA at least once)
+
+**Rationale:** When fast EMA crosses below exit SMA on a profitable trade with negative
+and worsening MACD + RSI < 50, the trend has structurally reversed. Firing at the EMA/SMA
+death cross captures 1-3 bars earlier than ma_breakdown's 3-5 bar SMA confirmation,
+protecting 1-2% of accumulated gains before the full confirmation completes.
+
+**Registry:** Placed after macd_reversal_exit, before ma_breakdown.
+
+## Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline vs_BH | New vs_BH | Delta |
+|--------|----------------------|-----------------|-------|----------------|-----------|-------|
+| GOOGL  | +204.08%             | +204.08%        | 0.00% | +100.10%       | +100.10%  | 0.00% |
+| SPY    | +63.60%              | **+60.68%**     | **-2.92%** | +31.35%   | **+28.43%** | **-2.92%** |
+| QQQ    | +65.42%              | **+57.60%**     | **-7.82%** | +26.23%   | **+18.41%** | **-7.82%** |
+
+## Decision: REVERTED
+
+2 symbols regressed (SPY -2.92%, QQQ -7.82%), 1 neutral (GOOGL). Signal reverted.
+Signal file retained (`ema_sma_cross_exit.py`), commented out in `registry.py`.
+
+## Root Cause Analysis
+
+**SPY regression (-2.92%):**
+- ema_sma_cross_exit fired on SPY T6 (vix_fear_declining 527.25) on 2026-02-17 @ 682.85 (+29.21% gross)
+  vs baseline vix_accel_exit on 2026-03-09 @ 678.27 (+28.64% gross).
+- Exit itself was +0.67% better (682.85 vs 678.27).
+- BUT: ema_sma_cross_exit triggered a SECONDARY effect — released the position 20 days earlier,
+  allowing macd_crossover to enter at 693.15 on 2026-02-25.
+- That new T7 trade (macd_crossover 693.15 → vix_accel_exit 678.27 = -2.45% net) wiped out the
+  exit improvement. Net SPY regression: +0.67% T6 improvement - 2.45% T7 loss = -1.78%.
+- The fundamental problem: any early exit creates a new entry opportunity. If the new entry
+  fails, the early exit is counterproductive. We cannot control which entry signal fires after
+  the early exit.
+
+**QQQ regression (-7.82%):**
+- ema_sma_cross_exit fired PREMATURELY on QQQ T7 (vix_fear_declining 444.48) on 2025-12-18 @ 609.11
+  instead of the baseline macd_reversal_exit on 2026-01-16 @ 621.26.
+- Exit was 12.15 pts worse: 609.11 vs 621.26 = -1.99% on the +39.77% gross trade.
+- Mechanism: On 2025-12-18, fast EMA crossed below SMA on QQQ T7. MACD was negative and
+  declining. RSI < 50. But macd_reversal_exit had NOT yet fired (SMA slope still flat/positive).
+  ema_sma_cross_exit fired first, capturing 36.74% gross vs 39.77% baseline = -3.03% worse.
+- Then ma_reclaim entered at 619.21 on 2025-12-22 and immediately lost -3.30% (ma_breakdown 2026-02-12).
+  This new failed trade compounded the regression to -7.82% total.
+- The structural problem: ema_sma_cross_exit fires BEFORE macd_reversal_exit, so on trades
+  where macd_reversal_exit is the optimal exit, ema_sma_cross_exit triggers prematurely and
+  captures a worse exit price + creates a new failed entry.
+
+## Key Learnings
+
+1. **Early exit signals have cascading effects.** Exiting a position early frees capital
+   for re-entry. If the next entry fails, the early exit is doubly harmful. Any exit signal
+   that fires before macd_reversal_exit must account for the post-exit re-entry risk.
+
+2. **Priority ordering of exit signals creates dependency.** ema_sma_cross_exit placed BEFORE
+   ma_breakdown means it can override macd_reversal_exit when macd_reversal_exit doesn't fire
+   (e.g., SMA slope not yet negative). In QQQ's case, this was harmful: macd_reversal_exit
+   would have exited at a better price 29 days later. The EMA/SMA cross is a less reliable
+   signal than MACD histogram crossover for optimal exit timing.
+
+3. **The EMA/SMA death cross is not a clean exit signal on its own.** While it fires 1-3 bars
+   before ma_breakdown on average, it also fires on TEMPORARY momentum dips during longer-term
+   uptrends where the fast EMA briefly dips below SMA before recovering. The MACD/RSI guards
+   (conditions 4-6) were not sufficient to filter these cases.
+
+4. **Potential refinements (not yet tried):**
+   - Add a minimum SMA slope decline threshold (e.g., slope < -0.005 vs -0.001) to ensure
+     the exit fires only on genuine downtrends, not temporary consolidations.
+   - Require fast_ema to have been declining for 3+ bars before the SMA cross.
+   - Add post-exit cooldown: after ema_sma_cross_exit, block all re-entries for 5-10 bars
+     to prevent the cascading failure. But this would require engine-level changes.
+   - Restrict to trades with gain >= 15% (not 8%) to avoid firing on weaker QQQ trades.
+
+5. **The trailing stop gap (GOOGL T4) remains open.** Neither peak_gain_trail (Run #18) nor
+   ema_sma_cross_exit (Run #19) could improve GOOGL T4 without harming other symbols.
+   The gap-down nature of GOOGL's Feb 2025 decline makes any "earlier" exit require lookahead
+   that isn't available from daily closes alone. This gap may be structurally irreducible.
+
+---
+
+# Signal Optimization Run #20 — 2026-04-10 (false_breakdown_reclaim v2: 1-bar SMA reclaim)
+
+## Baseline (smart-hold-v17 state)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +204.08%        | +100.10%            | 0.0%            |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+### A) Missed upside (5+ bars out, price rose >3%)
+From exit-to-entry P&L analysis across all gaps:
+- GOOGL: all gaps either handled (Gap 7: +3.39% covered by vix_recovery_below_sma) or correct exits (avoided -6.48%, -6.86%, -5.22%, -15.59%, -7.51% losses)
+- SPY: all gaps either handled (Gap 1: +2.82% covered by vix_recovery_below_sma) or correct exits
+- QQQ Gap 2: ma_breakdown 2024-09-05 @ 461.04 → ma_reclaim 2024-09-13 @ 475.34 = **+3.10% uncaptured** ← TARGET
+
+### B) Premature exits (price continued up >2% within 3 bars)
+No premature exits found. All exits correctly avoided further declines (confirmed from exit-to-next-entry price deltas). This confirms the context note: exit space is saturated. Focus correctly placed on entry gaps.
+
+### C) Structural pattern of losing trades
+- QQQ: 4 losing trades total, all < -2%. No common structural pattern (diverse entry signals, diverse market regimes).
+
+## First Attempt — `ma_breakdown_recovery` (REVERTED immediately)
+
+### Signal Design
+Re-enter below exit SMA after an `ma_breakdown` exit when fast EMA reverses upward (analogous to `vix_recovery_below_sma` which handles VIX-exit cases). Conditions: last exit = ma_breakdown, bars_since in [3,7], price below SMA, price above fast EMA, EMA rising 3 consecutive bars, SMA slope > -0.008, price higher than 3 bars ago, RSI [38,65].
+
+### Failure Analysis
+Signal fired on GOOGL 2024-08-21 @ 165.85 (bar 7 after Aug 12 ma_breakdown exit), exited 2024-08-28 @ 162.85 = **-2.11% loss**. This created a cascading entry shift: subsequent ema_momentum (Sep 25 @ 161.49) was replaced by ma_reclaim (Sep 30 @ 165.85), a worse entry for the big T4 trade.
+
+**Root cause:** GOOGL Aug 2024 had a multi-leg correction (VIX spike Jul→Aug, then secondary leg Aug→Sep). The EMA briefly turned up during the inter-leg consolidation (Aug 21), which looked like a false breakdown but was actually a dead-cat bounce before the second leg down to 151.
+
+**Debug analysis for QQQ target gap:**
+Running with debug mode confirmed the signal is **structurally incompatible** with QQQ Sep 2024:
+- Sep 10: EMA not yet rising (467.93→464.43→462.62→461.90 — still declining)
+- Sep 11: EMA not rising 3 bars
+- Sep 12: close=473.22 > sma=470.80 — price ALREADY above SMA (ma_reclaim handles this)
+
+The 10-bar EMA takes too long to turn after a breakdown. By the time it rises 3 consecutive bars, price has already crossed the SMA. The below-SMA window for this gap is structurally empty.
+
+**Reverted immediately** (GOOGL -14.26%). Signal file retained, commented out in registry.
+
+## Second Attempt — `false_breakdown_reclaim` v2 with 1-bar SMA reclaim (KEPT)
+
+### Gap Re-Analysis
+QQQ Sep 2024: Exit Sep 5 @ 461.04. On Sep 12 (bar 5 after exit), close=473.22 > SMA=470.80 — price first crossed above SMA. ma_reclaim requires 2 consecutive bars above SMA, so fires Sep 13 @ 475.34. If we require only **1 bar above SMA**, FBR fires Sep 12 @ 473.22 (1 day, -0.45% better entry price).
+
+### Change Applied
+Modified `false_breakdown_reclaim.py`: changed `reclaim_bars = 2` → `reclaim_bars = 1`. Single bar above SMA is sufficient given the 5-bar window constraint (false breakdowns resolve rapidly), EMA rising, and RSI guards provide equivalent protection.
+
+Enabled in `registry.py` (between vix_recovery_below_sma and ma_reclaim).
+
+### Safety Analysis
+For all GOOGL ma_breakdown exits, the gap to re-entry exceeds 5 bars (GOOGL's corrections are multi-leg and sustained). FBR correctly skips (bars_since > max=5). SPY ma_breakdown exits also followed by real declines — price stays below SMA throughout the [2,5] bar window.
+
+### Backtest Results
+
+| Symbol | Baseline total_return | New total_return | Delta | Baseline vs_BH | New vs_BH | Delta |
+|--------|--------------------|-----------------|-------|----------------|-----------|-------|
+| GOOGL  | +204.08%           | +204.08%        | 0.00% | +100.10%       | +100.10%  | 0.00% |
+| SPY    | +63.60%            | +63.60%         | 0.00% | +31.35%        | +31.35%   | 0.00% |
+| QQQ    | +65.42%            | **+66.17%**     | **+0.75%** | +26.23%   | **+26.97%** | **+0.74%** |
+
+QQQ T3 now enters Sep 12 @ 473.22 via false_breakdown_reclaim (1-bar) instead of Sep 13 @ 475.34 via ma_reclaim (2-bar). Trade return: 5.42% vs baseline 4.94% (+0.48% net on that trade).
+
+## Decision: KEPT — committed to smart-hold-v18
+
+1 improved (QQQ +0.75%), 2 neutral, 0 regressed.
+
+**Key learnings:**
+
+1. **The `ma_breakdown_recovery` below-SMA concept is structurally incompatible with this dataset.** The 10-bar fast EMA takes too long to reverse after a breakdown. By the time it rises 3 consecutive bars while price is still below SMA, price has already crossed the SMA — making the below-SMA window empty for the target gap.
+
+2. **Multi-leg corrections vs. single-leg V-recoveries are indistinguishable from daily OHLCV.** GOOGL's Aug 2024 inter-leg bounce looked identical to a false breakdown until the second leg down began. Any below-SMA signal that fires on GOOGL will fire on dead-cat bounces.
+
+3. **`false_breakdown_reclaim` with 1-bar SMA is the surgical fix.** Rather than creating a new signal that tries to fire before SMA reclaim, the simpler approach is to relax the SMA reclaim requirement from 2 consecutive bars to 1 bar. The tight [2,5] bar window ensures this only applies to truly brief false breakdowns. GOOGL's multi-leg corrections span 17+ bars between exit and re-entry, naturally blocking the signal.
+
+4. **Zero-downside improvements still have value.** The QQQ improvement is small (+0.75%) but zero-cost. Combined with the run #20 GOOGL exploration confirming the exit space is saturated and the below-SMA entry space is structurally empty, this is likely near the optimization ceiling for the 2y window.
+
+5. **Next areas to explore:**
+   - 5y window testing to discover patterns not visible in 2y
+   - Different symbols (AAPL, MSFT, NVDA) to stress-test current signals on different volatility profiles
+   - The QQQ T8 (ema_momentum at Feb 2026) cascading failure remains — its entry stems from macd_reversal_exit block expiring and ema_momentum catching a false recovery
+

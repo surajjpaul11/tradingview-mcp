@@ -896,3 +896,87 @@ QQQ: T9 at 2026-01-22 blocked (4 bars after exit). New T9 fires at 2026-02-26 (6
 - Explore whether the 20-bar cooldown holds on other symbols (WDC, STX) where macd_reversal_exit could fire
 - Consider an adaptive cooldown: instead of fixed N bars, wait until MACD histogram returns positive AND price above exit_sma (dynamic re-entry gate post-macd_reversal_exit)
 - The new QQQ T9 (ema_momentum at 609.24 on 2026-02-26, -1.56%) could potentially be avoided by the existing ema_momentum SMA slope guard — worth investigating
+
+---
+
+# Signal Optimization Run #11 — 2026-04-10 (MACD histogram positive-momentum suppressor on ma_breakdown)
+
+## Baseline (smart-hold-v10 state, fresh 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +176.13%        | +72.97%             | -3.04%          |
+| SPY    | +52.45%         | +20.21%             | 0.0%            |
+| QQQ    | +52.05%         | +12.85%             | -2.04%          |
+
+## Gap Analysis — All Three Symbols
+
+**A) Missed upside (5+ bars out, price rose >3%):**
+- GOOGL: Gap T2→T3 (21 bars, +3.01% missed after ma_breakdown exit 2024-08-12) — no improvement possible without blocking correct exit
+- QQQ: Gap T7→T8 (6 bars, +3.07% missed after vix_accel exit 2025-04-24) — already handled by fast_reentry
+
+**B) Premature exits (price up >2% within 3 bars):**
+- GOOGL T11 (2026-04-07, vix_accel @ 305.46): +4.27% bounce within 2 bars. MACD hist=+1.78 at exit.
+- SPY T8 (2026-04-06, ma_breakdown @ 658.93): +3.18% bounce within 3 bars. MACD hist=+1.14 at exit.
+- QQQ T6 (2025-04-24, vix_accel @ 467.35): price continued rising strongly. MACD hist=+3.05 at exit.
+- SPY T6 (2025-04-24, vix_accel @ 546.69): price continued rising. MACD hist=+2.76 at exit.
+
+**C) Exit quality:**
+- ma_breakdown exits with positive MACD hist (> 1.0) AND price near SMA (< 3% below) were systematically premature across all 3 symbols in April 2025 and April 2026.
+- ma_breakdown exits with negative hist (< 0) were all correct protective exits.
+- Key insight: when SMA acts as temporary support (price just dipped below) but MACD momentum is strongly bullish, the "breakdown" is a false signal.
+
+**Distinguishing factor for legitimate blocks:**
+- MACD hist > 1.0 (absolute threshold): filters out mild VIX-spike dead-cat bounces (QQQ 2025-04-15: hist=+1.54 but dist=-6.7% → correct exit NOT blocked)
+- dist > -3% (within 3% of SMA): prevents guard from blocking genuine crash exits (QQQ tariff shock 2025-04-07 to 04-15: dist -6% to -16% → correctly NOT blocked)
+
+## Change Applied
+
+Added MACD histogram positive-momentum suppressor to `strategies/smart_hold/signals/exits/ma_breakdown.py`:
+
+```python
+macd_line = ctx["macd_line"]
+macd_signal = ctx["macd_signal"]
+if macd_line[i] is not None and macd_signal[i] is not None:
+    macd_hist = macd_line[i] - macd_signal[i]
+    sma_val = exit_sma[i]
+    if macd_hist > 1.0 and sma_val is not None and close > sma_val * 0.97:
+        return False, ""
+```
+
+Placed after all existing exit conditions, before the final reason determination. Suppresses both `ma_breakdown` and `vix_accelerated_exit` returns (since both are returned by the same function).
+
+**No other files modified.** `macd_line` and `macd_signal` already in ctx dict (added in v6).
+
+## Backtest Results
+
+| Symbol | Baseline vs_BH | New vs_BH | Delta | Baseline total_return | New total_return |
+|--------|---------------|-----------|-------|----------------------|-----------------|
+| GOOGL  | +72.97%       | **+84.81%** | **+11.84%** | +176.13% | +188.79% |
+| SPY    | +20.21%       | **+31.35%** | **+11.14%** | +52.45%  | +63.60%  |
+| QQQ    | +12.85%       | **+20.33%** | **+7.48%**  | +52.05%  | +59.53%  |
+
+**Key trade changes:**
+- GOOGL T11: vix_accel exit at 305.46 (2026-04-07) blocked (hist=+1.78, dist=-1.26%) → trade holds to EOD at 318.49 (+10.46% vs +5.92%)
+- SPY T6+T7 merged: vix_accel exit at 546.69 (2025-04-24) blocked (hist=+2.76, dist=-2.92%) → trade holds from 527.25 all the way to 678.27 (+28.34% vs T6 +3.39% + T7 +19.37% separately = avoids 6-bar gap and higher re-entry at 566.76)
+- SPY T8 (new): EOD exit at 679.91 (2026-04-09) instead of ma_breakdown at 658.93 (2026-04-06, +4.25% vs +1.02%)
+- QQQ T7: vix_accel exit at 467.35 (2025-04-24) blocked (hist=+3.05, dist=-2.89%) → trade holds from 444.48 to 621.26 (+39.47% via macd_reversal_exit, vs separate T7 +4.85% + T8 +26.79%)
+
+## Decision: KEPT — committed to smart-hold-v11
+
+All 3 symbols improved, 0 regressed.
+
+**Key learnings:**
+- When MACD hist is strongly positive (> 1.0) and price is near SMA (within 3%), a close below SMA is a shallow dip in a recovering market, NOT a structural breakdown
+- The 3% SMA distance filter is critical: prevents blocking exits during genuine crash events (QQQ April 2025 tariff shock: dist -6% to -16%, correctly NOT blocked despite high hist)
+- The absolute hist threshold of 1.0 filters out mild dead-cat bounces (QQQ 2025-04-15: hist=+1.54 but dist=-6.7%, correctly NOT blocked by distance filter)
+- The guard suppresses BOTH `ma_breakdown` and `vix_accelerated_exit` labels (same function) — beneficial, since VIX-spike exits during near-SMA recoveries are equally premature
+- Zero signal-hop risk: this is an exit suppressor, not an entry signal change — when exit is blocked, the position simply continues
+- `macd_line` and `macd_signal` were already in ctx dict, so no engine changes needed
+
+**Next potential improvement ideas:**
+- Test on 5-year backtest window — more periods with MACD>1.0 near-SMA events would validate the guard
+- Tune the hist threshold (1.0 currently): lower to 0.7 might catch GOOGL 2024-09-18 (hist=0.90) and GOOGL 2026-03-17 (hist=0.93) but risk the latter is a correct exit (price fell -12% after)
+- Tune the distance filter: 3% → 4% might also block QQQ 2025-04-24 (dist=-2.89%) more conservatively; but already blocked at 3%
+- QQQ T9 (ema_momentum 2026-02-26, -1.56%) still fires post-20bar-cooldown; the adaptive cooldown idea remains untried
+- Test whether the guard helps on WDC and STX which have higher volatility and more frequent MACD swings

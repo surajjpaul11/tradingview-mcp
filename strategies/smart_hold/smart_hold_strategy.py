@@ -363,10 +363,10 @@ def run_smart_hold(
             in_vix_regime = vix_regime_count >= vix_regime_bars
 
             # Bear market regime gate: block trend-following entries when both SMA200 (20-bar)
-            # and SMA50 (5-bar) are steeply declining. This catches the "churning in a bear"
-            # problem where ma_reclaim / ema_momentum repeatedly trigger false recoveries.
+            # and SMA50 (5-bar) are declining. This catches the "churning in a bear" problem
+            # where ma_reclaim / ema_momentum repeatedly trigger false recoveries.
             # GOOGL 2022: VIX was 20-27 (below VIX gate threshold) but SMA200 dropped -2 to -4%
-            # over 20 bars while SMA50 also declined -1%+ over 5 bars → entrenched downtrend.
+            # over 20 bars while SMA50 also declined → entrenched downtrend.
             # VIX-triggered signals are exempt since they fire at precise fear-peak reversals.
             #
             # ATR-adaptive SMA200 threshold:
@@ -375,17 +375,31 @@ def run_smart_hold(
             # sustained bear phase. Lower-vol stocks (ETFs: SPY 0.82%, QQQ 1.14%) require a
             # stricter -2.5% threshold to avoid blocking their Jun-Jul 2022 entries via signal-hop
             # (where blocking ema_momentum causes a later ma_reclaim at a worse price).
+            #
+            # SMA50 secondary condition: relaxed from -1% to -0.3% over 5 bars.
+            # Original -1% was too strict — during the 2022 bear's dead-cat bounces,
+            # SMA50's 5-bar slope: ATR-adaptive threshold.
+            # High-vol stocks (GOOGL): during the 2022 bear, SMA50's 5-bar slope was only
+            # -0.4% to -0.7% during dead-cat bear rallies (SMA50 briefly flattens during bounces)
+            # while SMA200 was in deep decline (-2 to -4%). A -0.3% threshold correctly blocks
+            # the bear-rally false entries (GOOGL Jul-Nov 2022: T8-T11, T14-T15) while allowing
+            # genuine recovery entries (GOOGL 2023-03-03: s50_5=-0.09%).
+            # ETFs (SPY/QQQ): keep the original -1% threshold to avoid cascade effects — the
+            # QQQ Nov 2022 bear had s50_5=-1.0% on Nov 11 (original blocked correctly under -1%)
+            # and -0.17% on Nov 30 (next valid entry). Relaxing to -0.3% would block Nov 11
+            # and cascade to Nov 30 (higher entry price, worse outcome).
             _BEAR_REGIME_EXEMPT = frozenset({
                 "vix_extreme_fear", "vix_fear_declining", "fast_reentry", "rsi_oversold_bounce",
             })
             bear_sma200_thresh = -0.02 if median_atr_pct > 1.3 else -0.025
+            bear_sma50_thresh = -0.003 if median_atr_pct > 1.3 else -0.01  # ATR-adaptive: tighter for high-vol stocks
             in_bear_regime = False
             if i >= 20 and sma_200_vals[i] is not None and sma_200_vals[i - 20] is not None:
                 sma200_slope = (sma_200_vals[i] - sma_200_vals[i - 20]) / sma_200_vals[i - 20]
                 if sma200_slope < bear_sma200_thresh:
                     if i >= 5 and exit_sma_vals[i] is not None and exit_sma_vals[i - 5] is not None:
                         sma50_slope = (exit_sma_vals[i] - exit_sma_vals[i - 5]) / exit_sma_vals[i - 5]
-                        if sma50_slope < -0.01:  # SMA50 declined >1% over 5 bars
+                        if sma50_slope < bear_sma50_thresh:
                             in_bear_regime = True
 
             # Evaluate entry signals (first match wins)

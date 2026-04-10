@@ -1148,3 +1148,194 @@ Added Condition 3 to MACD histogram suppressor in `strategies/smart_hold/signals
 - Consider whether the C3 pattern applies to trailing_stop (weakly positive MACD + RSI rising + barely below trail level)
 - The remaining GOOGL losers (T3 at dist=-3.83%, T7 at dist=-5.93%) are structurally unblockable — dist too far below SMA
 - QQQ T8/T9 losses (-1.56%, -0.49%) are post-macd_reversal_exit cooldown consequences; architectural approach would be adaptive cooldown (wait for MACD positive + price above SMA) but these specific trades fire 41+ bars after exit — beyond the 20-bar window
+
+---
+
+# Signal Optimization Run #14 — 2026-04-10 (Exhaustive Gap Analysis — Optimization Ceiling)
+
+## Baseline (smart-hold-v13 state, fresh 2026-04-10 data)
+
+| Symbol | total_return_pct | vs_buy_and_hold_pct | max_drawdown_pct |
+|--------|-----------------|---------------------|-----------------|
+| GOOGL  | +197.73%        | +93.75%             | 0.0%            |
+| SPY    | +63.60%         | +31.35%             | 0.0%            |
+| QQQ    | +65.42%         | +26.23%             | -2.04%          |
+
+## Comprehensive Gap Analysis — All Three Symbols
+
+**Post-exit price movement analysis (all 27 trades):**
+
+**Remaining premature exits (price rose >3% within 5 bars):**
+- GOOGL T7: vix_accel @ 155.35 (2025-04-23), hist=0.750, dist=-5.93%, RSI rising — +4.3% by +2d
+- SPY T1: vix_accel @ 518.66 (2024-08-07), hist=-4.030, dist=-4.50%, RSI falling — +2.8% by +2d
+- QQQ T1: vix_accel @ 439.53 (2024-08-06), hist=-4.574, dist=-7.10%, RSI rising — +5.2% by +5d
+
+**Remaining trailing stop gap:**
+- GOOGL T4: trailing_stop @ 179.66 (2025-02-21), peaked at 27.80% gain (2025-02-04), exited at 10.95%
+
+## Attempted Improvements (8 approaches, all rejected analytically before coding)
+
+**1. C4 in ma_breakdown (expand to cover GOOGL T7, SPY T1, QQQ T1):**
+- SPY/QQQ T1: hist=-4.0 to -4.6 (massive negative MACD) AND dist<-3% → no positive MACD → no C4 possible
+- GOOGL T7: hist=+0.750 but dist=-5.93% → widening C1 dist from -3% to -6% would also block QQQ T6 (hist=1.542, dist=-6.67%, CORRECT exit)
+- Verdict: **NOT viable. C4 space exhausted for 2y window.**
+
+**2. RSI_oversold_bounce MACD histogram guard (block when hist < -3.0):**
+- Blocks SPY T3 (+0.47%) and QQQ T4 (-0.04%) on 2025-03-14 — correctly identified as weak entries
+- BUT: ema_momentum fires on 2025-03-25 @ 493.46 for QQQ (higher price than 479.66 blocked entry)
+- Net for QQQ: worse entry at 493.46 → falls to 422 during tariff shock → larger drawdown
+- Net for SPY: blocks a +0.47% win → regression
+- Verdict: **REJECTED — signal-hop causes QQQ regression, SPY regression from blocking a win.**
+
+**3. macd_reversal_exit relaxed SMA slope (allow up to +0.02 instead of requiring < 0):**
+- GOOGL T4: would fire on FIRST crossover 2024-12-30 at 18.42% gain, SMA slope=+0.017
+- But post-3d price = +0.3% (still rising!) — premature exit, misses peak at 27.80%
+- Also fires on Jan 27 crossover (post-3d +4.7%) before the good Feb 5 crossover (post-3d -2.5%)
+- Verdict: **REJECTED — false fire on first crossover when price continues rising.**
+
+**4. ema_momentum below-SMA SMA slope guard:**
+- Checked SMA slope at ALL below-SMA ema_momentum entries across GOOGL/SPY/QQQ
+- Winner GOOGL T3 (2024-09-25, +10.95%): slope=-0.01455 (steepest negative!)
+- Losers QQQ T8/T9: slope=-0.00234/-0.00040 (less negative than the winner)
+- Any threshold that blocks losses also blocks GOOGL's biggest ema_momentum win
+- Verdict: **REJECTED — no viable slope threshold.**
+
+**5. Trailing_stop MACD guard (C3 equivalent for trailing_stop):**
+- Only 1 trailing_stop exit in 2y (GOOGL T4, 2025-02-21)
+- MACD hist at exit = -1.395 (strongly negative, correct protective exit)
+- Guard would not fire → zero impact on 2y results
+- Verdict: **REJECTED — zero-fire change for this dataset.**
+
+**6. Adaptive macd_rev_exit cooldown (wait for MACD > 0 AND price > SMA):**
+- QQQ: adaptive cooldown ends 2026-01-27 @ 631.13 (price up briefly)
+- 2026-01-27 to 2026-02-03: 631 → 633 → 629 → 616 → 616 (then falls to 597 by Feb 5)
+- Re-entry at 631.13 is WORSE than current 609.24 (20-bar fixed cooldown)
+- Verdict: **REJECTED — adaptive cooldown ends earlier at a higher price.**
+
+**7. Profit_lock threshold variants (40%, 60%):**
+- The profit_lock fires when SMA slope JUST turns negative — it fires at the crossover moment
+- GOOGL T8: SMA turned negative at 88% gain (Feb 12, 2026) — threshold 40%/50%/60% all activate on same bar since gain was already 88% when slope turned
+- Verdict: **REJECTED — same exit bar regardless of threshold.**
+
+**8. false_breakdown_reclaim with expanded window (max_bars=10):**
+- With default reentry_ma_reclaim=2 (CLI default), FBR fires on same bar as ma_reclaim (2 consec above SMA)
+- No improvement vs current ma_reclaim — simultaneous fire
+- Verdict: **REJECTED — fires simultaneously with ma_reclaim at default params.**
+
+## Decision: SKIP — No Viable Improvement Found
+
+**0 of 8 approaches produced a net improvement across 2+ symbols without regression.**
+
+The 2y GOOGL/SPY/QQQ window has reached true optimization ceiling. Remaining losses fall into three structural categories:
+1. **VIX-exit overselling** (SPY T1, QQQ T1, GOOGL T7): exits with negative MACD or dist>-3% not distinguishable from correct protective exits without lookahead bias
+2. **Trailing stop gap** (GOOGL T4): macd_reversal_exit correctly blocked by SMA slope guard (price still rising when MACD crosses); relaxed slope causes false earlier exit
+3. **Post-cooldown QQQ reentries** (T8/T9): both have positive rising MACD, signal-hop prevents blocking
+
+**No code changes made. No commit. No push.**
+
+**Next recommended approach:**
+- Test on 5-year backtest window to expose different frequency patterns
+- Consider whether WDC or STX (not GOOGL/SPY/QQQ) have exploitable gaps that could add a 4th symbol to the benchmark set
+- The 20-bar macd_rev_exit cooldown architecture is proven; tuning to 25 bars might help QQQ but requires full backtest verification against all symbols
+
+---
+
+# Signal Optimization Run #15 — 2026-04-10 (5y Window Switch — Baseline Establishment)
+
+## Confirmed: 2y Window at Optimization Ceiling
+
+Run #14 conclusively found all 8 approaches tried in the 2y window were either signal-hop failures or zero-impact. Switching to 5y window to expose 2021-2024 patterns including the 2022 bear market.
+
+## 5y Baseline (smart-hold-v13 state, CLI default params)
+
+```
+  GOOGL: total=+142.68%, vs_BH=-41.10%, trades=36, win=38.9%, dd=-42.33%
+  SPY:   total=+94.85%,  vs_BH=+29.68%, trades=20, win=65.0%, dd=-19.79%
+  QQQ:   total=+95.64%,  vs_BH=+14.40%, trades=25, win=44.0%, dd=-24.19%
+```
+
+**Window:** 2021-04-12 to 2026-04-09 (1255 bars)
+**Files:** smart_hold_backtest_GOOGL_5y.json, smart_hold_backtest_SPY_5y.json, smart_hold_backtest_QQQ_5y.json
+
+## 5y Gap Analysis — All Three Symbols
+
+### Dominant New Pattern: 2022 Bear Market Churn
+
+The 5y window adds 3 years (2021-2024) not visible in the 2y window. The major new exposure is the 2022 bear market:
+
+- **GOOGL**: 36 trades (vs 10 in 2y), 22 losing — 18 trades in the 2022 bear (Jan-Mar 2023), losing ~50% cumulatively. This drove GOOGL's vs_BH from +93.75% (2y) to -41.10% (5y).
+- **SPY**: 20 trades, only 7 losses — more resilient because SPY exited in Jan 2022 and successfully re-entered in Nov 2022 (ma_reclaim at 382, +12.63%) before the full recovery.
+- **QQQ**: 25 trades, 14 losses — intermediate churn, re-entered successfully in Jan 2023 (ema_momentum at 270, +31.98%).
+
+**Root cause of 2022 churn:** Strategy kept re-entering on VIX-spike reversals, EMA momentum, and RSI oversold bounces throughout the 2022 bear, but every bear rally failed. Each re-entry generated a small-to-medium loss. The cumulative effect was ~50% of trading capital lost during the 2022 bear for GOOGL.
+
+### A) Missed Upside (5+ bars out, price rose >3%)
+
+- GOOGL T20→T21: 10 bars out after Oct 27, 2023 exit at 122.17; GOOGL recovered to 130.25 by Nov 6 (+6.6%). Re-entry at 130.25 via ema_momentum was reasonable but missed early recovery.
+- SPY/QQQ: No significant gaps — successful re-entries during key recoveries (Nov 2022 for SPY, Jan 2023 for QQQ).
+
+### B) Premature Exits (price up >2% within 3 bars)
+
+- GOOGL T27 (Sep 16, 2024, ma_breakdown at 158.06): price rose to 163.59 within 4 bars (+3.5% missed). MACD histogram crossed from negative to positive on the exit bar (+0.299 vs prev=-0.099), but dist=-5.55% is outside C2's -3% filter. Cannot improve without risking blocking genuine crash exits.
+- GOOGL T5 (Apr 13, 2022, ma_breakdown, -4.86%): price recovered +4.7% within 3 bars. MACD hist was negative at exit — correctly not blocked.
+
+### C) Exit Quality — 2022 Bear & 2023 Recovery Patterns Not in 2y
+
+- **VIX-spike exits (2022 bear):** Multiple vix_accelerated_exits throughout 2022 were correct (prevented deeper losses) but subsequent re-entries failed as bear continued.
+- **MACD histogram guard coverage:** Analyzed 5y window — C1/C2/C3 guards would have fired frequently during 2022 bear rally weeks (especially SPY Jul-Oct 2022 with hist > 1.0 during rallies). These guards correctly DON'T fire during those periods because the strategy was already out of position (not in a trade), so they're irrelevant. The guards only matter when the strategy is IN a trade and an exit signal fires.
+- **Bear regime confirmation:** SMA200 was declining for GOOGL from Jun 2022 through Mar 2023 (-3% to -4% per 20 bars). SPY's SMA200 declined more gently (never exceeding -2.5% per 20 bars). QQQ was intermediate (-3.5% at worst).
+
+## Approaches Tested and Rejected
+
+### Approach 1: Bear Regime Entry Gate (architectural)
+Detect SMA200 declining steeply (>2% over 20 bars + price below SMA200) and block `ma_reclaim` + `rsi_oversold_bounce` entries.
+
+**Results:**
+- At -1.8% threshold: GOOGL +7.18% vs B&H (+48pp improvement), SPY -2.98pp regression, QQQ -3.93pp regression
+- At -2.0% threshold: GOOGL -20.76% vs B&H (+20pp improvement), SPY -2.98pp regression, QQQ -3.93pp regression
+- At -3.0% threshold: GOOGL -37.76% vs B&H (+3pp improvement), SPY unchanged, QQQ -1.05pp regression
+
+**Root cause of failure:** Signal-hop problem — blocking ma_reclaim and rsi_oversold_bounce causes ema_momentum to fire as fallback at similar or worse timing. SPY's critical winning re-entry (Nov 2022 at 382 via ma_reclaim) is in the bear regime window at -2%/-1.8% thresholds and gets blocked. **REJECTED.**
+
+### Approach 2: Deep-Bear RSI Oversold Bounce Guard
+Block `rsi_oversold_bounce` when price is >10% below SMA200 (deep bear regime).
+
+**Results:**
+- GOOGL: -44.16% vs B&H (worse than baseline -41.10%)
+- SPY: +29.29% vs B&H (-0.39pp regression)
+- QQQ: +14.32% vs B&H (-0.08pp regression)
+
+**Root cause:** Blocking rsi_oversold_bounce caused ema_momentum and ma_reclaim to fire as fallbacks at similar timing. Classic signal-hop. **REJECTED.**
+
+### Approach 3: Extended C2 Distance Filter (exit guard)
+Extend MACD histogram C2 crossover guard from -3% to -6% SMA distance.
+
+**Analysis (not coded):** At -3% to -6% range, C2 would fire on 5 GOOGL bars, 5 SPY bars, 5 QQQ bars. Post-3-bar movement analysis:
+- GOOGL: 3 positive (+3.9%, +3.5%, +2.6%), 2 negative (-1.6%, context-dependent)
+- SPY: 3 negative (-4.2%, -2.9%, -4.5%), 2 mixed — WORSE than current
+- QQQ: 2 negative (-3.6%, -1.3%), 2 mixed — WORSE than current
+
+Net: more harmful blocks than beneficial blocks, especially for SPY/QQQ in 2022 bear. **REJECTED.**
+
+## Key Structural Findings from 5y Analysis
+
+1. **Bear market churn is inherent to re-entry strategies**: Any strategy that exits on downturns and re-enters on recovery signals will churn during prolonged bear markets. The signal-hop problem means blocking any one entry signal causes another to fire as fallback.
+
+2. **The strategy's 2022 performance is structurally driven**: GOOGL lost ~50% in trading value during 2022 bear. SPY (lower vol, 0.82% ATR) only had 8 bear trades vs GOOGL's 18 — ATR-based volatility drives the number of signal firings.
+
+3. **Existing v13 guards (C1/C2/C3) were optimally tuned for 2y**: They correctly block premature exits near SMA50 with positive MACD momentum. Extending their scope to the 5y window creates more harm than good because the 2022 bear produces many C1/C2 "false signals" where MACD crosses positive during bear rallies but the trend continues down.
+
+4. **The 5y win over B&H is positive for SPY (+29.68%) and QQQ (+14.40%)** — both exceed B&H over 5 years. GOOGL's -41.10% is the outlier due to its higher volatility in the 2022 bear.
+
+5. **Viable future approach:** Consider adding VIX regime awareness to entry signals — only allow ma_reclaim and rsi_oversold_bounce when VIX is below 25 (normal regime) or declining from peak below 30 (fear receding). This would block bear rally re-entries when VIX is still elevated at 25-30 during sustained bears. However, this requires careful testing against QQQ's winning Jan 2023 entry (VIX ~21 — would NOT be blocked) vs the losing entries in Oct 2022 (VIX ~27-30 — WOULD be blocked). Different from the tested approaches because it uses VIX as a regime indicator rather than SMA200 slope.
+
+## Decision: NO IMPROVEMENT — No Code Changes
+
+**No code changes committed. 5y backtest files saved for future reference.**
+
+**5y baseline for next run starting point:**
+```
+  GOOGL: vs_BH=-41.10% (total=+142.68%)
+  SPY:   vs_BH=+29.68% (total=+94.85%)
+  QQQ:   vs_BH=+14.40% (total=+95.64%)
+```

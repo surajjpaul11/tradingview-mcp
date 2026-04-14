@@ -268,23 +268,5 @@
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-04-10T21:53:38.868284+00:00",
-  "bnh_markers": [
-    {
-      "time": "2024-04-11",
-      "position": "belowBar",
-      "color": "#FFD700",
-      "shape": "arrowUp",
-      "text": "B&H BUY $2.14",
-      "size": 3
-    },
-    {
-      "time": "2026-04-10",
-      "position": "aboveBar",
-      "color": "#FFD700",
-      "shape": "arrowDown",
-      "text": "B&H $18.87 (+781.78%)",
-      "size": 3
-    }
-  ]
+  "timestamp": "2026-04-13T05:21:16.897657+00:00"
 }

@@ -247,3 +247,35 @@ python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
 ## Inspiration
 
 Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. Our fork goes further by adding execution capability.
+## Docker Container Instructions
+
+**READ ON STARTUP:** This project runs inside a Docker container. You MUST read and follow these files:
+
+- `mandatory_instructions.md` — Networking rules and port allocation
+- `container_restart_instructions.md` — Pre-restart checklist to preserve work
+
+### Port Allocation
+
+This container has ports **8000–8004** mapped to the host. Only these ports are accessible from outside the container.
+
+| Port | Suggested Use |
+|------|---------------|
+| 8000 | Primary server / API |
+| 8001 | Secondary service / admin dashboard |
+| 8002 | WebSocket server |
+| 8003 | Development / hot-reload server |
+| 8004 | Testing / debug server |
+
+### Networking Rules
+
+- **Always bind to `0.0.0.0`**, never `127.0.0.1` or `localhost`
+- **Only use ports in your allocated range** — other ports are not mapped to the host
+- Servers are accessible from the host at `http://localhost:<port>`
+
+### Before Container Restart
+
+Before the container is stopped or restarted, follow the checklist in `container_restart_instructions.md`:
+1. Commit and push all code changes
+2. Update `memory.md` and `last-instruction-and-plan.md`
+3. Record active loops in `loops.md`
+4. Ensure all installed packages are in the project's dependency file

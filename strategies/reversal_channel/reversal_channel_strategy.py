@@ -39,7 +39,7 @@ PIVOT_RIGHT = 3     # Bars to the right (smaller = faster confirmation)
 MIN_SWINGS  = 1     # Consecutive LH+LL required to confirm downtrend
 TOLERANCE   = 0.03  # 3% — how much a lower high/low can "drift" and still count
 STALENESS   = 60    # Max bars between pivots before resetting downtrend state
-ATR_TRAIL   = 8.0   # ATR multiplier for trailing stop
+ATR_TRAIL   = 5.0   # ATR multiplier for trailing stop
 ATR_PERIOD  = 14
 RSI_PERIOD  = 14
 COOLDOWN    = 10    # Bars to wait after a failed/closed trade before re-scanning

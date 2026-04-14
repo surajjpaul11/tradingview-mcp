@@ -24,7 +24,50 @@ Requires: no external dependencies (pure stdlib)
 from __future__ import annotations
 
 import json
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _fetch_vix(period: str = "2y", interval: str = "1d") -> list[dict]:
+    """Fetch VIX data from Yahoo Finance. Returns empty list on failure."""
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval={interval}&range={period}"
+        req = urllib.request.Request(url, headers={"User-Agent": "visualize/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        result = data["chart"]["result"][0]
+        timestamps = result["timestamp"]
+        q = result["indicators"]["quote"][0]
+        fmt = "%Y-%m-%d %H:%M" if interval in ("1h", "30m") else "%Y-%m-%d"
+        candles = []
+        for i, ts in enumerate(timestamps):
+            c = q["close"][i]
+            if c is None:
+                continue
+            candles.append({"date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime(fmt),
+                            "close": round(c, 2)})
+        return candles
+    except Exception:
+        return []
+
+
+def _calc_rsi(values: list[float], period: int = 14) -> list[float | None]:
+    """Compute RSI for chart overlay. Returns None for warmup bars."""
+    out: list[float | None] = [None] * len(values)
+    if len(values) < period + 1:
+        return out
+    gains = [max(values[i] - values[i - 1], 0) for i in range(1, period + 1)]
+    losses = [max(values[i - 1] - values[i], 0) for i in range(1, period + 1)]
+    ag, al = sum(gains) / period, sum(losses) / period
+    out[period] = 100.0 if al == 0 else 100.0 - 100.0 / (1.0 + ag / al)
+    for i in range(period + 1, len(values)):
+        d = values[i] - values[i - 1]
+        ag = (ag * (period - 1) + max(d, 0)) / period
+        al = (al * (period - 1) + max(-d, 0)) / period
+        out[i] = 100.0 if al == 0 else 100.0 - 100.0 / (1.0 + ag / al)
+    return out
+
 
 # Abbreviation maps for chart marker text
 ENTRY_ABBREV = {
@@ -45,6 +88,24 @@ ENTRY_ABBREV = {
     "rsi_oversold_bounce": "RSI-BNC", "ema_momentum": "EMA-MOM",
     "quick_reentry": "QUICK",
     "volume_capitulation": "VOL-CAP",
+    # Scalping entries
+    "ema_cross": "EMA-X", "rsi_bb": "RSI-BB", "macd_hist": "MACD-H",
+    "stochastic": "STOCH",
+    # Scalping confluence (combined signals)
+    "ema_cross+rsi_bb": "EMA+RSI", "ema_cross+macd_hist": "EMA+MACD",
+    "rsi_bb+macd_hist": "RSI+MACD", "ema_cross+stochastic": "EMA+STCH",
+    "rsi_bb+stochastic": "RSI+STCH", "macd_hist+stochastic": "MACD+STCH",
+    # Synthetic Long entries
+    "deep_itm_call": "ITM-CALL", "otm_put_sell": "OTM-PUT",
+    "extreme_add_call": "VIX-CALL",
+    # Smart Hold RC combo entries
+    "reversal_channel_reentry": "RC-ENTRY", "ma_reclaim_fallback": "MA-FALL",
+    # RSI Volume Watch entries
+    "rsi_vol_bullish": "RSI-VOL+", "rsi_vol_bearish": "RSI-VOL-",
+    # News Volatility entries
+    "geopolitical_energy": "GEO-OIL", "geopolitical_defense": "GEO-DEF",
+    "geopolitical_tankers": "GEO-TANK", "geopolitical_gold": "GEO-GOLD",
+    "geopolitical_single": "GEO-BUY",
 }
 EXIT_ABBREV = {
     "atr_trailing_stop": "ATR-TS", "channel_trail_stop": "CH-TS",
@@ -55,6 +116,17 @@ EXIT_ABBREV = {
     # Smart Hold exits
     "ma_breakdown": "MA-BRK", "vix_accelerated_exit": "VIX-X",
     "trailing_stop": "TRAIL",
+    # Scalping exits
+    "stop_loss": "SL", "take_profit": "TP",
+    # Synthetic Long exits
+    "call_profit_target": "CALL-TP", "call_stop_loss": "CALL-SL",
+    "vix_normalized": "VIX-NORM", "max_hold": "MAX-HOLD",
+    "put_decay_profit": "PUT-DECAY", "put_assigned": "PUT-ASGN",
+    "put_expiry": "PUT-EXP",
+    # RSI Volume Watch exits
+    "rsi_momentum_fade": "RSI-FADE",
+    # News Volatility exits
+    "profit_target": "TP", "event_fading": "FADE",
 }
 
 
@@ -126,6 +198,31 @@ def generate_chart_html(
         "ema_momentum": "#00BCD4",       # cyan (momentum)
         "quick_reentry": "#7C4DFF",      # purple (quick re-entry)
         "volume_capitulation": "#E040FB", # magenta-pink (capitulation buy)
+        # Scalping entries (long side)
+        "ema_cross": "#00BCD4",          # cyan (EMA crossover)
+        "rsi_bb": "#7C4DFF",             # purple (RSI + Bollinger Band)
+        "macd_hist": "#FF9800",          # orange (MACD histogram)
+        "stochastic": "#2196F3",         # blue (Stochastic)
+        "ema_cross+rsi_bb": "#26a69a",   # teal (confluence)
+        "ema_cross+macd_hist": "#4CAF50",# green (confluence)
+        "rsi_bb+macd_hist": "#00E676",   # bright green (confluence)
+        "ema_cross+stochastic": "#66BB6A",# light green
+        "rsi_bb+stochastic": "#81C784",  # pale green
+        "macd_hist+stochastic": "#A5D6A7",# soft green
+        # Smart Hold RC combo entries
+        "reversal_channel_reentry": "#00E676", # bright green (structural reversal confirmed)
+        "ma_reclaim_fallback": "#4CAF50",      # green (fallback after 60 bars)
+        # RSI Volume Watch entries
+        "rsi_vol_bullish": "#00E676",    # bright green (RSI cross up + volume)
+        # Synthetic Long entries (buy calls)
+        "deep_itm_call": "#00E676",      # bright green (deep ITM call)
+        "extreme_add_call": "#7C4DFF",   # purple (VIX extreme add)
+        # News Volatility entries
+        "geopolitical_energy": "#FF9800",  # orange (oil/energy)
+        "geopolitical_defense": "#2196F3", # blue (defense)
+        "geopolitical_tankers": "#00BCD4", # cyan (shipping)
+        "geopolitical_gold": "#FFD700",    # gold
+        "geopolitical_single": "#4CAF50",  # green (single stock)
     }
     # Sell/short colours: shades of red and orange
     SELL_COLORS = {
@@ -135,6 +232,15 @@ def generate_chart_html(
         "sharp_reversal_short": "#E91E63",# pink (reversal)
         "vol_divergence_short": "#AB47BC",# magenta (divergence)
         "waterfall_short": "#D500F9",    # bright magenta (waterfall short)
+        # Scalping entries (short side)
+        "ema_cross": "#ef5350",          # red (EMA crossover short)
+        "rsi_bb": "#AB47BC",             # magenta (RSI+BB short)
+        "macd_hist": "#E91E63",          # pink (MACD histogram short)
+        "stochastic": "#FF5722",         # deep orange (Stochastic short)
+        # RSI Volume Watch (short side)
+        "rsi_vol_bearish": "#E91E63",    # pink (RSI cross down + volume)
+        # Synthetic Long (sell puts = short side entry)
+        "otm_put_sell": "#FF9800",       # orange (sell OTM put)
     }
     EXIT_COLORS = {
         "atr_trailing_stop": "#ef5350",  # red
@@ -147,6 +253,22 @@ def generate_chart_html(
         "time_exit": "#FFAB40",          # amber
         "channel_flip": "#FF9800",       # orange
         "end_of_data": "#BDBDBD",        # grey
+        # Scalping exits
+        "stop_loss": "#ef5350",          # red
+        "take_profit": "#4CAF50",        # green
+        # Synthetic Long exits
+        "call_profit_target": "#4CAF50", # green (profit)
+        "call_stop_loss": "#ef5350",     # red (loss)
+        "vix_normalized": "#00BCD4",     # cyan (VIX calmed)
+        "max_hold": "#FFAB40",           # amber (time)
+        "put_decay_profit": "#4CAF50",   # green (put decayed)
+        "put_assigned": "#ef5350",       # red (assigned)
+        "put_expiry": "#66BB6A",         # light green (expired worthless)
+        # RSI Volume Watch exits
+        "rsi_momentum_fade": "#FF9800",  # orange (RSI fading)
+        # News Volatility exits
+        "profit_target": "#4CAF50",      # green
+        "event_fading": "#00BCD4",       # cyan (geopolitical event fading)
         # Smart Hold exits
         "ma_breakdown": "#ef5350",       # red
         "vix_accelerated_exit": "#FF7043", # deep orange
@@ -156,6 +278,18 @@ def generate_chart_html(
         "atr_trailing_stop": "#26a69a",  # teal
         "time_exit": "#4CAF50",          # green
         "channel_flip": "#66BB6A",       # light green
+        # Scalping
+        "stop_loss": "#ef5350",          # red (cover at loss)
+        "take_profit": "#26a69a",        # teal (cover at profit)
+        "end_of_data": "#BDBDBD",        # grey
+        # Synthetic Long put covers
+        "put_decay_profit": "#26a69a",   # teal (buy back cheap)
+        "put_assigned": "#ef5350",       # red (forced buy)
+        "put_expiry": "#26a69a",         # teal (expired)
+        "vix_normalized": "#26a69a",     # teal
+        "call_profit_target": "#ef5350", # red (selling call at profit)
+        "call_stop_loss": "#ef5350",     # red (selling call at loss)
+        "max_hold": "#FFAB40",           # amber
     }
 
     trades = result.get("trade_log", [])
@@ -208,8 +342,18 @@ def generate_chart_html(
     # Sort markers by time (required by Lightweight Charts)
     markers.sort(key=lambda m: m["time"])
 
-    # Build overlays
+    # Build overlays — auto-add RSI panel if not already present
     overlays = result.get("overlays", [])
+    has_rsi = any(o.get("type") == "rsi_panel" for o in overlays)
+    if not has_rsi and len(candles) > 14:
+        rsi_vals = _calc_rsi([c["close"] for c in candles], 14)
+        rsi_pts = []
+        for j, rv in enumerate(rsi_vals):
+            if rv is not None:
+                rsi_pts.append({"time": candles[j]["date"], "value": round(rv, 2)})
+        if rsi_pts:
+            overlays.append({"label": "RSI(14)", "color": "#E040FB",
+                             "type": "rsi_panel", "points": rsi_pts})
 
     # Meta info for stats header
     meta = {
@@ -236,11 +380,18 @@ def generate_chart_html(
         for tag, (label, desc, mtype) in strategy_versions.items():
             versions_for_html[tag] = {"label": label, "description": desc, "type": mtype}
 
-    # Build VIX line data for overlay
+    # Build VIX line data for overlay — auto-fetch if not provided, trim to stock range
+    if vix_candles is None:
+        period = result.get("period", "2y")
+        interval = result.get("interval", "1d")
+        vix_candles = _fetch_vix(period, interval)
     vix_line_data = []
     if vix_candles:
+        date_start = candles[0]["date"] if candles else ""
+        date_end = candles[-1]["date"] if candles else ""
         for vc in vix_candles:
-            vix_line_data.append({"time": vc["date"], "value": round(vc["close"], 2)})
+            if date_start <= vc["date"] <= date_end:
+                vix_line_data.append({"time": vc["date"], "value": round(vc["close"], 2)})
 
     html = _HTML_TEMPLATE
     html = html.replace("__CANDLES_JSON__", json.dumps(candles_lw))
@@ -858,6 +1009,22 @@ const ENTRY_NAMES = {
     'rsi_oversold_bounce': 'RSI Oversold Bounce', 'ema_momentum': 'EMA Momentum',
     'quick_reentry': 'Quick Re-entry',
     'volume_capitulation': 'Volume Capitulation',
+    // Scalping
+    'ema_cross': 'EMA Crossover', 'rsi_bb': 'RSI + Bollinger Band',
+    'macd_hist': 'MACD Histogram', 'stochastic': 'Stochastic Crossover',
+    'ema_cross+rsi_bb': 'EMA + RSI Confluence', 'ema_cross+macd_hist': 'EMA + MACD Confluence',
+    'rsi_bb+macd_hist': 'RSI + MACD Confluence',
+    // Smart Hold RC combo
+    'reversal_channel_reentry': 'Reversal Channel Re-entry', 'ma_reclaim_fallback': 'MA Reclaim Fallback',
+    // RSI Volume Watch
+    'rsi_vol_bullish': 'RSI Volume Bullish', 'rsi_vol_bearish': 'RSI Volume Bearish',
+    // Synthetic Long
+    'deep_itm_call': 'Deep ITM Call', 'otm_put_sell': 'OTM Put Sell',
+    'extreme_add_call': 'VIX Extreme Add Call',
+    // News Volatility
+    'geopolitical_energy': 'Geopolitical Energy', 'geopolitical_defense': 'Geopolitical Defense',
+    'geopolitical_tankers': 'Geopolitical Tankers', 'geopolitical_gold': 'Geopolitical Gold',
+    'geopolitical_single': 'Geopolitical Buy',
 };
 
 const tradeLogBody = document.getElementById('trade-log-body');
@@ -956,6 +1123,30 @@ function toggleVersionLegend() {
         'ema_momentum':          { abbrev: 'EMA-MOM',    name: 'EMA Momentum',             desc: 'Price above rising fast EMA for 2+ bars \u2014 momentum re-entry.', side: 'long', color: '#00BCD4' },
         'quick_reentry':         { abbrev: 'QUICK',      name: 'Quick Re-entry',           desc: 'Fast re-entry after brief exit when trend resumes quickly.', side: 'long', color: '#7C4DFF' },
         'volume_capitulation':   { abbrev: 'VOL-CAP',    name: 'Volume Capitulation',      desc: 'Consecutive bars of declining price with increasing volume \u2014 selling climax washout.', side: 'long', color: '#E040FB' },
+        // Scalping entries
+        'ema_cross':             { abbrev: 'EMA-X',      name: 'EMA Crossover',            desc: 'EMA(9) crosses EMA(21) with EMA(50) trend filter + ADX \u2265 20 trend strength.', side: 'long', color: '#00BCD4' },
+        'rsi_bb':                { abbrev: 'RSI-BB',     name: 'RSI + Bollinger Band',     desc: 'RSI < 30 (oversold) + price at lower Bollinger Band(20,2). Mean reversion entry.', side: 'long', color: '#7C4DFF' },
+        'macd_hist':             { abbrev: 'MACD-H',     name: 'MACD Histogram Reversal',  desc: '2+ declining MACD histogram bars then a rising bar \u2014 momentum shift. Price vs EMA(50) for direction.', side: 'long', color: '#FF9800' },
+        'stochastic':            { abbrev: 'STOCH',      name: 'Stochastic Crossover',     desc: 'Stochastic %K crosses %D from oversold (< 20) or overbought (> 80) zone with EMA(50) trend filter.', side: 'long', color: '#2196F3' },
+        'ema_cross+rsi_bb':      { abbrev: 'EMA+RSI',    name: 'EMA + RSI Confluence',     desc: 'EMA crossover and RSI+BB signals fired on the same bar.', side: 'long', color: '#26a69a' },
+        'ema_cross+macd_hist':   { abbrev: 'EMA+MACD',   name: 'EMA + MACD Confluence',    desc: 'EMA crossover and MACD histogram reversal fired on the same bar.', side: 'long', color: '#4CAF50' },
+        'rsi_bb+macd_hist':      { abbrev: 'RSI+MACD',   name: 'RSI + MACD Confluence',    desc: 'RSI+BB mean reversion and MACD momentum shift fired on the same bar.', side: 'long', color: '#00E676' },
+        // Smart Hold RC combo entries
+        'reversal_channel_reentry': { abbrev: 'RC-ENTRY', name: 'Reversal Channel Re-entry', desc: 'Downtrend detected (LH+LL), then Higher High broke the sequence, confirmed by Higher Low above last swing low \u2014 structural trend reversal confirmed.', side: 'long', color: '#00E676' },
+        'ma_reclaim_fallback':   { abbrev: 'MA-FALL',   name: 'MA Reclaim Fallback',      desc: 'After 60+ bars without reversal channel signal, re-enter on price reclaiming SMA50 with rising slope + EMA above SMA.', side: 'long', color: '#4CAF50' },
+        // RSI Volume Watch entries
+        'rsi_vol_bullish':       { abbrev: 'RSI-VOL+',  name: 'RSI Volume Bullish',       desc: 'RSI(14) crossed above 50 with volume \u2265 1.3x its 20-bar average \u2014 confirmed bullish momentum shift.', side: 'long', color: '#00E676' },
+        'rsi_vol_bearish':       { abbrev: 'RSI-VOL-',  name: 'RSI Volume Bearish',       desc: 'RSI(14) crossed below 50 with volume \u2265 1.3x its 20-bar average \u2014 confirmed bearish momentum shift.', side: 'short', color: '#E91E63' },
+        // Synthetic Long entries
+        'deep_itm_call':         { abbrev: 'ITM-CALL',   name: 'Deep ITM Call',            desc: 'Buy deep in-the-money LEAPS call (delta \u22480.85, 1yr out) when VIX \u2265 28. Stock-like upside with leverage.', side: 'long', color: '#00E676' },
+        'otm_put_sell':          { abbrev: 'OTM-PUT',    name: 'OTM Put Sell',             desc: 'Sell far out-of-the-money put (25% below price, 1yr out) to collect premium. High VIX = fat premiums.', side: 'short', color: '#FF9800' },
+        'extreme_add_call':      { abbrev: 'VIX-CALL',   name: 'VIX Extreme Add Call',     desc: 'VIX \u2265 35 (extreme fear) \u2014 add second deep ITM call position to double down on the recovery.', side: 'long', color: '#7C4DFF' },
+        // News Volatility entries
+        'geopolitical_energy':   { abbrev: 'GEO-OIL',    name: 'Geopolitical Energy',      desc: 'Oil spike + VIX fear detected \u2014 buy energy ETF (XLE). Oil producers benefit from supply disruption fears.', side: 'long', color: '#FF9800' },
+        'geopolitical_defense':  { abbrev: 'GEO-DEF',    name: 'Geopolitical Defense',     desc: 'Geopolitical escalation detected \u2014 buy defense ETF (ITA). Military spending expectations rise during conflicts.', side: 'long', color: '#2196F3' },
+        'geopolitical_tankers':  { abbrev: 'GEO-TANK',   name: 'Geopolitical Tankers',     desc: 'Strait of Hormuz threat detected \u2014 buy tanker stocks (STNG). Route disruption = longer voyages = higher day rates.', side: 'long', color: '#00BCD4' },
+        'geopolitical_gold':     { abbrev: 'GEO-GOLD',   name: 'Geopolitical Gold',        desc: 'Safe haven flow detected \u2014 buy gold ETF (GLD). Fear drives capital into gold during geopolitical crises.', side: 'long', color: '#FFD700' },
+        'geopolitical_single':   { abbrev: 'GEO-BUY',    name: 'Geopolitical Buy',         desc: 'Geopolitical event detected \u2014 buy single stock. VIX + oil + gold signals confirm macro fear event.', side: 'long', color: '#4CAF50' },
     };
     const EXIT_REGISTRY = {
         // Curved Channels exits (red-orange-yellow shades)
@@ -973,6 +1164,22 @@ function toggleVersionLegend() {
         'ma_breakdown':          { abbrev: 'MA-BRK',     name: 'MA Breakdown',             desc: 'Confirmed close below SMA with declining slope + EMA below SMA. Adaptive to volatility.', color: '#ef5350' },
         'vix_accelerated_exit':  { abbrev: 'VIX-X',      name: 'VIX Accelerated Exit',     desc: 'MA breakdown exit triggered 1 bar faster due to elevated VIX (\u2265 25).', color: '#FF7043' },
         'trailing_stop':         { abbrev: 'TRAIL',       name: 'Trailing Stop',            desc: 'ATR trailing stop hit \u2014 catastrophic drop protection (6x ATR from peak).', color: '#FF5722' },
+        // RSI Volume Watch exits
+        'rsi_momentum_fade':     { abbrev: 'RSI-FADE',   name: 'RSI Momentum Fade',        desc: 'RSI dropped below 40 (long) or rose above 60 (short) \u2014 momentum that triggered entry is fading.', color: '#FF9800' },
+        // Scalping exits
+        'stop_loss':             { abbrev: 'SL',          name: 'Stop Loss',                desc: 'Price hit ATR-based stop loss level (1.5x ATR from entry).', color: '#ef5350' },
+        'take_profit':           { abbrev: 'TP',          name: 'Take Profit',              desc: 'Price reached ATR-based take profit target (2.5x ATR from entry).', color: '#4CAF50' },
+        // Synthetic Long exits
+        'call_profit_target':    { abbrev: 'CALL-TP',     name: 'Call Profit Target',       desc: 'Deep ITM call reached +50% gain \u2014 close to lock in profit.', color: '#4CAF50' },
+        'call_stop_loss':        { abbrev: 'CALL-SL',     name: 'Call Stop Loss',           desc: 'Deep ITM call hit -40% loss \u2014 cut losses on the call leg.', color: '#ef5350' },
+        'vix_normalized':        { abbrev: 'VIX-NORM',    name: 'VIX Normalized',           desc: 'VIX dropped below 20 (fear subsided) and call is profitable \u2014 exit into calm market.', color: '#00BCD4' },
+        'max_hold':              { abbrev: 'MAX-HOLD',    name: 'Max Hold Time',            desc: 'Call held for 300 days without exit trigger \u2014 close before theta decay accelerates.', color: '#FFAB40' },
+        'put_decay_profit':      { abbrev: 'PUT-DECAY',   name: 'Put Decay Profit',         desc: 'Sold put decayed to \u226410% of original premium \u2014 buy back cheap to close.', color: '#4CAF50' },
+        'put_assigned':          { abbrev: 'PUT-ASGN',    name: 'Put Assigned',             desc: 'Stock dropped below put strike \u2014 assigned, forced to buy shares at strike price.', color: '#ef5350' },
+        'put_expiry':            { abbrev: 'PUT-EXP',     name: 'Put Expiry',               desc: 'Put expired worthless (OTM at expiration) \u2014 full premium kept as profit.', color: '#66BB6A' },
+        // News Volatility exits
+        'profit_target':         { abbrev: 'TP',           name: 'Profit Target',            desc: 'Position reached +20% gain \u2014 lock in geopolitical premium profit.', color: '#4CAF50' },
+        'event_fading':          { abbrev: 'FADE',         name: 'Event Fading',             desc: 'VIX dropped below 18 and oil retraced 50% of spike \u2014 geopolitical fear subsiding.', color: '#00BCD4' },
     };
 
     // Find which entry/exit types actually appear in the trade log

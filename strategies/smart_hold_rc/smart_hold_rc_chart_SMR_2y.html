@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backtest Chart</title>
+<script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #131722;
+    color: #d1d4dc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+#header {
+    padding: 12px 20px;
+    background: #1e222d;
+    border-bottom: 1px solid #2a2e39;
+    flex-shrink: 0;
+}
+#header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e0e3eb;
+    margin-bottom: 8px;
+}
+#stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+.stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.stat-label {
+    font-size: 10px;
+    color: #787b86;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.stat-value.positive { color: #26a69a; }
+.stat-value.negative { color: #ef5350; }
+.stat-value.neutral  { color: #d1d4dc; }
+#toolbar-buttons {
+    position: absolute;
+    top: 12px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+.toolbar-btn {
+    background: #2a2e39;
+    color: #d1d4dc;
+    border: 1px solid #363a45;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.toolbar-btn:hover { background: #363a45; }
+.toolbar-btn.active { background: #363a45; border-color: #d1d4dc; }
+#vix-toggle { color: #FF9800; border-color: #FF9800; }
+#vix-toggle:hover, #vix-toggle.active { background: rgba(255,152,0,0.15); border-color: #FF9800; }
+#rsi-toggle { color: #E040FB; border-color: #E040FB; }
+#rsi-toggle:hover, #rsi-toggle.active { background: rgba(224,64,251,0.15); border-color: #E040FB; }
+#legend-toggle { color: #81C784; border-color: #81C784; }
+#legend-toggle:hover, #legend-toggle.active { background: rgba(129,199,132,0.15); border-color: #81C784; }
+#trade-log-toggle { color: #FFD54F; border-color: #FFD54F; }
+#trade-log-toggle:hover, #trade-log-toggle.active { background: rgba(255,213,79,0.15); border-color: #FFD54F; }
+#legend-panel {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 560px;
+    height: 100%;
+    background: #1e222d;
+    border-right: 1px solid #2a2e39;
+    z-index: 5;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 12px;
+}
+#legend-panel.visible { display: block; }
+#legend-panel h3 {
+    color: #e0e3eb;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+#legend-panel h4 {
+    color: #e0e3eb;
+    margin: 16px 0 8px;
+    font-size: 12px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #2a2e39;
+}
+#legend-panel table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+    font-size: 11px;
+}
+#legend-panel th {
+    text-align: left;
+    padding: 5px 8px;
+    background: #131722;
+    color: #787b86;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-size: 10px;
+    border-bottom: 1px solid #2a2e39;
+}
+#legend-panel td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #1e222d;
+    vertical-align: top;
+    color: #9598a1;
+}
+#legend-panel tr:hover { background: rgba(42,46,57,0.4); }
+.lp-marker {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    display: inline-block;
+}
+.lp-marker.buy { background: rgba(38,166,154,0.15); color: #26a69a; }
+.lp-marker.sell { background: rgba(239,83,80,0.15); color: #ef5350; }
+.lp-abbrev {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-weight: 700;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.lp-abbrev.entry { color: #26a69a; }
+.lp-abbrev.exit { color: #ef5350; }
+.lp-name { color: #d1d4dc; white-space: nowrap; }
+.lp-desc { color: #9598a1; }
+.lp-vtag-pill {
+    display: inline-block;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 1px 2px;
+}
+.lp-vtag-pill.entry { background: rgba(77,208,225,0.15); color: #4dd0e1; }
+.lp-vtag-pill.exit { background: rgba(255,183,77,0.15); color: #ffb74d; }
+.lp-vtag-plain { color: #787b86; font-size: 10px; }
+.lp-vtype { color: #787b86; font-size: 10px; }
+#chart-container {
+    flex: 1;
+    position: relative;
+}
+#trade-log-panel {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 560px;
+    height: 100%;
+    background: #1e222d;
+    border-left: 1px solid #2a2e39;
+    z-index: 5;
+    overflow-y: auto;
+    padding: 12px;
+    font-size: 12px;
+}
+#trade-log-panel.visible { display: block; }
+#trade-log-panel h3 {
+    color: #e0e3eb;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+.trade-row {
+    padding: 6px 0;
+    border-bottom: 1px solid #2a2e39;
+    font-variant-numeric: tabular-nums;
+}
+.trade-row-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.trade-row .side { width: 50px; font-weight: 600; display: inline-block; }
+.trade-row .side.long { color: #26a69a; }
+.trade-row .side.short { color: #ef5350; }
+.trade-row .entry-type { color: #d1d4dc; margin-left: 4px; font-size: 11px; }
+.trade-row .dates { color: #787b86; flex: 1; margin: 0 8px; }
+.trade-row .pnl { width: 70px; text-align: right; font-weight: 600; }
+.trade-row .pnl.positive { color: #26a69a; }
+.trade-row .pnl.negative { color: #ef5350; }
+.trade-row .reason { width: 90px; text-align: right; color: #787b86; font-size: 11px; }
+.trade-row-versions {
+    font-size: 10px;
+    color: #787b86;
+    margin-top: 2px;
+    padding-left: 54px;
+}
+.trade-row-versions .entry-ver { color: #4dd0e1; }
+.trade-row-versions .exit-ver { color: #ffb74d; }
+#legend {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    gap: 16px;
+    z-index: 5;
+    font-size: 11px;
+    background: rgba(19,23,34,0.85);
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.legend-swatch {
+    width: 12px;
+    height: 3px;
+    border-radius: 1px;
+}
+#version-legend {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    z-index: 6;
+    background: rgba(30,34,45,0.95);
+    border: 1px solid #363a45;
+    border-radius: 6px;
+    font-size: 11px;
+    max-width: 480px;
+    overflow: hidden;
+}
+#version-legend-header {
+    padding: 6px 12px;
+    cursor: pointer;
+    color: #e0e3eb;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+#version-legend-header:hover { background: rgba(54,58,69,0.5); }
+#version-legend-body {
+    display: none;
+    padding: 4px 12px 8px;
+}
+#version-legend-body.open { display: block; }
+.ver-row {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 8px 2px 0;
+    min-width: 200px;
+}
+.ver-tag { color: #4dd0e1; font-weight: 600; min-width: 28px; }
+.ver-label { color: #d1d4dc; }
+.ver-desc { color: #787b86; font-size: 10px; }
+</style>
+</head>
+<body>
+<div id="header">
+    <h1 id="title"></h1>
+    <div id="stats"></div>
+</div>
+<div id="toolbar-buttons">
+    <button id="vix-toggle" class="toolbar-btn" onclick="toggleVix()" style="display:none">VIX</button>
+    <button id="rsi-toggle" class="toolbar-btn" onclick="toggleRsi()" style="display:none">RSI</button>
+    <button id="legend-toggle" class="toolbar-btn" onclick="toggleLegendPanel()">Legend</button>
+    <button id="trade-log-toggle" class="toolbar-btn" onclick="toggleTradeLog()">Trade Log</button>
+</div>
+<div id="chart-container">
+    <div id="legend-panel">
+        <h3>Chart Legend Reference</h3>
+        <div id="legend-panel-body"></div>
+    </div>
+    <div id="trade-log-panel">
+        <h3>Trade Log</h3>
+        <div id="trade-log-body"></div>
+    </div>
+    <div id="legend"></div>
+    <div id="version-legend">
+        <div id="version-legend-header" onclick="toggleVersionLegend()">
+            <span id="ver-arrow">\u25B6</span> Strategy Versions
+        </div>
+        <div id="version-legend-body"></div>
+    </div>
+</div>
+
+<script>
+const CANDLES = [{"open": 5.31, "high": 5.43, "low": 4.79, "close": 4.85, "time": "2024-04-15"}, {"open": 4.7, "high": 5.09, "low": 4.69, "close": 4.97, "time": "2024-04-16"}, {"open": 5.1, "high": 5.25, "low": 4.92, "close": 4.93, "time": "2024-04-17"}, {"open": 5.04, "high": 5.11, "low": 4.84, "close": 4.89, "time": "2024-04-18"}, {"open": 4.86, "high": 5.09, "low": 4.78, "close": 4.85, "time": "2024-04-19"}, {"open": 4.86, "high": 5.03, "low": 4.61, "close": 4.93, "time": "2024-04-22"}, {"open": 4.96, "high": 5.55, "low": 4.9, "close": 5.48, "time": "2024-04-23"}, {"open": 5.58, "high": 5.63, "low": 5.28, "close": 5.5, "time": "2024-04-24"}, {"open": 5.3, "high": 5.89, "low": 5.3, "close": 5.89, "time": "2024-04-25"}, {"open": 5.86, "high": 6.365, "low": 5.83, "close": 6.06, "time": "2024-04-26"}, {"open": 6.03, "high": 6.22, "low": 5.88, "close": 6.08, "time": "2024-04-29"}, {"open": 6.05, "high": 6.235, "low": 5.715, "close": 5.8, "time": "2024-04-30"}, {"open": 5.75, "high": 5.95, "low": 5.58, "close": 5.73, "time": "2024-05-01"}, {"open": 5.82, "high": 6.11, "low": 5.75, "close": 6.03, "time": "2024-05-02"}, {"open": 6.13, "high": 6.3, "low": 5.88, "close": 6.16, "time": "2024-05-03"}, {"open": 6.33, "high": 6.35, "low": 5.83, "close": 5.83, "time": "2024-05-06"}, {"open": 5.84, "high": 5.99, "low": 5.54, "close": 5.66, "time": "2024-05-07"}, {"open": 5.58, "high": 5.86, "low": 5.5, "close": 5.85, "time": "2024-05-08"}, {"open": 5.84, "high": 5.98, "low": 5.58, "close": 5.86, "time": "2024-05-09"}, {"open": 5.91, "high": 6.78, "low": 5.825, "close": 6.28, "time": "2024-05-10"}, {"open": 6.46, "high": 6.955, "low": 6.03, "close": 6.38, "time": "2024-05-13"}, {"open": 6.44, "high": 7.59, "low": 6.44, "close": 7.35, "time": "2024-05-14"}, {"open": 7.68, "high": 7.81, "low": 6.87, "close": 7.01, "time": "2024-05-15"}, {"open": 7.23, "high": 7.249, "low": 5.86, "close": 6.09, "time": "2024-05-16"}, {"open": 6.27, "high": 6.95, "low": 6.05, "close": 6.31, "time": "2024-05-17"}, {"open": 6.37, "high": 7.635, "low": 6.37, "close": 7.25, "time": "2024-05-20"}, {"open": 7.145, "high": 7.53, "low": 6.83, "close": 7.4, "time": "2024-05-21"}, {"open": 7.4, "high": 7.85, "low": 7.113, "close": 7.33, "time": "2024-05-22"}, {"open": 7.53, "high": 7.57, "low": 6.63, "close": 6.67, "time": "2024-05-23"}, {"open": 6.86, "high": 7.79, "low": 6.68, "close": 7.78, "time": "2024-05-24"}, {"open": 8.81, "high": 9.59, "low": 8.11, "close": 9.48, "time": "2024-05-28"}, {"open": 8.8, "high": 9.24, "low": 8.5, "close": 8.87, "time": "2024-05-29"}, {"open": 9.03, "high": 9.28, "low": 8.275, "close": 8.71, "time": "2024-05-30"}, {"open": 9.06, "high": 9.629, "low": 8.04, "close": 8.73, "time": "2024-05-31"}, {"open": 8.77, "high": 9.44, "low": 7.56, "close": 7.63, "time": "2024-06-03"}, {"open": 7.83, "high": 7.84, "low": 6.61, "close": 6.98, "time": "2024-06-04"}, {"open": 7.18, "high": 7.81, "low": 7.06, "close": 7.79, "time": "2024-06-05"}, {"open": 7.67, "high": 7.98, "low": 7.46, "close": 7.67, "time": "2024-06-06"}, {"open": 7.5, "high": 8.09, "low": 7.42, "close": 8.08, "time": "2024-06-07"}, {"open": 7.97, "high": 8.9, "low": 7.84, "close": 8.68, "time": "2024-06-10"}, {"open": 8.55, "high": 8.98, "low": 8.15, "close": 8.96, "time": "2024-06-11"}, {"open": 9.17, "high": 9.21, "low": 8.37, "close": 8.45, "time": "2024-06-12"}, {"open": 8.5, "high": 8.61, "low": 7.92, "close": 8.42, "time": "2024-06-13"}, {"open": 8.17, "high": 8.42, "low": 8.1, "close": 8.19, "time": "2024-06-14"}, {"open": 8.22, "high": 8.85, "low": 8.06, "close": 8.5, "time": "2024-06-17"}, {"open": 8.46, "high": 9.63, "low": 8.29, "close": 9.54, "time": "2024-06-18"}, {"open": 9.57, "high": 10.598, "low": 9.12, "close": 9.51, "time": "2024-06-20"}, {"open": 9.3, "high": 10.02, "low": 8.71, "close": 10.02, "time": "2024-06-21"}, {"open": 10.0, "high": 10.32, "low": 9.32, "close": 10.02, "time": "2024-06-24"}, {"open": 9.98, "high": 11.19, "low": 9.78, "close": 10.97, "time": "2024-06-25"}, {"open": 10.94, "high": 12.15, "low": 10.92, "close": 11.52, "time": "2024-06-26"}, {"open": 12.01, "high": 12.2, "low": 10.88, "close": 11.98, "time": "2024-06-27"}, {"open": 12.22, "high": 12.4, "low": 11.03, "close": 11.69, "time": "2024-06-28"}, {"open": 11.76, "high": 11.835, "low": 10.43, "close": 10.93, "time": "2024-07-01"}, {"open": 11.055, "high": 12.0, "low": 10.75, "close": 10.93, "time": "2024-07-02"}, {"open": 11.18, "high": 11.95, "low": 11.12, "close": 11.59, "time": "2024-07-03"}, {"open": 11.99, "high": 13.28, "low": 11.53, "close": 12.22, "time": "2024-07-05"}, {"open": 12.86, "high": 13.74, "low": 12.28, "close": 13.69, "time": "2024-07-08"}, {"open": 13.1, "high": 13.32, "low": 12.32, "close": 12.77, "time": "2024-07-09"}, {"open": 13.26, "high": 13.7, "low": 12.77, "close": 13.53, "time": "2024-07-10"}, {"open": 13.81, "high": 14.07, "low": 12.8, "close": 13.06, "time": "2024-07-11"}, {"open": 13.34, "high": 15.7, "low": 12.95, "close": 15.34, "time": "2024-07-12"}, {"open": 16.75, "high": 16.91, "low": 14.97, "close": 15.81, "time": "2024-07-15"}, {"open": 15.98, "high": 16.15, "low": 15.0, "close": 15.56, "time": "2024-07-16"}, {"open": 14.86, "high": 15.25, "low": 13.64, "close": 13.93, "time": "2024-07-17"}, {"open": 14.52, "high": 14.52, "low": 12.541, "close": 12.86, "time": "2024-07-18"}, {"open": 12.56, "high": 13.18, "low": 11.22, "close": 11.3, "time": "2024-07-19"}, {"open": 11.52, "high": 11.52, "low": 10.32, "close": 11.06, "time": "2024-07-22"}, {"open": 11.18, "high": 12.5, "low": 11.03, "close": 11.51, "time": "2024-07-23"}, {"open": 11.27, "high": 11.85, "low": 10.642, "close": 10.8, "time": "2024-07-24"}, {"open": 10.49, "high": 10.79, "low": 9.68, "close": 10.42, "time": "2024-07-25"}, {"open": 10.73, "high": 10.85, "low": 10.05, "close": 10.85, "time": "2024-07-26"}, {"open": 11.17, "high": 11.17, "low": 8.6, "close": 9.5, "time": "2024-07-29"}, {"open": 9.4, "high": 9.95, "low": 9.27, "close": 9.54, "time": "2024-07-30"}, {"open": 9.8, "high": 10.75, "low": 9.64, "close": 10.22, "time": "2024-07-31"}, {"open": 10.31, "high": 10.31, "low": 8.85, "close": 9.11, "time": "2024-08-01"}, {"open": 8.16, "high": 8.83, "low": 8.0, "close": 8.59, "time": "2024-08-02"}, {"open": 7.32, "high": 8.86, "low": 7.26, "close": 8.76, "time": "2024-08-05"}, {"open": 9.16, "high": 9.4, "low": 8.13, "close": 8.13, "time": "2024-08-06"}, {"open": 8.3, "high": 9.39, "low": 8.3, "close": 8.68, "time": "2024-08-07"}, {"open": 9.1, "high": 9.31, "low": 8.55, "close": 8.59, "time": "2024-08-08"}, {"open": 8.28, "high": 9.55, "low": 7.87, "close": 9.27, "time": "2024-08-09"}, {"open": 9.5, "high": 9.98, "low": 8.82, "close": 9.23, "time": "2024-08-12"}, {"open": 9.39, "high": 10.276, "low": 9.23, "close": 9.98, "time": "2024-08-13"}, {"open": 10.0, "high": 10.25, "low": 9.43, "close": 9.43, "time": "2024-08-14"}, {"open": 9.69, "high": 10.07, "low": 8.88, "close": 9.38, "time": "2024-08-15"}, {"open": 9.24, "high": 9.81, "low": 8.96, "close": 9.08, "time": "2024-08-16"}, {"open": 9.105, "high": 9.89, "low": 8.93, "close": 9.42, "time": "2024-08-19"}, {"open": 9.42, "high": 9.42, "low": 8.68, "close": 8.92, "time": "2024-08-20"}, {"open": 8.95, "high": 8.96, "low": 8.69, "close": 8.79, "time": "2024-08-21"}, {"open": 8.83, "high": 8.88, "low": 7.982, "close": 8.03, "time": "2024-08-22"}, {"open": 8.1, "high": 8.8, "low": 8.01, "close": 8.67, "time": "2024-08-23"}, {"open": 8.625, "high": 8.76, "low": 8.17, "close": 8.2, "time": "2024-08-26"}, {"open": 8.13, "high": 8.79, "low": 7.87, "close": 8.69, "time": "2024-08-27"}, {"open": 8.54, "high": 8.61, "low": 7.98, "close": 8.04, "time": "2024-08-28"}, {"open": 8.13, "high": 8.519, "low": 8.11, "close": 8.14, "time": "2024-08-29"}, {"open": 8.29, "high": 8.6, "low": 8.01, "close": 8.23, "time": "2024-08-30"}, {"open": 8.07, "high": 8.12, "low": 7.39, "close": 7.59, "time": "2024-09-03"}, {"open": 7.48, "high": 8.105, "low": 7.38, "close": 8.05, "time": "2024-09-04"}, {"open": 7.99, "high": 7.99, "low": 7.42, "close": 7.43, "time": "2024-09-05"}, {"open": 7.45, "high": 7.51, "low": 6.88, "close": 6.98, "time": "2024-09-06"}, {"open": 7.06, "high": 7.63, "low": 7.02, "close": 7.57, "time": "2024-09-09"}, {"open": 7.65, "high": 8.27, "low": 7.37, "close": 8.25, "time": "2024-09-10"}, {"open": 8.22, "high": 8.81, "low": 8.15, "close": 8.74, "time": "2024-09-11"}, {"open": 8.75, "high": 8.84, "low": 8.501, "close": 8.63, "time": "2024-09-12"}, {"open": 8.95, "high": 10.06, "low": 8.93, "close": 9.68, "time": "2024-09-13"}, {"open": 9.72, "high": 10.05, "low": 9.35, "close": 9.68, "time": "2024-09-16"}, {"open": 9.83, "high": 9.84, "low": 8.973, "close": 9.09, "time": "2024-09-17"}, {"open": 9.01, "high": 9.76, "low": 8.8, "close": 9.17, "time": "2024-09-18"}, {"open": 9.57, "high": 10.025, "low": 9.2, "close": 9.61, "time": "2024-09-19"}, {"open": 10.21, "high": 11.628, "low": 9.71, "close": 10.7, "time": "2024-09-20"}, {"open": 10.88, "high": 11.52, "low": 10.4, "close": 10.89, "time": "2024-09-23"}, {"open": 10.96, "high": 12.24, "low": 10.96, "close": 11.95, "time": "2024-09-24"}, {"open": 11.99, "high": 12.22, "low": 10.795, "close": 12.03, "time": "2024-09-25"}, {"open": 12.26, "high": 12.61, "low": 11.51, "close": 11.89, "time": "2024-09-26"}, {"open": 11.86, "high": 13.1, "low": 11.33, "close": 12.55, "time": "2024-09-27"}, {"open": 12.26, "high": 12.605, "low": 10.71, "close": 11.58, "time": "2024-09-30"}, {"open": 11.6, "high": 12.11, "low": 11.03, "close": 11.88, "time": "2024-10-01"}, {"open": 11.69, "high": 12.63, "low": 11.46, "close": 12.39, "time": "2024-10-02"}, {"open": 13.13, "high": 13.2, "low": 11.12, "close": 12.01, "time": "2024-10-03"}, {"open": 12.12, "high": 13.49, "low": 11.95, "close": 13.15, "time": "2024-10-04"}, {"open": 13.05, "high": 13.17, "low": 12.62, "close": 12.86, "time": "2024-10-07"}, {"open": 12.645, "high": 12.99, "low": 12.26, "close": 12.9, "time": "2024-10-08"}, {"open": 12.66, "high": 12.66, "low": 11.65, "close": 11.83, "time": "2024-10-09"}, {"open": 11.73, "high": 12.26, "low": 11.26, "close": 12.0, "time": "2024-10-10"}, {"open": 11.78, "high": 13.54, "low": 11.66, "close": 13.14, "time": "2024-10-11"}, {"open": 13.24, "high": 14.4, "low": 13.2, "close": 13.94, "time": "2024-10-14"}, {"open": 14.16, "high": 14.54, "low": 13.26, "close": 13.62, "time": "2024-10-15"}, {"open": 14.92, "high": 19.41, "low": 14.33, "close": 19.07, "time": "2024-10-16"}, {"open": 18.05, "high": 19.74, "low": 17.58, "close": 18.02, "time": "2024-10-17"}, {"open": 17.88, "high": 20.35, "low": 17.22, "close": 18.21, "time": "2024-10-18"}, {"open": 18.77, "high": 19.69, "low": 17.66, "close": 18.96, "time": "2024-10-21"}, {"open": 18.45, "high": 19.07, "low": 16.71, "close": 17.81, "time": "2024-10-22"}, {"open": 17.13, "high": 18.55, "low": 16.74, "close": 17.32, "time": "2024-10-23"}, {"open": 17.4, "high": 19.05, "low": 17.18, "close": 18.39, "time": "2024-10-24"}, {"open": 18.79, "high": 19.47, "low": 18.08, "close": 18.41, "time": "2024-10-25"}, {"open": 18.89, "high": 22.24, "low": 18.69, "close": 22.0, "time": "2024-10-28"}, {"open": 21.6, "high": 22.1, "low": 20.4, "close": 21.61, "time": "2024-10-29"}, {"open": 22.24, "high": 22.75, "low": 20.01, "close": 20.8, "time": "2024-10-30"}, {"open": 20.57, "high": 20.77, "low": 18.93, "close": 19.14, "time": "2024-10-31"}, {"open": 19.9, "high": 20.445, "low": 18.71, "close": 19.01, "time": "2024-11-01"}, {"open": 18.26, "high": 18.79, "low": 17.461, "close": 18.47, "time": "2024-11-04"}, {"open": 18.67, "high": 19.03, "low": 18.02, "close": 18.82, "time": "2024-11-05"}, {"open": 19.98, "high": 21.41, "low": 18.9, "close": 21.41, "time": "2024-11-06"}, {"open": 21.58, "high": 22.36, "low": 21.19, "close": 21.67, "time": "2024-11-07"}, {"open": 21.0, "high": 25.82, "low": 20.06, "close": 24.49, "time": "2024-11-08"}, {"open": 23.82, "high": 25.08, "low": 21.3, "close": 23.49, "time": "2024-11-11"}, {"open": 23.35, "high": 26.55, "low": 22.38, "close": 23.24, "time": "2024-11-12"}, {"open": 24.28, "high": 26.67, "low": 23.75, "close": 24.98, "time": "2024-11-13"}, {"open": 26.6, "high": 27.54, "low": 24.13, "close": 24.66, "time": "2024-11-14"}, {"open": 24.0, "high": 24.13, "low": 22.411, "close": 23.01, "time": "2024-11-15"}, {"open": 23.75, "high": 27.554, "low": 22.7, "close": 27.27, "time": "2024-11-18"}, {"open": 26.54, "high": 27.67, "low": 26.2, "close": 27.02, "time": "2024-11-19"}, {"open": 27.09, "high": 27.16, "low": 24.72, "close": 25.74, "time": "2024-11-20"}, {"open": 25.8, "high": 28.74, "low": 24.54, "close": 27.67, "time": "2024-11-21"}, {"open": 28.4, "high": 30.84, "low": 27.75, "close": 30.21, "time": "2024-11-22"}, {"open": 31.97, "high": 31.97, "low": 27.29, "close": 28.06, "time": "2024-11-25"}, {"open": 28.0, "high": 29.193, "low": 25.93, "close": 26.34, "time": "2024-11-26"}, {"open": 27.21, "high": 28.42, "low": 25.95, "close": 28.06, "time": "2024-11-27"}, {"open": 28.64, "high": 32.3, "low": 28.46, "close": 29.65, "time": "2024-11-29"}, {"open": 31.47, "high": 31.87, "low": 27.17, "close": 27.22, "time": "2024-12-02"}, {"open": 26.53, "high": 27.14, "low": 24.62, "close": 24.87, "time": "2024-12-03"}, {"open": 25.66, "high": 26.85, "low": 24.36, "close": 24.85, "time": "2024-12-04"}, {"open": 24.29, "high": 24.89, "low": 22.77, "close": 24.35, "time": "2024-12-05"}, {"open": 24.09, "high": 25.92, "low": 23.04, "close": 25.7, "time": "2024-12-06"}, {"open": 26.34, "high": 26.75, "low": 23.76, "close": 23.94, "time": "2024-12-09"}, {"open": 23.46, "high": 24.04, "low": 21.73, "close": 22.14, "time": "2024-12-10"}, {"open": 22.09, "high": 22.91, "low": 20.4, "close": 22.4, "time": "2024-12-11"}, {"open": 22.99, "high": 24.03, "low": 21.6, "close": 21.66, "time": "2024-12-12"}, {"open": 22.07, "high": 22.28, "low": 20.95, "close": 21.13, "time": "2024-12-13"}, {"open": 20.28, "high": 21.95, "low": 19.37, "close": 21.72, "time": "2024-12-16"}, {"open": 21.49, "high": 22.83, "low": 20.32, "close": 21.71, "time": "2024-12-17"}, {"open": 22.5, "high": 23.5, "low": 18.71, "close": 19.11, "time": "2024-12-18"}, {"open": 19.81, "high": 20.04, "low": 18.44, "close": 19.01, "time": "2024-12-19"}, {"open": 18.35, "high": 20.48, "low": 18.07, "close": 19.77, "time": "2024-12-20"}, {"open": 19.71, "high": 20.16, "low": 18.852, "close": 19.73, "time": "2024-12-23"}, {"open": 19.65, "high": 21.05, "low": 18.86, "close": 21.01, "time": "2024-12-24"}, {"open": 21.22, "high": 21.99, "low": 20.21, "close": 21.82, "time": "2024-12-26"}, {"open": 21.83, "high": 22.35, "low": 19.351, "close": 19.51, "time": "2024-12-27"}, {"open": 19.049, "high": 19.061, "low": 17.56, "close": 18.21, "time": "2024-12-30"}, {"open": 18.42, "high": 18.445, "low": 17.36, "close": 17.93, "time": "2024-12-31"}, {"open": 18.57, "high": 18.8, "low": 17.22, "close": 17.71, "time": "2025-01-02"}, {"open": 17.95, "high": 20.99, "low": 17.93, "close": 20.85, "time": "2025-01-03"}, {"open": 22.25, "high": 24.1, "low": 21.58, "close": 23.66, "time": "2025-01-06"}, {"open": 23.59, "high": 24.0, "low": 20.81, "close": 21.72, "time": "2025-01-07"}, {"open": 20.53, "high": 21.31, "low": 18.65, "close": 19.68, "time": "2025-01-08"}, {"open": 19.55, "high": 20.26, "low": 18.765, "close": 20.13, "time": "2025-01-10"}, {"open": 18.86, "high": 19.43, "low": 18.13, "close": 18.8, "time": "2025-01-13"}, {"open": 19.65, "high": 20.12, "low": 18.83, "close": 19.23, "time": "2025-01-14"}, {"open": 20.18, "high": 21.34, "low": 20.1, "close": 20.82, "time": "2025-01-15"}, {"open": 21.24, "high": 22.18, "low": 20.28, "close": 20.28, "time": "2025-01-16"}, {"open": 20.995, "high": 23.23, "low": 20.38, "close": 21.97, "time": "2025-01-17"}, {"open": 23.86, "high": 25.63, "low": 22.44, "close": 25.61, "time": "2025-01-21"}, {"open": 25.89, "high": 26.5, "low": 24.58, "close": 25.57, "time": "2025-01-22"}, {"open": 24.75, "high": 29.66, "low": 24.61, "close": 29.08, "time": "2025-01-23"}, {"open": 28.78, "high": 29.55, "low": 27.77, "close": 27.97, "time": "2025-01-24"}, {"open": 23.15, "high": 23.75, "low": 19.66, "close": 20.27, "time": "2025-01-27"}, {"open": 21.35, "high": 21.65, "low": 19.01, "close": 20.95, "time": "2025-01-28"}, {"open": 21.25, "high": 23.285, "low": 21.14, "close": 22.0, "time": "2025-01-29"}, {"open": 22.21, "high": 24.35, "low": 22.09, "close": 23.58, "time": "2025-01-30"}, {"open": 23.97, "high": 26.75, "low": 23.66, "close": 23.84, "time": "2025-01-31"}, {"open": 21.45, "high": 24.299, "low": 21.11, "close": 23.85, "time": "2025-02-03"}, {"open": 23.72, "high": 24.05, "low": 22.3, "close": 22.98, "time": "2025-02-04"}, {"open": 23.01, "high": 26.09, "low": 22.69, "close": 24.55, "time": "2025-02-05"}, {"open": 25.08, "high": 26.1, "low": 22.98, "close": 23.25, "time": "2025-02-06"}, {"open": 23.46, "high": 27.3, "low": 23.442, "close": 25.84, "time": "2025-02-07"}, {"open": 25.64, "high": 28.22, "low": 25.043, "close": 27.46, "time": "2025-02-10"}, {"open": 27.44, "high": 28.0, "low": 25.37, "close": 25.86, "time": "2025-02-11"}, {"open": 24.95, "high": 27.1, "low": 24.43, "close": 26.4, "time": "2025-02-12"}, {"open": 26.4, "high": 26.45, "low": 23.635, "close": 24.71, "time": "2025-02-13"}, {"open": 25.02, "high": 25.24, "low": 22.92, "close": 23.08, "time": "2025-02-14"}, {"open": 23.305, "high": 23.51, "low": 21.711, "close": 22.04, "time": "2025-02-18"}, {"open": 21.98, "high": 22.25, "low": 20.91, "close": 21.13, "time": "2025-02-19"}, {"open": 21.66, "high": 21.71, "low": 19.53, "close": 20.78, "time": "2025-02-20"}, {"open": 21.165, "high": 21.437, "low": 18.93, "close": 19.04, "time": "2025-02-21"}, {"open": 18.69, "high": 19.225, "low": 17.35, "close": 18.46, "time": "2025-02-24"}, {"open": 17.73, "high": 18.09, "low": 16.4, "close": 17.61, "time": "2025-02-25"}, {"open": 18.695, "high": 19.09, "low": 17.675, "close": 17.95, "time": "2025-02-26"}, {"open": 18.35, "high": 18.694, "low": 16.62, "close": 16.71, "time": "2025-02-27"}, {"open": 16.0, "high": 17.27, "low": 15.84, "close": 17.19, "time": "2025-02-28"}, {"open": 17.925, "high": 18.2, "low": 15.16, "close": 15.45, "time": "2025-03-03"}, {"open": 14.7, "high": 18.2, "low": 14.445, "close": 17.23, "time": "2025-03-04"}, {"open": 17.37, "high": 17.51, "low": 16.17, "close": 17.32, "time": "2025-03-05"}, {"open": 16.99, "high": 16.99, "low": 15.58, "close": 15.95, "time": "2025-03-06"}, {"open": 15.71, "high": 16.12, "low": 14.4, "close": 15.63, "time": "2025-03-07"}, {"open": 15.165, "high": 15.75, "low": 14.535, "close": 14.67, "time": "2025-03-10"}, {"open": 14.43, "high": 16.7, "low": 14.43, "close": 16.21, "time": "2025-03-11"}, {"open": 16.97, "high": 17.55, "low": 15.891, "close": 15.98, "time": "2025-03-12"}, {"open": 16.34, "high": 16.34, "low": 15.09, "close": 15.21, "time": "2025-03-13"}, {"open": 15.86, "high": 17.595, "low": 15.63, "close": 17.51, "time": "2025-03-14"}, {"open": 17.585, "high": 18.16, "low": 17.34, "close": 17.6, "time": "2025-03-17"}, {"open": 17.25, "high": 17.311, "low": 16.39, "close": 16.58, "time": "2025-03-18"}, {"open": 16.77, "high": 18.88, "low": 16.77, "close": 18.53, "time": "2025-03-19"}, {"open": 17.84, "high": 19.09, "low": 17.79, "close": 18.2, "time": "2025-03-20"}, {"open": 17.77, "high": 18.2, "low": 17.36, "close": 18.13, "time": "2025-03-21"}, {"open": 18.98, "high": 19.68, "low": 18.54, "close": 18.88, "time": "2025-03-24"}, {"open": 18.5, "high": 18.77, "low": 18.06, "close": 18.71, "time": "2025-03-25"}, {"open": 18.6, "high": 18.81, "low": 16.84, "close": 17.12, "time": "2025-03-26"}, {"open": 16.72, "high": 17.048, "low": 15.97, "close": 16.1, "time": "2025-03-27"}, {"open": 15.82, "high": 16.09, "low": 14.75, "close": 14.97, "time": "2025-03-28"}, {"open": 14.37, "high": 14.72, "low": 13.78, "close": 14.16, "time": "2025-03-31"}, {"open": 14.75, "high": 14.95, "low": 13.89, "close": 14.64, "time": "2025-04-01"}, {"open": 14.3, "high": 15.5, "low": 14.15, "close": 15.11, "time": "2025-04-02"}, {"open": 13.81, "high": 14.48, "low": 13.78, "close": 14.14, "time": "2025-04-03"}, {"open": 13.4, "high": 13.58, "low": 11.08, "close": 12.6, "time": "2025-04-04"}, {"open": 11.74, "high": 14.94, "low": 11.58, "close": 14.1, "time": "2025-04-07"}, {"open": 15.3, "high": 15.34, "low": 13.56, "close": 13.91, "time": "2025-04-08"}, {"open": 13.995, "high": 16.54, "low": 13.474, "close": 16.06, "time": "2025-04-09"}, {"open": 15.25, "high": 15.77, "low": 14.4, "close": 14.85, "time": "2025-04-10"}, {"open": 15.01, "high": 15.48, "low": 14.72, "close": 15.15, "time": "2025-04-11"}, {"open": 15.77, "high": 15.83, "low": 14.81, "close": 15.25, "time": "2025-04-14"}, {"open": 15.29, "high": 16.294, "low": 15.06, "close": 15.38, "time": "2025-04-15"}, {"open": 14.79, "high": 15.14, "low": 14.25, "close": 14.5, "time": "2025-04-16"}, {"open": 14.8, "high": 15.065, "low": 14.16, "close": 14.61, "time": "2025-04-17"}, {"open": 14.26, "high": 14.47, "low": 13.33, "close": 13.64, "time": "2025-04-21"}, {"open": 13.9, "high": 15.42, "low": 13.895, "close": 15.09, "time": "2025-04-22"}, {"open": 16.38, "high": 16.6, "low": 15.17, "close": 15.44, "time": "2025-04-23"}, {"open": 15.7, "high": 16.85, "low": 15.7, "close": 16.56, "time": "2025-04-24"}, {"open": 16.29, "high": 16.85, "low": 15.915, "close": 16.66, "time": "2025-04-25"}, {"open": 16.9, "high": 17.49, "low": 16.3, "close": 16.96, "time": "2025-04-28"}, {"open": 17.11, "high": 17.17, "low": 16.557, "close": 16.89, "time": "2025-04-29"}, {"open": 16.38, "high": 16.59, "low": 15.635, "close": 16.57, "time": "2025-04-30"}, {"open": 17.28, "high": 17.64, "low": 16.75, "close": 17.11, "time": "2025-05-01"}, {"open": 17.585, "high": 18.03, "low": 17.35, "close": 17.46, "time": "2025-05-02"}, {"open": 17.0, "high": 17.395, "low": 16.57, "close": 17.11, "time": "2025-05-05"}, {"open": 16.94, "high": 18.24, "low": 16.6, "close": 17.67, "time": "2025-05-06"}, {"open": 17.44, "high": 17.51, "low": 16.38, "close": 16.61, "time": "2025-05-07"}, {"open": 17.1, "high": 17.25, "low": 16.19, "close": 16.93, "time": "2025-05-08"}, {"open": 17.18, "high": 17.62, "low": 16.52, "close": 17.45, "time": "2025-05-09"}, {"open": 18.45, "high": 18.64, "low": 17.64, "close": 17.79, "time": "2025-05-12"}, {"open": 18.645, "high": 22.5, "low": 18.51, "close": 21.64, "time": "2025-05-13"}, {"open": 22.375, "high": 23.359, "low": 21.6, "close": 22.94, "time": "2025-05-14"}, {"open": 22.3, "high": 24.2, "low": 22.28, "close": 24.0, "time": "2025-05-15"}, {"open": 24.4, "high": 25.12, "low": 23.5, "close": 24.17, "time": "2025-05-16"}, {"open": 22.49, "high": 24.56, "low": 22.49, "close": 24.52, "time": "2025-05-19"}, {"open": 24.75, "high": 24.75, "low": 22.75, "close": 23.48, "time": "2025-05-20"}, {"open": 23.2, "high": 25.37, "low": 23.02, "close": 23.87, "time": "2025-05-21"}, {"open": 23.3, "high": 25.52, "low": 22.52, "close": 25.32, "time": "2025-05-22"}, {"open": 28.5, "high": 31.38, "low": 26.71, "close": 30.24, "time": "2025-05-23"}, {"open": 30.37, "high": 35.77, "low": 29.43, "close": 35.52, "time": "2025-05-27"}, {"open": 34.58, "high": 36.85, "low": 34.55, "close": 35.37, "time": "2025-05-28"}, {"open": 35.99, "high": 36.0, "low": 32.44, "close": 32.98, "time": "2025-05-29"}, {"open": 31.42, "high": 33.09, "low": 30.6, "close": 31.99, "time": "2025-05-30"}, {"open": 31.605, "high": 33.23, "low": 30.84, "close": 32.03, "time": "2025-06-02"}, {"open": 34.85, "high": 36.5, "low": 31.5, "close": 31.79, "time": "2025-06-03"}, {"open": 31.67, "high": 33.44, "low": 29.66, "close": 31.19, "time": "2025-06-04"}, {"open": 31.2, "high": 32.398, "low": 29.82, "close": 31.05, "time": "2025-06-05"}, {"open": 31.28, "high": 34.57, "low": 30.74, "close": 34.36, "time": "2025-06-06"}, {"open": 35.1, "high": 35.53, "low": 33.25, "close": 35.24, "time": "2025-06-09"}, {"open": 35.61, "high": 38.39, "low": 33.68, "close": 34.55, "time": "2025-06-10"}, {"open": 35.66, "high": 41.89, "low": 35.1, "close": 41.6, "time": "2025-06-11"}, {"open": 39.925, "high": 42.91, "low": 39.4, "close": 40.38, "time": "2025-06-12"}, {"open": 39.71, "high": 41.28, "low": 38.7, "close": 38.82, "time": "2025-06-13"}, {"open": 41.42, "high": 45.31, "low": 40.61, "close": 42.49, "time": "2025-06-16"}, {"open": 44.0, "high": 44.76, "low": 39.01, "close": 39.24, "time": "2025-06-17"}, {"open": 40.5, "high": 40.77, "low": 38.6, "close": 39.16, "time": "2025-06-18"}, {"open": 40.59, "high": 40.59, "low": 37.03, "close": 37.2, "time": "2025-06-20"}, {"open": 37.72, "high": 39.58, "low": 35.02, "close": 36.5, "time": "2025-06-23"}, {"open": 38.68, "high": 43.4, "low": 38.32, "close": 43.24, "time": "2025-06-24"}, {"open": 41.935, "high": 42.46, "low": 38.06, "close": 38.66, "time": "2025-06-25"}, {"open": 39.685, "high": 39.8, "low": 37.89, "close": 38.24, "time": "2025-06-26"}, {"open": 40.04, "high": 41.05, "low": 37.07, "close": 38.2, "time": "2025-06-27"}, {"open": 39.14, "high": 40.17, "low": 37.91, "close": 39.56, "time": "2025-06-30"}, {"open": 39.0, "high": 39.0, "low": 35.4, "close": 36.12, "time": "2025-07-01"}, {"open": 36.48, "high": 36.91, "low": 35.01, "close": 35.21, "time": "2025-07-02"}, {"open": 35.52, "high": 36.46, "low": 34.61, "close": 35.88, "time": "2025-07-03"}, {"open": 35.5, "high": 36.943, "low": 34.15, "close": 36.7, "time": "2025-07-07"}, {"open": 37.0, "high": 37.5, "low": 34.62, "close": 35.08, "time": "2025-07-08"}, {"open": 35.38, "high": 35.91, "low": 33.63, "close": 35.46, "time": "2025-07-09"}, {"open": 35.46, "high": 36.42, "low": 34.52, "close": 36.02, "time": "2025-07-10"}, {"open": 35.605, "high": 37.94, "low": 35.27, "close": 37.48, "time": "2025-07-11"}, {"open": 37.51, "high": 42.7, "low": 36.61, "close": 42.12, "time": "2025-07-14"}, {"open": 41.845, "high": 43.71, "low": 40.37, "close": 42.98, "time": "2025-07-15"}, {"open": 42.12, "high": 46.31, "low": 41.56, "close": 46.09, "time": "2025-07-16"}, {"open": 46.66, "high": 49.27, "low": 45.55, "close": 46.83, "time": "2025-07-17"}, {"open": 47.11, "high": 50.88, "low": 46.12, "close": 50.25, "time": "2025-07-18"}, {"open": 50.77, "high": 50.94, "low": 45.29, "close": 45.44, "time": "2025-07-21"}, {"open": 45.87, "high": 45.87, "low": 42.116, "close": 44.44, "time": "2025-07-22"}, {"open": 47.0, "high": 49.24, "low": 45.01, "close": 47.85, "time": "2025-07-23"}, {"open": 47.34, "high": 53.39, "low": 46.74, "close": 51.03, "time": "2025-07-24"}, {"open": 49.2, "high": 52.24, "low": 48.6, "close": 51.67, "time": "2025-07-25"}, {"open": 53.3, "high": 53.5, "low": 49.39, "close": 50.99, "time": "2025-07-28"}, {"open": 50.99, "high": 52.98, "low": 47.61, "close": 48.97, "time": "2025-07-29"}, {"open": 49.59, "high": 52.24, "low": 49.01, "close": 50.51, "time": "2025-07-30"}, {"open": 50.96, "high": 53.45, "low": 49.88, "close": 50.21, "time": "2025-07-31"}, {"open": 45.72, "high": 45.98, "low": 41.908, "close": 44.43, "time": "2025-08-01"}, {"open": 46.18, "high": 46.8, "low": 42.38, "close": 43.38, "time": "2025-08-04"}, {"open": 44.5, "high": 48.555, "low": 43.7, "close": 45.13, "time": "2025-08-05"}, {"open": 45.7, "high": 47.36, "low": 44.33, "close": 45.93, "time": "2025-08-06"}, {"open": 46.5, "high": 46.72, "low": 43.34, "close": 44.68, "time": "2025-08-07"}, {"open": 44.22, "high": 44.74, "low": 38.855, "close": 39.35, "time": "2025-08-08"}, {"open": 39.98, "high": 40.74, "low": 38.02, "close": 38.25, "time": "2025-08-11"}, {"open": 38.69, "high": 39.79, "low": 38.06, "close": 38.17, "time": "2025-08-12"}, {"open": 39.245, "high": 39.5, "low": 36.31, "close": 37.3, "time": "2025-08-13"}, {"open": 36.95, "high": 37.73, "low": 35.22, "close": 35.93, "time": "2025-08-14"}, {"open": 35.98, "high": 36.14, "low": 34.43, "close": 35.47, "time": "2025-08-15"}, {"open": 35.43, "high": 36.0, "low": 34.48, "close": 34.98, "time": "2025-08-18"}, {"open": 35.05, "high": 35.32, "low": 32.5, "close": 32.65, "time": "2025-08-19"}, {"open": 31.8, "high": 34.03, "low": 30.62, "close": 33.79, "time": "2025-08-20"}, {"open": 34.63, "high": 34.77, "low": 33.04, "close": 33.49, "time": "2025-08-21"}, {"open": 33.505, "high": 35.524, "low": 32.606, "close": 35.04, "time": "2025-08-22"}, {"open": 36.04, "high": 36.46, "low": 34.3, "close": 35.9, "time": "2025-08-25"}, {"open": 36.15, "high": 38.2, "low": 35.2, "close": 36.02, "time": "2025-08-26"}, {"open": 36.06, "high": 36.43, "low": 34.855, "close": 35.16, "time": "2025-08-27"}, {"open": 35.83, "high": 37.2, "low": 35.56, "close": 36.48, "time": "2025-08-28"}, {"open": 36.3, "high": 36.576, "low": 34.3, "close": 34.65, "time": "2025-08-29"}, {"open": 33.1, "high": 38.49, "low": 32.6, "close": 37.24, "time": "2025-09-02"}, {"open": 39.27, "high": 43.11, "low": 38.5, "close": 40.42, "time": "2025-09-03"}, {"open": 40.87, "high": 41.08, "low": 35.9, "close": 36.03, "time": "2025-09-04"}, {"open": 37.65, "high": 37.65, "low": 34.5, "close": 34.53, "time": "2025-09-05"}, {"open": 34.92, "high": 35.57, "low": 33.82, "close": 33.95, "time": "2025-09-08"}, {"open": 34.3, "high": 35.36, "low": 33.98, "close": 35.34, "time": "2025-09-09"}, {"open": 36.46, "high": 36.7, "low": 34.31, "close": 34.31, "time": "2025-09-10"}, {"open": 35.04, "high": 35.6, "low": 34.4, "close": 35.18, "time": "2025-09-11"}, {"open": 35.38, "high": 36.53, "low": 34.73, "close": 36.34, "time": "2025-09-12"}, {"open": 37.79, "high": 39.46, "low": 35.88, "close": 39.09, "time": "2025-09-15"}, {"open": 38.3, "high": 39.0, "low": 36.76, "close": 37.26, "time": "2025-09-16"}, {"open": 36.97, "high": 37.0, "low": 35.13, "close": 36.13, "time": "2025-09-17"}, {"open": 37.28, "high": 41.03, "low": 36.35, "close": 38.12, "time": "2025-09-18"}, {"open": 39.2, "high": 47.0, "low": 39.0, "close": 46.77, "time": "2025-09-19"}, {"open": 44.7, "high": 47.26, "low": 42.25, "close": 45.0, "time": "2025-09-22"}, {"open": 44.5, "high": 44.7, "low": 41.07, "close": 41.64, "time": "2025-09-23"}, {"open": 42.25, "high": 42.39, "low": 39.21, "close": 39.67, "time": "2025-09-24"}, {"open": 38.0, "high": 39.248, "low": 36.19, "close": 37.7, "time": "2025-09-25"}, {"open": 38.0, "high": 38.85, "low": 36.96, "close": 38.0, "time": "2025-09-26"}, {"open": 39.75, "high": 40.328, "low": 37.816, "close": 38.16, "time": "2025-09-29"}, {"open": 37.295, "high": 37.81, "low": 35.92, "close": 36.0, "time": "2025-09-30"}, {"open": 36.02, "high": 37.05, "low": 35.25, "close": 36.61, "time": "2025-10-01"}, {"open": 37.39, "high": 39.59, "low": 36.96, "close": 39.51, "time": "2025-10-02"}, {"open": 39.37, "high": 41.25, "low": 38.67, "close": 40.12, "time": "2025-10-03"}, {"open": 41.515, "high": 43.96, "low": 41.32, "close": 41.94, "time": "2025-10-06"}, {"open": 42.31, "high": 44.2, "low": 39.05, "close": 39.21, "time": "2025-10-07"}, {"open": 39.86, "high": 40.635, "low": 37.922, "close": 38.2, "time": "2025-10-08"}, {"open": 38.95, "high": 41.605, "low": 38.426, "close": 40.61, "time": "2025-10-09"}, {"open": 41.02, "high": 44.83, "low": 39.1, "close": 39.24, "time": "2025-10-10"}, {"open": 41.84, "high": 46.4, "low": 41.7, "close": 45.02, "time": "2025-10-13"}, {"open": 43.31, "high": 47.42, "low": 41.621, "close": 45.79, "time": "2025-10-14"}, {"open": 48.24, "high": 56.16, "low": 47.95, "close": 53.43, "time": "2025-10-15"}, {"open": 56.33, "high": 57.42, "low": 47.51, "close": 47.64, "time": "2025-10-16"}, {"open": 48.0, "high": 48.67, "low": 42.67, "close": 44.25, "time": "2025-10-17"}, {"open": 46.395, "high": 46.395, "low": 43.41, "close": 44.21, "time": "2025-10-20"}, {"open": 41.13, "high": 41.74, "low": 38.32, "close": 38.37, "time": "2025-10-21"}, {"open": 38.72, "high": 38.9, "low": 32.69, "close": 34.72, "time": "2025-10-22"}, {"open": 35.21, "high": 38.26, "low": 34.38, "close": 37.56, "time": "2025-10-23"}, {"open": 39.0, "high": 40.3, "low": 37.5, "close": 37.73, "time": "2025-10-24"}, {"open": 38.87, "high": 39.59, "low": 36.925, "close": 38.71, "time": "2025-10-27"}, {"open": 39.76, "high": 44.48, "low": 39.17, "close": 42.12, "time": "2025-10-28"}, {"open": 42.155, "high": 44.43, "low": 40.53, "close": 43.17, "time": "2025-10-29"}, {"open": 41.99, "high": 44.37, "low": 40.7, "close": 42.25, "time": "2025-10-30"}, {"open": 43.75, "high": 45.54, "low": 42.08, "close": 44.87, "time": "2025-10-31"}, {"open": 43.74, "high": 43.99, "low": 40.39, "close": 40.83, "time": "2025-11-03"}, {"open": 39.5, "high": 40.154, "low": 35.62, "close": 35.63, "time": "2025-11-04"}, {"open": 38.22, "high": 39.349, "low": 37.21, "close": 37.91, "time": "2025-11-05"}, {"open": 37.24, "high": 37.41, "low": 32.32, "close": 32.46, "time": "2025-11-06"}, {"open": 29.65, "high": 30.5, "low": 26.765, "close": 30.34, "time": "2025-11-07"}, {"open": 32.06, "high": 32.09, "low": 27.56, "close": 28.43, "time": "2025-11-10"}, {"open": 28.0, "high": 28.13, "low": 26.4, "close": 26.74, "time": "2025-11-11"}, {"open": 27.05, "high": 27.78, "low": 25.59, "close": 25.96, "time": "2025-11-12"}, {"open": 25.57, "high": 25.57, "low": 22.77, "close": 23.15, "time": "2025-11-13"}, {"open": 21.93, "high": 23.45, "low": 21.56, "close": 22.45, "time": "2025-11-14"}, {"open": 22.3, "high": 22.55, "low": 20.56, "close": 21.06, "time": "2025-11-17"}, {"open": 21.15, "high": 22.37, "low": 20.7, "close": 21.54, "time": "2025-11-18"}, {"open": 22.09, "high": 22.15, "low": 20.44, "close": 21.13, "time": "2025-11-19"}, {"open": 22.62, "high": 22.69, "low": 18.58, "close": 18.7, "time": "2025-11-20"}, {"open": 19.02, "high": 19.02, "low": 16.959, "close": 18.6, "time": "2025-11-21"}, {"open": 19.0, "high": 19.98, "low": 18.44, "close": 19.94, "time": "2025-11-24"}, {"open": 19.78, "high": 19.78, "low": 18.2, "close": 18.73, "time": "2025-11-25"}, {"open": 19.06, "high": 19.25, "low": 18.2, "close": 19.04, "time": "2025-11-26"}, {"open": 19.42, "high": 20.285, "low": 19.08, "close": 20.0, "time": "2025-11-28"}, {"open": 19.28, "high": 19.33, "low": 18.05, "close": 18.08, "time": "2025-12-01"}, {"open": 18.46, "high": 19.65, "low": 18.41, "close": 18.91, "time": "2025-12-02"}, {"open": 18.755, "high": 20.32, "low": 18.21, "close": 20.14, "time": "2025-12-03"}, {"open": 20.01, "high": 23.35, "low": 19.5, "close": 22.85, "time": "2025-12-04"}, {"open": 22.34, "high": 22.42, "low": 21.3, "close": 21.39, "time": "2025-12-05"}, {"open": 22.35, "high": 22.96, "low": 20.86, "close": 21.56, "time": "2025-12-08"}, {"open": 20.9, "high": 21.95, "low": 20.62, "close": 21.32, "time": "2025-12-09"}, {"open": 20.62, "high": 21.115, "low": 19.77, "close": 20.32, "time": "2025-12-10"}, {"open": 19.87, "high": 21.26, "low": 18.81, "close": 21.22, "time": "2025-12-11"}, {"open": 20.84, "high": 20.9, "low": 18.33, "close": 18.34, "time": "2025-12-12"}, {"open": 18.68, "high": 18.711, "low": 17.37, "close": 17.41, "time": "2025-12-15"}, {"open": 17.11, "high": 17.6, "low": 16.61, "close": 17.12, "time": "2025-12-16"}, {"open": 17.08, "high": 17.249, "low": 15.69, "close": 15.73, "time": "2025-12-17"}, {"open": 16.48, "high": 16.83, "low": 15.654, "close": 15.79, "time": "2025-12-18"}, {"open": 15.99, "high": 16.605, "low": 15.94, "close": 16.07, "time": "2025-12-19"}, {"open": 16.54, "high": 17.255, "low": 16.155, "close": 16.43, "time": "2025-12-22"}, {"open": 16.15, "high": 16.31, "low": 15.77, "close": 15.97, "time": "2025-12-23"}, {"open": 15.96, "high": 16.13, "low": 15.53, "close": 16.08, "time": "2025-12-24"}, {"open": 15.89, "high": 15.89, "low": 14.76, "close": 14.85, "time": "2025-12-26"}, {"open": 14.31, "high": 15.29, "low": 14.29, "close": 14.48, "time": "2025-12-29"}, {"open": 14.63, "high": 14.74, "low": 14.07, "close": 14.31, "time": "2025-12-30"}, {"open": 14.315, "high": 14.43, "low": 13.98, "close": 14.17, "time": "2025-12-31"}, {"open": 14.56, "high": 16.47, "low": 14.32, "close": 16.31, "time": "2026-01-02"}, {"open": 17.945, "high": 19.55, "low": 17.34, "close": 18.78, "time": "2026-01-05"}, {"open": 19.58, "high": 20.22, "low": 18.17, "close": 19.57, "time": "2026-01-06"}, {"open": 18.95, "high": 20.27, "low": 18.48, "close": 19.47, "time": "2026-01-07"}, {"open": 19.175, "high": 19.98, "low": 18.72, "close": 19.67, "time": "2026-01-08"}, {"open": 21.49, "high": 22.29, "low": 20.32, "close": 20.51, "time": "2026-01-09"}, {"open": 20.32, "high": 20.43, "low": 19.52, "close": 19.72, "time": "2026-01-12"}, {"open": 20.08, "high": 20.3, "low": 19.07, "close": 19.23, "time": "2026-01-13"}, {"open": 18.99, "high": 19.99, "low": 18.47, "close": 19.83, "time": "2026-01-14"}, {"open": 19.845, "high": 19.92, "low": 18.83, "close": 18.9, "time": "2026-01-15"}, {"open": 19.44, "high": 20.55, "low": 18.862, "close": 20.19, "time": "2026-01-16"}, {"open": 19.385, "high": 20.08, "low": 18.89, "close": 19.0, "time": "2026-01-20"}, {"open": 20.16, "high": 21.15, "low": 18.43, "close": 19.75, "time": "2026-01-21"}, {"open": 20.35, "high": 21.06, "low": 19.77, "close": 20.64, "time": "2026-01-22"}, {"open": 20.82, "high": 20.84, "low": 19.4, "close": 19.77, "time": "2026-01-23"}, {"open": 19.505, "high": 20.066, "low": 18.275, "close": 18.4, "time": "2026-01-26"}, {"open": 18.55, "high": 19.32, "low": 17.68, "close": 19.2, "time": "2026-01-27"}, {"open": 19.41, "high": 20.925, "low": 19.01, "close": 20.48, "time": "2026-01-28"}, {"open": 19.78, "high": 20.07, "low": 18.13, "close": 18.92, "time": "2026-01-29"}, {"open": 18.47, "high": 19.13, "low": 17.33, "close": 17.48, "time": "2026-01-30"}, {"open": 17.27, "high": 17.42, "low": 16.37, "close": 16.48, "time": "2026-02-02"}, {"open": 17.071, "high": 17.96, "low": 16.35, "close": 17.88, "time": "2026-02-03"}, {"open": 17.635, "high": 17.66, "low": 15.18, "close": 16.2, "time": "2026-02-04"}, {"open": 15.92, "high": 15.945, "low": 14.681, "close": 14.84, "time": "2026-02-05"}, {"open": 15.75, "high": 17.878, "low": 15.47, "close": 17.53, "time": "2026-02-06"}, {"open": 17.15, "high": 17.825, "low": 16.74, "close": 17.68, "time": "2026-02-09"}, {"open": 17.43, "high": 17.77, "low": 16.73, "close": 16.74, "time": "2026-02-10"}, {"open": 16.83, "high": 16.9, "low": 14.86, "close": 15.57, "time": "2026-02-11"}, {"open": 16.52, "high": 16.54, "low": 13.97, "close": 13.99, "time": "2026-02-12"}, {"open": 14.23, "high": 14.767, "low": 13.66, "close": 14.31, "time": "2026-02-13"}, {"open": 14.12, "high": 14.455, "low": 13.34, "close": 14.27, "time": "2026-02-17"}, {"open": 14.115, "high": 14.61, "low": 13.762, "close": 14.2, "time": "2026-02-18"}, {"open": 13.96, "high": 14.665, "low": 13.51, "close": 14.64, "time": "2026-02-19"}, {"open": 14.245, "high": 14.56, "low": 13.33, "close": 13.44, "time": "2026-02-20"}, {"open": 13.12, "high": 13.2, "low": 12.114, "close": 12.6, "time": "2026-02-23"}, {"open": 12.33, "high": 13.485, "low": 12.04, "close": 13.43, "time": "2026-02-24"}, {"open": 13.51, "high": 13.57, "low": 13.035, "close": 13.18, "time": "2026-02-25"}, {"open": 12.94, "high": 13.48, "low": 12.64, "close": 13.33, "time": "2026-02-26"}, {"open": 13.2, "high": 13.45, "low": 12.68, "close": 12.85, "time": "2026-02-27"}, {"open": 12.295, "high": 13.48, "low": 12.265, "close": 13.05, "time": "2026-03-02"}, {"open": 12.4, "high": 12.845, "low": 11.74, "close": 12.53, "time": "2026-03-03"}, {"open": 12.56, "high": 13.09, "low": 12.5, "close": 12.54, "time": "2026-03-04"}, {"open": 12.23, "high": 12.585, "low": 11.75, "close": 12.18, "time": "2026-03-05"}, {"open": 11.83, "high": 12.23, "low": 11.61, "close": 11.67, "time": "2026-03-06"}, {"open": 11.39, "high": 12.335, "low": 11.22, "close": 12.16, "time": "2026-03-09"}, {"open": 12.175, "high": 12.555, "low": 12.0, "close": 12.03, "time": "2026-03-10"}, {"open": 12.05, "high": 12.555, "low": 12.0, "close": 12.38, "time": "2026-03-11"}, {"open": 12.1, "high": 12.34, "low": 11.71, "close": 11.76, "time": "2026-03-12"}, {"open": 11.98, "high": 12.26, "low": 11.535, "close": 11.8, "time": "2026-03-13"}, {"open": 11.97, "high": 12.18, "low": 11.635, "close": 11.97, "time": "2026-03-16"}, {"open": 12.32, "high": 12.695, "low": 11.92, "close": 12.44, "time": "2026-03-17"}, {"open": 12.1, "high": 12.45, "low": 11.97, "close": 12.03, "time": "2026-03-18"}, {"open": 11.73, "high": 12.165, "low": 11.39, "close": 11.99, "time": "2026-03-19"}, {"open": 11.86, "high": 12.051, "low": 11.18, "close": 11.44, "time": "2026-03-20"}, {"open": 11.54, "high": 12.1, "low": 11.33, "close": 11.7, "time": "2026-03-23"}, {"open": 11.52, "high": 11.61, "low": 11.15, "close": 11.43, "time": "2026-03-24"}, {"open": 11.77, "high": 12.0, "low": 11.51, "close": 11.69, "time": "2026-03-25"}, {"open": 11.39, "high": 11.61, "low": 10.93, "close": 10.99, "time": "2026-03-26"}, {"open": 10.76, "high": 10.802, "low": 10.15, "close": 10.3, "time": "2026-03-27"}, {"open": 10.475, "high": 10.7, "low": 10.01, "close": 10.25, "time": "2026-03-30"}, {"open": 10.33, "high": 10.92, "low": 10.245, "close": 10.84, "time": "2026-03-31"}, {"open": 10.9, "high": 10.995, "low": 10.105, "close": 10.26, "time": "2026-04-01"}, {"open": 9.92, "high": 10.35, "low": 9.655, "close": 10.15, "time": "2026-04-02"}, {"open": 10.1, "high": 10.51, "low": 10.05, "close": 10.17, "time": "2026-04-06"}, {"open": 9.98, "high": 10.06, "low": 9.14, "close": 9.16, "time": "2026-04-07"}, {"open": 9.82, "high": 10.21, "low": 9.65, "close": 9.86, "time": "2026-04-08"}, {"open": 9.62, "high": 9.845, "low": 9.28, "close": 9.3, "time": "2026-04-09"}, {"open": 9.5, "high": 9.72, "low": 9.17, "close": 9.21, "time": "2026-04-10"}, {"open": 9.055, "high": 9.65, "low": 8.85, "close": 9.58, "time": "2026-04-13"}];
+const MARKERS = [{"time": "2024-04-15", "position": "belowBar", "color": "#26a69a", "shape": "arrowUp", "text": "BUY INIT"}, {"time": "2025-02-24", "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "EXIT MA-BRK"}, {"time": "2025-04-04", "position": "belowBar", "color": "#7C4DFF", "shape": "arrowUp", "text": "BUY VIX-FEAR"}, {"time": "2025-04-08", "position": "aboveBar", "color": "#FF7043", "shape": "arrowDown", "text": "EXIT VIX-X"}, {"time": "2025-07-08", "position": "belowBar", "color": "#4CAF50", "shape": "arrowUp", "text": "BUY MA-FALL"}, {"time": "2025-08-19", "position": "aboveBar", "color": "#FF5722", "shape": "arrowDown", "text": "EXIT TRAIL"}, {"time": "2026-03-30", "position": "belowBar", "color": "#B388FF", "shape": "arrowUp", "text": "BUY VIX-DEC"}, {"time": "2026-04-01", "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "EXIT MA-BRK"}];
+const OVERLAYS = [{"label": "RSI(14)", "color": "#E040FB", "type": "rsi_panel", "points": [{"time": "2024-05-03", "value": 79.11}, {"time": "2024-05-06", "value": 68.32}, {"time": "2024-05-07", "value": 63.51}, {"time": "2024-05-08", "value": 66.36}, {"time": "2024-05-09", "value": 66.51}, {"time": "2024-05-10", "value": 72.07}, {"time": "2024-05-13", "value": 73.22}, {"time": "2024-05-14", "value": 81.23}, {"time": "2024-05-15", "value": 72.99}, {"time": "2024-05-16", "value": 56.33}, {"time": "2024-05-17", "value": 58.75}, {"time": "2024-05-20", "value": 67.15}, {"time": "2024-05-21", "value": 68.26}, {"time": "2024-05-22", "value": 67.12}, {"time": "2024-05-23", "value": 57.39}, {"time": "2024-05-24", "value": 66.25}, {"time": "2024-05-28", "value": 74.87}, {"time": "2024-05-29", "value": 68.14}, {"time": "2024-05-30", "value": 66.46}, {"time": "2024-05-31", "value": 66.57}, {"time": "2024-06-03", "value": 55.63}, {"time": "2024-06-04", "value": 50.36}, {"time": "2024-06-05", "value": 55.96}, {"time": "2024-06-06", "value": 54.97}, {"time": "2024-06-07", "value": 57.72}, {"time": "2024-06-10", "value": 61.43}, {"time": "2024-06-11", "value": 63.06}, {"time": "2024-06-12", "value": 58.23}, {"time": "2024-06-13", "value": 57.95}, {"time": "2024-06-14", "value": 55.73}, {"time": "2024-06-17", "value": 58.06}, {"time": "2024-06-18", "value": 64.77}, {"time": "2024-06-20", "value": 64.45}, {"time": "2024-06-21", "value": 67.4}, {"time": "2024-06-24", "value": 67.4}, {"time": "2024-06-25", "value": 72.35}, {"time": "2024-06-26", "value": 74.75}, {"time": "2024-06-27", "value": 76.57}, {"time": "2024-06-28", "value": 72.99}, {"time": "2024-07-01", "value": 64.47}, {"time": "2024-07-02", "value": 64.47}, {"time": "2024-07-03", "value": 68.21}, {"time": "2024-07-05", "value": 71.31}, {"time": "2024-07-08", "value": 76.96}, {"time": "2024-07-09", "value": 67.94}, {"time": "2024-07-10", "value": 70.97}, {"time": "2024-07-11", "value": 66.77}, {"time": "2024-07-12", "value": 74.61}, {"time": "2024-07-15", "value": 75.88}, {"time": "2024-07-16", "value": 73.77}, {"time": "2024-07-17", "value": 61.75}, {"time": "2024-07-18", "value": 55.37}, {"time": "2024-07-19", "value": 47.64}, {"time": "2024-07-22", "value": 46.57}, {"time": "2024-07-23", "value": 48.9}, {"time": "2024-07-24", "value": 45.52}, {"time": "2024-07-25", "value": 43.78}, {"time": "2024-07-26", "value": 46.29}, {"time": "2024-07-29", "value": 40.22}, {"time": "2024-07-30", "value": 40.47}, {"time": "2024-07-31", "value": 44.69}, {"time": "2024-08-01", "value": 39.74}, {"time": "2024-08-02", "value": 37.64}, {"time": "2024-08-05", "value": 38.78}, {"time": "2024-08-06", "value": 36.14}, {"time": "2024-08-07", "value": 39.98}, {"time": "2024-08-08", "value": 39.56}, {"time": "2024-08-09", "value": 44.31}, {"time": "2024-08-12", "value": 44.09}, {"time": "2024-08-13", "value": 49.17}, {"time": "2024-08-14", "value": 45.88}, {"time": "2024-08-15", "value": 45.58}, {"time": "2024-08-16", "value": 43.74}, {"time": "2024-08-19", "value": 46.38}, {"time": "2024-08-20", "value": 43.17}, {"time": "2024-08-21", "value": 42.35}, {"time": "2024-08-22", "value": 37.82}, {"time": "2024-08-23", "value": 43.32}, {"time": "2024-08-26", "value": 40.49}, {"time": "2024-08-27", "value": 44.55}, {"time": "2024-08-28", "value": 40.59}, {"time": "2024-08-29", "value": 41.45}, {"time": "2024-08-30", "value": 42.27}, {"time": "2024-09-03", "value": 38.2}, {"time": "2024-09-04", "value": 42.48}, {"time": "2024-09-05", "value": 38.6}, {"time": "2024-09-06", "value": 36.03}, {"time": "2024-09-09", "value": 41.53}, {"time": "2024-09-10", "value": 47.17}, {"time": "2024-09-11", "value": 50.85}, {"time": "2024-09-12", "value": 50.01}, {"time": "2024-09-13", "value": 57.28}, {"time": "2024-09-16", "value": 57.28}, {"time": "2024-09-17", "value": 52.32}, {"time": "2024-09-18", "value": 52.91}, {"time": "2024-09-19", "value": 56.15}, {"time": "2024-09-20", "value": 62.96}, {"time": "2024-09-23", "value": 64.01}, {"time": "2024-09-24", "value": 69.24}, {"time": "2024-09-25", "value": 69.6}, {"time": "2024-09-26", "value": 68.1}, {"time": "2024-09-27", "value": 71.24}, {"time": "2024-09-30", "value": 61.63}, {"time": "2024-10-01", "value": 63.28}, {"time": "2024-10-02", "value": 65.96}, {"time": "2024-10-03", "value": 62.31}, {"time": "2024-10-04", "value": 68.03}, {"time": "2024-10-07", "value": 65.31}, {"time": "2024-10-08", "value": 65.52}, {"time": "2024-10-09", "value": 56.01}, {"time": "2024-10-10", "value": 57.08}, {"time": "2024-10-11", "value": 63.47}, {"time": "2024-10-14", "value": 67.16}, {"time": "2024-10-15", "value": 64.36}, {"time": "2024-10-16", "value": 79.81}, {"time": "2024-10-17", "value": 73.23}, {"time": "2024-10-18", "value": 73.65}, {"time": "2024-10-21", "value": 75.31}, {"time": "2024-10-22", "value": 68.21}, {"time": "2024-10-23", "value": 65.38}, {"time": "2024-10-24", "value": 68.46}, {"time": "2024-10-25", "value": 68.51}, {"time": "2024-10-28", "value": 76.59}, {"time": "2024-10-29", "value": 74.36}, {"time": "2024-10-30", "value": 69.81}, {"time": "2024-10-31", "value": 61.5}, {"time": "2024-11-01", "value": 60.89}, {"time": "2024-11-04", "value": 58.3}, {"time": "2024-11-05", "value": 59.5}, {"time": "2024-11-06", "value": 67.07}, {"time": "2024-11-07", "value": 67.72}, {"time": "2024-11-08", "value": 73.79}, {"time": "2024-11-11", "value": 68.85}, {"time": "2024-11-12", "value": 67.63}, {"time": "2024-11-13", "value": 71.42}, {"time": "2024-11-14", "value": 69.8}, {"time": "2024-11-15", "value": 62.0}, {"time": "2024-11-18", "value": 71.01}, {"time": "2024-11-19", "value": 69.96}, {"time": "2024-11-20", "value": 64.69}, {"time": "2024-11-21", "value": 68.54}, {"time": "2024-11-22", "value": 72.75}, {"time": "2024-11-25", "value": 64.84}, {"time": "2024-11-26", "value": 59.29}, {"time": "2024-11-27", "value": 62.73}, {"time": "2024-11-29", "value": 65.62}, {"time": "2024-12-02", "value": 58.19}, {"time": "2024-12-03", "value": 52.06}, {"time": "2024-12-04", "value": 52.01}, {"time": "2024-12-05", "value": 50.69}, {"time": "2024-12-06", "value": 54.07}, {"time": "2024-12-09", "value": 49.32}, {"time": "2024-12-10", "value": 44.97}, {"time": "2024-12-11", "value": 45.71}, {"time": "2024-12-12", "value": 43.89}, {"time": "2024-12-13", "value": 42.58}, {"time": "2024-12-16", "value": 44.57}, {"time": "2024-12-17", "value": 44.54}, {"time": "2024-12-18", "value": 37.86}, {"time": "2024-12-19", "value": 37.63}, {"time": "2024-12-20", "value": 40.63}, {"time": "2024-12-23", "value": 40.52}, {"time": "2024-12-24", "value": 45.61}, {"time": "2024-12-26", "value": 48.61}, {"time": "2024-12-27", "value": 41.57}, {"time": "2024-12-30", "value": 38.22}, {"time": "2024-12-31", "value": 37.51}, {"time": "2025-01-02", "value": 36.94}, {"time": "2025-01-03", "value": 48.95}, {"time": "2025-01-06", "value": 56.87}, {"time": "2025-01-07", "value": 50.99}, {"time": "2025-01-08", "value": 45.64}, {"time": "2025-01-10", "value": 46.96}, {"time": "2025-01-13", "value": 43.59}, {"time": "2025-01-14", "value": 44.97}, {"time": "2025-01-15", "value": 49.84}, {"time": "2025-01-16", "value": 48.28}, {"time": "2025-01-17", "value": 53.22}, {"time": "2025-01-21", "value": 61.71}, {"time": "2025-01-22", "value": 61.57}, {"time": "2025-01-23", "value": 68.05}, {"time": "2025-01-24", "value": 64.35}, {"time": "2025-01-27", "value": 45.8}, {"time": "2025-01-28", "value": 47.24}, {"time": "2025-01-29", "value": 49.49}, {"time": "2025-01-30", "value": 52.74}, {"time": "2025-01-31", "value": 53.28}, {"time": "2025-02-03", "value": 53.3}, {"time": "2025-02-04", "value": 51.06}, {"time": "2025-02-05", "value": 54.75}, {"time": "2025-02-06", "value": 51.3}, {"time": "2025-02-07", "value": 57.1}, {"time": "2025-02-10", "value": 60.28}, {"time": "2025-02-11", "value": 55.87}, {"time": "2025-02-12", "value": 57.02}, {"time": "2025-02-13", "value": 52.44}, {"time": "2025-02-14", "value": 48.4}, {"time": "2025-02-18", "value": 45.97}, {"time": "2025-02-19", "value": 43.89}, {"time": "2025-02-20", "value": 43.08}, {"time": "2025-02-21", "value": 39.22}, {"time": "2025-02-24", "value": 38.0}, {"time": "2025-02-25", "value": 36.22}, {"time": "2025-02-26", "value": 37.48}, {"time": "2025-02-27", "value": 34.78}, {"time": "2025-02-28", "value": 36.68}, {"time": "2025-03-03", "value": 32.93}, {"time": "2025-03-04", "value": 39.72}, {"time": "2025-03-05", "value": 40.05}, {"time": "2025-03-06", "value": 36.75}, {"time": "2025-03-07", "value": 36.0}, {"time": "2025-03-10", "value": 33.78}, {"time": "2025-03-11", "value": 40.15}, {"time": "2025-03-12", "value": 39.54}, {"time": "2025-03-13", "value": 37.48}, {"time": "2025-03-14", "value": 46.45}, {"time": "2025-03-17", "value": 46.78}, {"time": "2025-03-18", "value": 43.58}, {"time": "2025-03-19", "value": 50.54}, {"time": "2025-03-20", "value": 49.43}, {"time": "2025-03-21", "value": 49.18}, {"time": "2025-03-24", "value": 51.95}, {"time": "2025-03-25", "value": 51.27}, {"time": "2025-03-26", "value": 45.28}, {"time": "2025-03-27", "value": 41.9}, {"time": "2025-03-28", "value": 38.47}, {"time": "2025-03-31", "value": 36.18}, {"time": "2025-04-01", "value": 38.52}, {"time": "2025-04-02", "value": 40.8}, {"time": "2025-04-03", "value": 37.69}, {"time": "2025-04-04", "value": 33.35}, {"time": "2025-04-07", "value": 40.53}, {"time": "2025-04-08", "value": 39.95}, {"time": "2025-04-09", "value": 48.96}, {"time": "2025-04-10", "value": 44.88}, {"time": "2025-04-11", "value": 46.08}, {"time": "2025-04-14", "value": 46.5}, {"time": "2025-04-15", "value": 47.07}, {"time": "2025-04-16", "value": 43.65}, {"time": "2025-04-17", "value": 44.2}, {"time": "2025-04-21", "value": 40.48}, {"time": "2025-04-22", "value": 47.58}, {"time": "2025-04-23", "value": 49.16}, {"time": "2025-04-24", "value": 53.94}, {"time": "2025-04-25", "value": 54.35}, {"time": "2025-04-28", "value": 55.63}, {"time": "2025-04-29", "value": 55.24}, {"time": "2025-04-30", "value": 53.4}, {"time": "2025-05-01", "value": 56.07}, {"time": "2025-05-02", "value": 57.75}, {"time": "2025-05-05", "value": 55.46}, {"time": "2025-05-06", "value": 58.31}, {"time": "2025-05-07", "value": 51.58}, {"time": "2025-05-08", "value": 53.33}, {"time": "2025-05-09", "value": 56.11}, {"time": "2025-05-12", "value": 57.88}, {"time": "2025-05-13", "value": 71.74}, {"time": "2025-05-14", "value": 74.76}, {"time": "2025-05-15", "value": 76.93}, {"time": "2025-05-16", "value": 77.27}, {"time": "2025-05-19", "value": 77.98}, {"time": "2025-05-20", "value": 70.87}, {"time": "2025-05-21", "value": 71.9}, {"time": "2025-05-22", "value": 75.4}, {"time": "2025-05-23", "value": 83.09}, {"time": "2025-05-27", "value": 87.58}, {"time": "2025-05-28", "value": 86.88}, {"time": "2025-05-29", "value": 76.33}, {"time": "2025-05-30", "value": 72.4}, {"time": "2025-06-02", "value": 72.46}, {"time": "2025-06-03", "value": 71.43}, {"time": "2025-06-04", "value": 68.8}, {"time": "2025-06-05", "value": 68.17}, {"time": "2025-06-06", "value": 74.2}, {"time": "2025-06-09", "value": 75.53}, {"time": "2025-06-10", "value": 72.38}, {"time": "2025-06-11", "value": 81.06}, {"time": "2025-06-12", "value": 76.57}, {"time": "2025-06-13", "value": 71.16}, {"time": "2025-06-16", "value": 75.54}, {"time": "2025-06-17", "value": 65.97}, {"time": "2025-06-18", "value": 65.75}, {"time": "2025-06-20", "value": 60.42}, {"time": "2025-06-23", "value": 58.59}, {"time": "2025-06-24", "value": 68.48}, {"time": "2025-06-25", "value": 58.29}, {"time": "2025-06-26", "value": 57.45}, {"time": "2025-06-27", "value": 57.36}, {"time": "2025-06-30", "value": 59.56}, {"time": "2025-07-01", "value": 52.23}, {"time": "2025-07-02", "value": 50.46}, {"time": "2025-07-03", "value": 51.76}, {"time": "2025-07-07", "value": 53.37}, {"time": "2025-07-08", "value": 49.83}, {"time": "2025-07-09", "value": 50.66}, {"time": "2025-07-10", "value": 51.91}, {"time": "2025-07-11", "value": 55.12}, {"time": "2025-07-14", "value": 63.46}, {"time": "2025-07-15", "value": 64.76}, {"time": "2025-07-16", "value": 69.07}, {"time": "2025-07-17", "value": 70.01}, {"time": "2025-07-18", "value": 73.94}, {"time": "2025-07-21", "value": 61.68}, {"time": "2025-07-22", "value": 59.47}, {"time": "2025-07-23", "value": 64.18}, {"time": "2025-07-24", "value": 67.92}, {"time": "2025-07-25", "value": 68.64}, {"time": "2025-07-28", "value": 66.94}, {"time": "2025-07-29", "value": 62.03}, {"time": "2025-07-30", "value": 64.19}, {"time": "2025-07-31", "value": 63.43}, {"time": "2025-08-01", "value": 50.99}, {"time": "2025-08-04", "value": 49.1}, {"time": "2025-08-05", "value": 52.27}, {"time": "2025-08-06", "value": 53.69}, {"time": "2025-08-07", "value": 51.13}, {"time": "2025-08-08", "value": 41.95}, {"time": "2025-08-11", "value": 40.34}, {"time": "2025-08-12", "value": 40.22}, {"time": "2025-08-13", "value": 38.86}, {"time": "2025-08-14", "value": 36.75}, {"time": "2025-08-15", "value": 36.04}, {"time": "2025-08-18", "value": 35.26}, {"time": "2025-08-19", "value": 31.74}, {"time": "2025-08-20", "value": 35.15}, {"time": "2025-08-21", "value": 34.66}, {"time": "2025-08-22", "value": 39.37}, {"time": "2025-08-25", "value": 41.87}, {"time": "2025-08-26", "value": 42.23}, {"time": "2025-08-27", "value": 40.31}, {"time": "2025-08-28", "value": 44.48}, {"time": "2025-08-29", "value": 40.28}, {"time": "2025-09-02", "value": 47.79}, {"time": "2025-09-03", "value": 55.23}, {"time": "2025-09-04", "value": 45.57}, {"time": "2025-09-05", "value": 42.82}, {"time": "2025-09-08", "value": 41.77}, {"time": "2025-09-09", "value": 45.24}, {"time": "2025-09-10", "value": 43.18}, {"time": "2025-09-11", "value": 45.44}, {"time": "2025-09-12", "value": 48.38}, {"time": "2025-09-15", "value": 54.62}, {"time": "2025-09-16", "value": 50.26}, {"time": "2025-09-17", "value": 47.73}, {"time": "2025-09-18", "value": 52.29}, {"time": "2025-09-19", "value": 66.12}, {"time": "2025-09-22", "value": 62.15}, {"time": "2025-09-23", "value": 55.36}, {"time": "2025-09-24", "value": 51.78}, {"time": "2025-09-25", "value": 48.41}, {"time": "2025-09-26", "value": 48.96}, {"time": "2025-09-29", "value": 49.27}, {"time": "2025-09-30", "value": 45.3}, {"time": "2025-10-01", "value": 46.61}, {"time": "2025-10-02", "value": 52.43}, {"time": "2025-10-03", "value": 53.57}, {"time": "2025-10-06", "value": 56.91}, {"time": "2025-10-07", "value": 50.99}, {"time": "2025-10-08", "value": 48.96}, {"time": "2025-10-09", "value": 53.7}, {"time": "2025-10-10", "value": 50.81}, {"time": "2025-10-13", "value": 60.47}, {"time": "2025-10-14", "value": 61.55}, {"time": "2025-10-15", "value": 70.25}, {"time": "2025-10-16", "value": 59.3}, {"time": "2025-10-17", "value": 53.99}, {"time": "2025-10-20", "value": 53.93}, {"time": "2025-10-21", "value": 45.75}, {"time": "2025-10-22", "value": 41.52}, {"time": "2025-10-23", "value": 45.73}, {"time": "2025-10-24", "value": 45.98}, {"time": "2025-10-27", "value": 47.48}, {"time": "2025-10-28", "value": 52.45}, {"time": "2025-10-29", "value": 53.9}, {"time": "2025-10-30", "value": 52.39}, {"time": "2025-10-31", "value": 56.15}, {"time": "2025-11-03", "value": 49.65}, {"time": "2025-11-04", "value": 42.78}, {"time": "2025-11-05", "value": 46.29}, {"time": "2025-11-06", "value": 39.98}, {"time": "2025-11-07", "value": 37.82}, {"time": "2025-11-10", "value": 35.94}, {"time": "2025-11-11", "value": 34.31}, {"time": "2025-11-12", "value": 33.56}, {"time": "2025-11-13", "value": 30.92}, {"time": "2025-11-14", "value": 30.28}, {"time": "2025-11-17", "value": 29.0}, {"time": "2025-11-18", "value": 30.1}, {"time": "2025-11-19", "value": 29.67}, {"time": "2025-11-20", "value": 27.23}, {"time": "2025-11-21", "value": 27.13}, {"time": "2025-11-24", "value": 30.76}, {"time": "2025-11-25", "value": 29.34}, {"time": "2025-11-26", "value": 30.23}, {"time": "2025-11-28", "value": 33.05}, {"time": "2025-12-01", "value": 30.41}, {"time": "2025-12-02", "value": 32.9}, {"time": "2025-12-03", "value": 36.53}, {"time": "2025-12-04", "value": 43.76}, {"time": "2025-12-05", "value": 41.05}, {"time": "2025-12-08", "value": 41.5}, {"time": "2025-12-09", "value": 41.02}, {"time": "2025-12-10", "value": 38.99}, {"time": "2025-12-11", "value": 41.78}, {"time": "2025-12-12", "value": 36.1}, {"time": "2025-12-15", "value": 34.47}, {"time": "2025-12-16", "value": 33.95}, {"time": "2025-12-17", "value": 31.52}, {"time": "2025-12-18", "value": 31.75}, {"time": "2025-12-19", "value": 32.87}, {"time": "2025-12-22", "value": 34.36}, {"time": "2025-12-23", "value": 33.34}, {"time": "2025-12-24", "value": 33.84}, {"time": "2025-12-26", "value": 31.01}, {"time": "2025-12-29", "value": 30.2}, {"time": "2025-12-30", "value": 29.81}, {"time": "2025-12-31", "value": 29.47}, {"time": "2026-01-02", "value": 40.53}, {"time": "2026-01-05", "value": 50.23}, {"time": "2026-01-06", "value": 52.88}, {"time": "2026-01-07", "value": 52.5}, {"time": "2026-01-08", "value": 53.22}, {"time": "2026-01-09", "value": 56.24}, {"time": "2026-01-12", "value": 52.79}, {"time": "2026-01-13", "value": 50.71}, {"time": "2026-01-14", "value": 53.14}, {"time": "2026-01-15", "value": 49.1}, {"time": "2026-01-16", "value": 54.3}, {"time": "2026-01-20", "value": 49.29}, {"time": "2026-01-21", "value": 52.28}, {"time": "2026-01-22", "value": 55.62}, {"time": "2026-01-23", "value": 51.8}, {"time": "2026-01-26", "value": 46.4}, {"time": "2026-01-27", "value": 49.7}, {"time": "2026-01-28", "value": 54.52}, {"time": "2026-01-29", "value": 48.43}, {"time": "2026-01-30", "value": 43.59}, {"time": "2026-02-02", "value": 40.56}, {"time": "2026-02-03", "value": 46.2}, {"time": "2026-02-04", "value": 41.15}, {"time": "2026-02-05", "value": 37.57}, {"time": "2026-02-06", "value": 47.33}, {"time": "2026-02-09", "value": 47.82}, {"time": "2026-02-10", "value": 45.0}, {"time": "2026-02-11", "value": 41.7}, {"time": "2026-02-12", "value": 37.68}, {"time": "2026-02-13", "value": 38.96}, {"time": "2026-02-17", "value": 38.85}, {"time": "2026-02-18", "value": 38.65}, {"time": "2026-02-19", "value": 40.73}, {"time": "2026-02-20", "value": 37.04}, {"time": "2026-02-23", "value": 34.68}, {"time": "2026-02-24", "value": 38.83}, {"time": "2026-02-25", "value": 38.05}, {"time": "2026-02-26", "value": 38.85}, {"time": "2026-02-27", "value": 37.19}, {"time": "2026-03-02", "value": 38.37}, {"time": "2026-03-03", "value": 36.46}, {"time": "2026-03-04", "value": 36.52}, {"time": "2026-03-05", "value": 35.12}, {"time": "2026-03-06", "value": 33.17}, {"time": "2026-03-09", "value": 36.8}, {"time": "2026-03-10", "value": 36.24}, {"time": "2026-03-11", "value": 38.94}, {"time": "2026-03-12", "value": 36.03}, {"time": "2026-03-13", "value": 36.36}, {"time": "2026-03-16", "value": 37.83}, {"time": "2026-03-17", "value": 41.83}, {"time": "2026-03-18", "value": 39.44}, {"time": "2026-03-19", "value": 39.21}, {"time": "2026-03-20", "value": 36.03}, {"time": "2026-03-23", "value": 38.57}, {"time": "2026-03-24", "value": 36.93}, {"time": "2026-03-25", "value": 39.59}, {"time": "2026-03-26", "value": 35.28}, {"time": "2026-03-27", "value": 31.62}, {"time": "2026-03-30", "value": 31.37}, {"time": "2026-03-31", "value": 37.72}, {"time": "2026-04-01", "value": 34.35}, {"time": "2026-04-02", "value": 33.74}, {"time": "2026-04-06", "value": 33.97}, {"time": "2026-04-07", "value": 28.55}, {"time": "2026-04-08", "value": 36.15}, {"time": "2026-04-09", "value": 33.12}, {"time": "2026-04-10", "value": 32.64}, {"time": "2026-04-13", "value": 36.66}]}];
+const VOLUME = [{"time": "2024-04-15", "value": 4084500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-04-16", "value": 2869900, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-17", "value": 1930300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-04-18", "value": 1836400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-04-19", "value": 2203600, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-04-22", "value": 2325400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-23", "value": 3948200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-24", "value": 2908800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-04-25", "value": 2529500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-26", "value": 3685100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-29", "value": 2248600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-04-30", "value": 2526000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-01", "value": 1907100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-02", "value": 2127200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-03", "value": 2194800, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-06", "value": 2227100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-07", "value": 2012700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-08", "value": 1406000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-09", "value": 2284700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-10", "value": 7501200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-13", "value": 6367700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-14", "value": 10028500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-15", "value": 3980000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-16", "value": 7261700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-17", "value": 4948400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-20", "value": 7371400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-21", "value": 3400400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-22", "value": 4749500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-23", "value": 4097900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-24", "value": 5366500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-28", "value": 18035700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-29", "value": 7028500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-05-30", "value": 4458600, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-05-31", "value": 6980000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-03", "value": 9213300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-04", "value": 8553900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-05", "value": 4475300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-06", "value": 2745100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-07", "value": 2793200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-10", "value": 5591500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-11", "value": 3577600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-12", "value": 4023100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-13", "value": 3113800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-14", "value": 1775100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-17", "value": 3915000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-18", "value": 7552300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-20", "value": 8253800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-21", "value": 7220200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-24", "value": 4861200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-25", "value": 8650400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-26", "value": 8591500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-06-27", "value": 7422300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-06-28", "value": 9594900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-01", "value": 4521700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-02", "value": 4999100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-03", "value": 3760800, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-05", "value": 8993700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-08", "value": 7945600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-09", "value": 7457400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-10", "value": 5454700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-11", "value": 6718600, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-12", "value": 12852600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-15", "value": 10243400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-16", "value": 5521200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-17", "value": 7742200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-18", "value": 7539900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-19", "value": 8875500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-22", "value": 8427100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-23", "value": 8685300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-24", "value": 4239500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-25", "value": 6149200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-26", "value": 4151000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-29", "value": 16218700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-07-30", "value": 4149800, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-07-31", "value": 6776300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-01", "value": 4924200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-02", "value": 4503100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-05", "value": 5165000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-06", "value": 4492300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-07", "value": 6196300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-08", "value": 6413800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-09", "value": 5382100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-12", "value": 3219000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-13", "value": 4755700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-14", "value": 3056700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-15", "value": 4724500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-16", "value": 2753700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-19", "value": 3586300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-20", "value": 3139900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-21", "value": 2324200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-22", "value": 3586200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-23", "value": 2772200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-26", "value": 1887200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-27", "value": 2590500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-28", "value": 2806500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-08-29", "value": 2168600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-08-30", "value": 3183500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-03", "value": 3774400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-04", "value": 2277000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-05", "value": 2119000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-06", "value": 3049800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-09", "value": 3152800, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-10", "value": 3923200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-11", "value": 3260200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-12", "value": 1874000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-13", "value": 6424700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-16", "value": 3008200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-17", "value": 2953400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-18", "value": 2391400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-19", "value": 3885400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-20", "value": 17454400, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-23", "value": 8728600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-24", "value": 11660100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-25", "value": 8113600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-26", "value": 6314500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-09-27", "value": 8345300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-09-30", "value": 8095400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-01", "value": 4795700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-02", "value": 5461800, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-03", "value": 10266200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-04", "value": 9488000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-07", "value": 4292100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-08", "value": 4310900, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-09", "value": 7056800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-10", "value": 4171200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-11", "value": 7317300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-14", "value": 9180200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-15", "value": 7550100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-16", "value": 40323500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-17", "value": 21031200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-18", "value": 30801600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-21", "value": 21010300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-22", "value": 17858300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-23", "value": 10768100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-24", "value": 11891500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-25", "value": 13420800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-28", "value": 27222900, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-29", "value": 12629200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-10-30", "value": 12803400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-10-31", "value": 9810800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-01", "value": 9940300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-04", "value": 8202100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-05", "value": 5062300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-06", "value": 10502500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-07", "value": 12204200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-08", "value": 24689200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-11", "value": 16073600, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-12", "value": 14941500, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-13", "value": 16784300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-14", "value": 12614400, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-15", "value": 8955300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-18", "value": 13086300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-19", "value": 9722600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-20", "value": 8739800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-21", "value": 11882000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-22", "value": 11893200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-25", "value": 11298900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-26", "value": 8647700, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-11-27", "value": 10872100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-11-29", "value": 11582300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-02", "value": 9770100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-03", "value": 11204800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-04", "value": 9122100, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-05", "value": 9114200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-06", "value": 8153700, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-09", "value": 8512800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-10", "value": 9025000, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-11", "value": 10024500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-12", "value": 9630200, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-13", "value": 6403300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-16", "value": 8640100, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-17", "value": 7752600, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-18", "value": 15219300, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-19", "value": 9441800, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-20", "value": 9671200, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-23", "value": 5377300, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-24", "value": 5321500, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-26", "value": 7286000, "color": "rgba(38,166,154,0.5)"}, {"time": "2024-12-27", "value": 9949900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-30", "value": 8921900, "color": "rgba(239,83,80,0.5)"}, {"time": "2024-12-31", "value": 7136700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-02", "value": 7225900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-03", "value": 10461200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-06", "value": 15193000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-07", "value": 11266700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-08", "value": 9006800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-10", "value": 7177700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-13", "value": 7403900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-14", "value": 5023600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-15", "value": 6835700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-16", "value": 6261600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-17", "value": 11100600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-21", "value": 14810800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-22", "value": 10858600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-23", "value": 22725200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-24", "value": 14408300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-27", "value": 25701100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-28", "value": 16903700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-01-29", "value": 14534800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-30", "value": 13956000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-01-31", "value": 19622400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-03", "value": 13391100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-02-04", "value": 10229700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-05", "value": 15125200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-02-06", "value": 10217500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-07", "value": 20254400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-02-10", "value": 13740400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-02-11", "value": 8989400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-12", "value": 9229300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-02-13", "value": 13010600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-14", "value": 9566200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-18", "value": 10860700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-19", "value": 9323600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-20", "value": 10248800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-21", "value": 10767100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-24", "value": 11216500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-25", "value": 10645900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-26", "value": 11640300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-27", "value": 9460700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-02-28", "value": 8395800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-03", "value": 12207400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-04", "value": 16062600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-05", "value": 11104900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-06", "value": 8490200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-07", "value": 11056400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-10", "value": 10783200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-11", "value": 12628400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-12", "value": 9649100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-13", "value": 5729800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-14", "value": 7618600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-17", "value": 6534700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-18", "value": 4202500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-19", "value": 8083800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-20", "value": 5779800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-21", "value": 7804800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-24", "value": 6813200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-25", "value": 4278200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-03-26", "value": 4692100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-27", "value": 5514000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-28", "value": 5971300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-03-31", "value": 5593800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-01", "value": 5751200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-02", "value": 4716500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-03", "value": 6285100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-04", "value": 10987600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-07", "value": 12531100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-08", "value": 8034200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-09", "value": 10023800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-10", "value": 6637100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-11", "value": 6439000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-14", "value": 4315500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-15", "value": 4581000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-16", "value": 4876700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-17", "value": 4126700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-21", "value": 4078600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-22", "value": 6187200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-23", "value": 7446800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-24", "value": 5918000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-25", "value": 4597400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-28", "value": 3862900, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-04-29", "value": 3945000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-04-30", "value": 3454600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-01", "value": 4774700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-02", "value": 6250400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-05", "value": 3243300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-06", "value": 11247900, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-07", "value": 7781300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-08", "value": 5707700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-09", "value": 7728500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-12", "value": 10077500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-13", "value": 25050800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-14", "value": 14844300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-15", "value": 11551700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-16", "value": 11695100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-19", "value": 7185600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-20", "value": 7344700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-21", "value": 11605200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-22", "value": 12221700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-23", "value": 48870400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-27", "value": 34964100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-28", "value": 24672800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-05-29", "value": 20748500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-05-30", "value": 15538200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-02", "value": 10618500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-03", "value": 19429400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-04", "value": 14002000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-05", "value": 14292000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-06", "value": 14203500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-09", "value": 11572700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-10", "value": 17364100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-11", "value": 32819400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-12", "value": 18131300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-13", "value": 9819500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-16", "value": 17909900, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-17", "value": 15126400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-18", "value": 10568300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-20", "value": 12288700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-23", "value": 12979200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-24", "value": 21270500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-06-25", "value": 15243000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-26", "value": 9834600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-27", "value": 19169600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-06-30", "value": 10735600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-01", "value": 13562900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-02", "value": 8222700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-03", "value": 5842800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-07", "value": 6922200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-08", "value": 9832600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-09", "value": 7638800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-10", "value": 8646500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-11", "value": 10642600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-14", "value": 22373600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-15", "value": 14511500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-16", "value": 15709200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-17", "value": 15631000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-18", "value": 14382300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-21", "value": 13695900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-22", "value": 10660400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-23", "value": 13539300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-24", "value": 17648600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-25", "value": 9932700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-28", "value": 9616800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-29", "value": 9449700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-07-30", "value": 10481100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-07-31", "value": 12515900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-01", "value": 26341400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-04", "value": 14471100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-05", "value": 16986000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-08-06", "value": 11221200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-08-07", "value": 12678600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-08", "value": 21723300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-11", "value": 13769800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-12", "value": 11072300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-13", "value": 13281600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-14", "value": 10882000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-15", "value": 9087400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-18", "value": 7240900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-19", "value": 11004800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-20", "value": 14611200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-08-21", "value": 10181700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-22", "value": 11240600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-08-25", "value": 9671400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-26", "value": 13630100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-27", "value": 7621300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-08-28", "value": 9570700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-08-29", "value": 8497700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-02", "value": 20743100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-03", "value": 32491300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-04", "value": 19563100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-05", "value": 13121700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-08", "value": 10257100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-09", "value": 11157500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-10", "value": 15044400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-11", "value": 12727000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-12", "value": 12267800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-15", "value": 23182900, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-16", "value": 16497200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-17", "value": 12722100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-18", "value": 25964600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-19", "value": 52070400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-22", "value": 26290400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-23", "value": 21098400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-24", "value": 16844500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-25", "value": 21368700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-26", "value": 12613200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-09-29", "value": 15753900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-09-30", "value": 20559300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-01", "value": 13151400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-02", "value": 18790600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-03", "value": 17498400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-06", "value": 18427900, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-07", "value": 19406600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-08", "value": 15443400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-09", "value": 22078400, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-10", "value": 36466900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-13", "value": 30071300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-14", "value": 23524700, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-15", "value": 61078600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-16", "value": 41118400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-17", "value": 30755000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-20", "value": 15883800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-21", "value": 30772200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-22", "value": 39024300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-23", "value": 21950100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-24", "value": 23940900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-27", "value": 14938400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-10-28", "value": 32305100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-29", "value": 18613600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-30", "value": 14854300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-10-31", "value": 17575000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-11-03", "value": 15378700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-04", "value": 17619200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-05", "value": 14542400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-06", "value": 23758800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-07", "value": 42361300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-11-10", "value": 31546000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-11", "value": 20087500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-12", "value": 20965100, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-13", "value": 27631900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-14", "value": 26045200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-11-17", "value": 24986200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-18", "value": 23969000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-11-19", "value": 23102800, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-20", "value": 31531900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-21", "value": 24848500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-24", "value": 22736500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-11-25", "value": 21529500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-26", "value": 19868500, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-11-28", "value": 17890300, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-01", "value": 20612000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-02", "value": 19300200, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-03", "value": 25902800, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-04", "value": 42614600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-05", "value": 25834700, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-08", "value": 24333200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-09", "value": 16250000, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-10", "value": 22479000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-11", "value": 22399100, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-12", "value": 28677000, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-15", "value": 21888200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-16", "value": 20564600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-17", "value": 22147200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-18", "value": 19272200, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-19", "value": 28175600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-22", "value": 24591900, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-23", "value": 17835300, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-24", "value": 10249600, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-26", "value": 24899600, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-29", "value": 26422500, "color": "rgba(38,166,154,0.5)"}, {"time": "2025-12-30", "value": 19445400, "color": "rgba(239,83,80,0.5)"}, {"time": "2025-12-31", "value": 16899500, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-02", "value": 31101300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-05", "value": 68574500, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-06", "value": 51439000, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-07", "value": 34849800, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-08", "value": 23624700, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-09", "value": 51357100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-12", "value": 25991100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-13", "value": 19691600, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-14", "value": 19538300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-15", "value": 22967800, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-16", "value": 34906400, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-20", "value": 28057500, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-21", "value": 51293700, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-22", "value": 33790300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-23", "value": 24149700, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-26", "value": 22262200, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-27", "value": 25061300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-28", "value": 29799900, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-01-29", "value": 28477100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-01-30", "value": 25697200, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-02", "value": 21558300, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-03", "value": 25137000, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-04", "value": 28647500, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-05", "value": 24962100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-06", "value": 32154200, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-09", "value": 18801700, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-10", "value": 16379100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-11", "value": 27032000, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-12", "value": 35991900, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-13", "value": 23714100, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-17", "value": 26562600, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-18", "value": 19348800, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-19", "value": 19686400, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-20", "value": 25553500, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-23", "value": 29562400, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-24", "value": 24592200, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-25", "value": 22497000, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-02-26", "value": 27785400, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-02-27", "value": 24940700, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-02", "value": 25880100, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-03", "value": 23757500, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-04", "value": 18067300, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-05", "value": 19816800, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-06", "value": 25180300, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-09", "value": 19611000, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-10", "value": 17362000, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-11", "value": 18461600, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-12", "value": 15996100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-13", "value": 15198800, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-16", "value": 19342300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-17", "value": 22279300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-18", "value": 15784600, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-19", "value": 19320700, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-20", "value": 31825100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-23", "value": 18134600, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-03-24", "value": 17863200, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-25", "value": 12987300, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-26", "value": 16127400, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-27", "value": 21049700, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-30", "value": 20844800, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-03-31", "value": 19431800, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-04-01", "value": 23241700, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-04-02", "value": 26380300, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-04-06", "value": 17819800, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-04-07", "value": 36713800, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-04-08", "value": 29389000, "color": "rgba(38,166,154,0.5)"}, {"time": "2026-04-09", "value": 19961200, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-04-10", "value": 19022100, "color": "rgba(239,83,80,0.5)"}, {"time": "2026-04-13", "value": 23518186, "color": "rgba(38,166,154,0.5)"}];
+const META = {"symbol": "SMR", "strategy": "smart_hold_rc", "strategy_label": "Smart Hold + Reversal Channel Re-entry", "period": "2y", "interval": "1d", "total_return_pct": 286.41, "buy_and_hold_return_pct": 97.53, "vs_buy_and_hold_pct": 188.89, "total_trades": 4, "win_rate_pct": 50.0, "profit_factor": 38.04, "sharpe_ratio": 4.01, "max_drawdown_pct": -7.61, "final_capital": 38641.24, "initial_capital": 10000.0};
+const VERSIONS = {};
+const VIX_DATA = [{"time": "2024-04-15", "value": 19.23}, {"time": "2024-04-16", "value": 18.4}, {"time": "2024-04-17", "value": 18.21}, {"time": "2024-04-18", "value": 18.0}, {"time": "2024-04-19", "value": 18.71}, {"time": "2024-04-22", "value": 16.94}, {"time": "2024-04-23", "value": 15.69}, {"time": "2024-04-24", "value": 15.97}, {"time": "2024-04-25", "value": 15.37}, {"time": "2024-04-26", "value": 15.03}, {"time": "2024-04-29", "value": 14.67}, {"time": "2024-04-30", "value": 15.65}, {"time": "2024-05-01", "value": 15.39}, {"time": "2024-05-02", "value": 14.68}, {"time": "2024-05-03", "value": 13.49}, {"time": "2024-05-06", "value": 13.49}, {"time": "2024-05-07", "value": 13.23}, {"time": "2024-05-08", "value": 13.0}, {"time": "2024-05-09", "value": 12.69}, {"time": "2024-05-10", "value": 12.55}, {"time": "2024-05-13", "value": 13.6}, {"time": "2024-05-14", "value": 13.42}, {"time": "2024-05-15", "value": 12.45}, {"time": "2024-05-16", "value": 12.42}, {"time": "2024-05-17", "value": 11.99}, {"time": "2024-05-20", "value": 12.15}, {"time": "2024-05-21", "value": 11.86}, {"time": "2024-05-22", "value": 12.29}, {"time": "2024-05-23", "value": 12.77}, {"time": "2024-05-24", "value": 11.93}, {"time": "2024-05-28", "value": 12.92}, {"time": "2024-05-29", "value": 14.28}, {"time": "2024-05-30", "value": 14.47}, {"time": "2024-05-31", "value": 12.92}, {"time": "2024-06-03", "value": 13.11}, {"time": "2024-06-04", "value": 13.16}, {"time": "2024-06-05", "value": 12.63}, {"time": "2024-06-06", "value": 12.58}, {"time": "2024-06-07", "value": 12.22}, {"time": "2024-06-10", "value": 12.74}, {"time": "2024-06-11", "value": 12.85}, {"time": "2024-06-12", "value": 12.04}, {"time": "2024-06-13", "value": 11.94}, {"time": "2024-06-14", "value": 12.66}, {"time": "2024-06-17", "value": 12.75}, {"time": "2024-06-18", "value": 12.3}, {"time": "2024-06-20", "value": 13.28}, {"time": "2024-06-21", "value": 13.2}, {"time": "2024-06-24", "value": 13.33}, {"time": "2024-06-25", "value": 12.84}, {"time": "2024-06-26", "value": 12.55}, {"time": "2024-06-27", "value": 12.24}, {"time": "2024-06-28", "value": 12.44}, {"time": "2024-07-01", "value": 12.22}, {"time": "2024-07-02", "value": 12.03}, {"time": "2024-07-03", "value": 12.09}, {"time": "2024-07-05", "value": 12.48}, {"time": "2024-07-08", "value": 12.37}, {"time": "2024-07-09", "value": 12.51}, {"time": "2024-07-10", "value": 12.85}, {"time": "2024-07-11", "value": 12.92}, {"time": "2024-07-12", "value": 12.46}, {"time": "2024-07-15", "value": 13.12}, {"time": "2024-07-16", "value": 13.19}, {"time": "2024-07-17", "value": 14.48}, {"time": "2024-07-18", "value": 15.93}, {"time": "2024-07-19", "value": 16.52}, {"time": "2024-07-22", "value": 14.91}, {"time": "2024-07-23", "value": 14.72}, {"time": "2024-07-24", "value": 18.04}, {"time": "2024-07-25", "value": 18.46}, {"time": "2024-07-26", "value": 16.39}, {"time": "2024-07-29", "value": 16.6}, {"time": "2024-07-30", "value": 17.69}, {"time": "2024-07-31", "value": 16.36}, {"time": "2024-08-01", "value": 18.59}, {"time": "2024-08-02", "value": 23.39}, {"time": "2024-08-05", "value": 38.57}, {"time": "2024-08-06", "value": 27.71}, {"time": "2024-08-07", "value": 27.85}, {"time": "2024-08-08", "value": 23.79}, {"time": "2024-08-09", "value": 20.37}, {"time": "2024-08-12", "value": 20.71}, {"time": "2024-08-13", "value": 18.12}, {"time": "2024-08-14", "value": 16.19}, {"time": "2024-08-15", "value": 15.23}, {"time": "2024-08-16", "value": 14.8}, {"time": "2024-08-19", "value": 14.65}, {"time": "2024-08-20", "value": 15.88}, {"time": "2024-08-21", "value": 16.27}, {"time": "2024-08-22", "value": 17.55}, {"time": "2024-08-23", "value": 15.86}, {"time": "2024-08-26", "value": 16.15}, {"time": "2024-08-27", "value": 15.43}, {"time": "2024-08-28", "value": 17.11}, {"time": "2024-08-29", "value": 15.65}, {"time": "2024-08-30", "value": 15.0}, {"time": "2024-09-03", "value": 20.72}, {"time": "2024-09-04", "value": 21.32}, {"time": "2024-09-05", "value": 19.9}, {"time": "2024-09-06", "value": 22.38}, {"time": "2024-09-09", "value": 19.45}, {"time": "2024-09-10", "value": 19.08}, {"time": "2024-09-11", "value": 17.69}, {"time": "2024-09-12", "value": 17.07}, {"time": "2024-09-13", "value": 16.56}, {"time": "2024-09-16", "value": 17.14}, {"time": "2024-09-17", "value": 17.61}, {"time": "2024-09-18", "value": 18.23}, {"time": "2024-09-19", "value": 16.33}, {"time": "2024-09-20", "value": 16.15}, {"time": "2024-09-23", "value": 15.89}, {"time": "2024-09-24", "value": 15.39}, {"time": "2024-09-25", "value": 15.41}, {"time": "2024-09-26", "value": 15.37}, {"time": "2024-09-27", "value": 16.96}, {"time": "2024-09-30", "value": 16.73}, {"time": "2024-10-01", "value": 19.26}, {"time": "2024-10-02", "value": 18.9}, {"time": "2024-10-03", "value": 20.49}, {"time": "2024-10-04", "value": 19.21}, {"time": "2024-10-07", "value": 22.64}, {"time": "2024-10-08", "value": 21.42}, {"time": "2024-10-09", "value": 20.86}, {"time": "2024-10-10", "value": 20.93}, {"time": "2024-10-11", "value": 20.46}, {"time": "2024-10-14", "value": 19.7}, {"time": "2024-10-15", "value": 20.64}, {"time": "2024-10-16", "value": 19.58}, {"time": "2024-10-17", "value": 19.11}, {"time": "2024-10-18", "value": 18.03}, {"time": "2024-10-21", "value": 18.37}, {"time": "2024-10-22", "value": 18.2}, {"time": "2024-10-23", "value": 19.24}, {"time": "2024-10-24", "value": 19.08}, {"time": "2024-10-25", "value": 20.33}, {"time": "2024-10-28", "value": 19.8}, {"time": "2024-10-29", "value": 19.34}, {"time": "2024-10-30", "value": 20.35}, {"time": "2024-10-31", "value": 23.16}, {"time": "2024-11-01", "value": 21.88}, {"time": "2024-11-04", "value": 21.98}, {"time": "2024-11-05", "value": 20.49}, {"time": "2024-11-06", "value": 16.27}, {"time": "2024-11-07", "value": 15.2}, {"time": "2024-11-08", "value": 14.94}, {"time": "2024-11-11", "value": 14.97}, {"time": "2024-11-12", "value": 14.71}, {"time": "2024-11-13", "value": 14.02}, {"time": "2024-11-14", "value": 14.31}, {"time": "2024-11-15", "value": 16.14}, {"time": "2024-11-18", "value": 15.58}, {"time": "2024-11-19", "value": 16.35}, {"time": "2024-11-20", "value": 17.16}, {"time": "2024-11-21", "value": 16.87}, {"time": "2024-11-22", "value": 15.24}, {"time": "2024-11-25", "value": 14.6}, {"time": "2024-11-26", "value": 14.1}, {"time": "2024-11-27", "value": 14.1}, {"time": "2024-11-29", "value": 13.51}, {"time": "2024-12-02", "value": 13.34}, {"time": "2024-12-03", "value": 13.3}, {"time": "2024-12-04", "value": 13.45}, {"time": "2024-12-05", "value": 13.54}, {"time": "2024-12-06", "value": 12.77}, {"time": "2024-12-09", "value": 14.19}, {"time": "2024-12-10", "value": 14.18}, {"time": "2024-12-11", "value": 13.58}, {"time": "2024-12-12", "value": 13.92}, {"time": "2024-12-13", "value": 13.81}, {"time": "2024-12-16", "value": 14.69}, {"time": "2024-12-17", "value": 15.87}, {"time": "2024-12-18", "value": 27.62}, {"time": "2024-12-19", "value": 24.09}, {"time": "2024-12-20", "value": 18.36}, {"time": "2024-12-23", "value": 16.78}, {"time": "2024-12-24", "value": 14.27}, {"time": "2024-12-26", "value": 14.73}, {"time": "2024-12-27", "value": 15.95}, {"time": "2024-12-30", "value": 17.4}, {"time": "2024-12-31", "value": 17.35}, {"time": "2025-01-02", "value": 17.93}, {"time": "2025-01-03", "value": 16.13}, {"time": "2025-01-06", "value": 16.04}, {"time": "2025-01-07", "value": 17.82}, {"time": "2025-01-08", "value": 17.7}, {"time": "2025-01-10", "value": 19.54}, {"time": "2025-01-13", "value": 19.19}, {"time": "2025-01-14", "value": 18.71}, {"time": "2025-01-15", "value": 16.12}, {"time": "2025-01-16", "value": 16.6}, {"time": "2025-01-17", "value": 15.97}, {"time": "2025-01-21", "value": 15.06}, {"time": "2025-01-22", "value": 15.1}, {"time": "2025-01-23", "value": 15.02}, {"time": "2025-01-24", "value": 14.85}, {"time": "2025-01-27", "value": 17.9}, {"time": "2025-01-28", "value": 16.41}, {"time": "2025-01-29", "value": 16.56}, {"time": "2025-01-30", "value": 15.84}, {"time": "2025-01-31", "value": 16.43}, {"time": "2025-02-03", "value": 18.62}, {"time": "2025-02-04", "value": 17.21}, {"time": "2025-02-05", "value": 15.77}, {"time": "2025-02-06", "value": 15.5}, {"time": "2025-02-07", "value": 16.54}, {"time": "2025-02-10", "value": 15.81}, {"time": "2025-02-11", "value": 16.02}, {"time": "2025-02-12", "value": 15.89}, {"time": "2025-02-13", "value": 15.1}, {"time": "2025-02-14", "value": 14.77}, {"time": "2025-02-18", "value": 15.35}, {"time": "2025-02-19", "value": 15.27}, {"time": "2025-02-20", "value": 15.66}, {"time": "2025-02-21", "value": 18.21}, {"time": "2025-02-24", "value": 18.98}, {"time": "2025-02-25", "value": 19.43}, {"time": "2025-02-26", "value": 19.1}, {"time": "2025-02-27", "value": 21.13}, {"time": "2025-02-28", "value": 19.63}, {"time": "2025-03-03", "value": 22.78}, {"time": "2025-03-04", "value": 23.51}, {"time": "2025-03-05", "value": 21.93}, {"time": "2025-03-06", "value": 24.87}, {"time": "2025-03-07", "value": 23.37}, {"time": "2025-03-10", "value": 27.86}, {"time": "2025-03-11", "value": 26.92}, {"time": "2025-03-12", "value": 24.23}, {"time": "2025-03-13", "value": 24.66}, {"time": "2025-03-14", "value": 21.77}, {"time": "2025-03-17", "value": 20.51}, {"time": "2025-03-18", "value": 21.7}, {"time": "2025-03-19", "value": 19.9}, {"time": "2025-03-20", "value": 19.8}, {"time": "2025-03-21", "value": 19.28}, {"time": "2025-03-24", "value": 17.48}, {"time": "2025-03-25", "value": 17.15}, {"time": "2025-03-26", "value": 18.33}, {"time": "2025-03-27", "value": 18.69}, {"time": "2025-03-28", "value": 21.65}, {"time": "2025-03-31", "value": 22.28}, {"time": "2025-04-01", "value": 21.77}, {"time": "2025-04-02", "value": 21.51}, {"time": "2025-04-03", "value": 30.02}, {"time": "2025-04-04", "value": 45.31}, {"time": "2025-04-07", "value": 46.98}, {"time": "2025-04-08", "value": 52.33}, {"time": "2025-04-09", "value": 33.62}, {"time": "2025-04-10", "value": 40.72}, {"time": "2025-04-11", "value": 37.56}, {"time": "2025-04-14", "value": 30.89}, {"time": "2025-04-15", "value": 30.12}, {"time": "2025-04-16", "value": 32.64}, {"time": "2025-04-17", "value": 29.65}, {"time": "2025-04-21", "value": 33.82}, {"time": "2025-04-22", "value": 30.57}, {"time": "2025-04-23", "value": 28.45}, {"time": "2025-04-24", "value": 26.47}, {"time": "2025-04-25", "value": 24.84}, {"time": "2025-04-28", "value": 25.15}, {"time": "2025-04-29", "value": 24.17}, {"time": "2025-04-30", "value": 24.7}, {"time": "2025-05-01", "value": 24.6}, {"time": "2025-05-02", "value": 22.68}, {"time": "2025-05-05", "value": 23.64}, {"time": "2025-05-06", "value": 24.76}, {"time": "2025-05-07", "value": 23.55}, {"time": "2025-05-08", "value": 22.48}, {"time": "2025-05-09", "value": 21.9}, {"time": "2025-05-12", "value": 18.39}, {"time": "2025-05-13", "value": 18.22}, {"time": "2025-05-14", "value": 18.62}, {"time": "2025-05-15", "value": 17.83}, {"time": "2025-05-16", "value": 17.24}, {"time": "2025-05-19", "value": 18.14}, {"time": "2025-05-20", "value": 18.09}, {"time": "2025-05-21", "value": 20.87}, {"time": "2025-05-22", "value": 20.28}, {"time": "2025-05-23", "value": 22.29}, {"time": "2025-05-27", "value": 18.96}, {"time": "2025-05-28", "value": 19.31}, {"time": "2025-05-29", "value": 19.18}, {"time": "2025-05-30", "value": 18.57}, {"time": "2025-06-02", "value": 18.36}, {"time": "2025-06-03", "value": 17.69}, {"time": "2025-06-04", "value": 17.61}, {"time": "2025-06-05", "value": 18.48}, {"time": "2025-06-06", "value": 16.77}, {"time": "2025-06-09", "value": 17.16}, {"time": "2025-06-10", "value": 16.95}, {"time": "2025-06-11", "value": 17.26}, {"time": "2025-06-12", "value": 18.02}, {"time": "2025-06-13", "value": 20.82}, {"time": "2025-06-16", "value": 19.11}, {"time": "2025-06-17", "value": 21.6}, {"time": "2025-06-18", "value": 20.14}, {"time": "2025-06-20", "value": 20.62}, {"time": "2025-06-23", "value": 19.83}, {"time": "2025-06-24", "value": 17.48}, {"time": "2025-06-25", "value": 16.76}, {"time": "2025-06-26", "value": 16.59}, {"time": "2025-06-27", "value": 16.32}, {"time": "2025-06-30", "value": 16.73}, {"time": "2025-07-01", "value": 16.83}, {"time": "2025-07-02", "value": 16.64}, {"time": "2025-07-03", "value": 16.38}, {"time": "2025-07-07", "value": 17.79}, {"time": "2025-07-08", "value": 16.81}, {"time": "2025-07-09", "value": 15.94}, {"time": "2025-07-10", "value": 15.78}, {"time": "2025-07-11", "value": 16.4}, {"time": "2025-07-14", "value": 17.2}, {"time": "2025-07-15", "value": 17.38}, {"time": "2025-07-16", "value": 17.16}, {"time": "2025-07-17", "value": 16.52}, {"time": "2025-07-18", "value": 16.41}, {"time": "2025-07-21", "value": 16.65}, {"time": "2025-07-22", "value": 16.5}, {"time": "2025-07-23", "value": 15.37}, {"time": "2025-07-24", "value": 15.39}, {"time": "2025-07-25", "value": 14.93}, {"time": "2025-07-28", "value": 15.03}, {"time": "2025-07-29", "value": 15.98}, {"time": "2025-07-30", "value": 15.48}, {"time": "2025-07-31", "value": 16.72}, {"time": "2025-08-01", "value": 20.38}, {"time": "2025-08-04", "value": 17.52}, {"time": "2025-08-05", "value": 17.85}, {"time": "2025-08-06", "value": 16.77}, {"time": "2025-08-07", "value": 16.57}, {"time": "2025-08-08", "value": 15.15}, {"time": "2025-08-11", "value": 16.25}, {"time": "2025-08-12", "value": 14.73}, {"time": "2025-08-13", "value": 14.49}, {"time": "2025-08-14", "value": 14.83}, {"time": "2025-08-15", "value": 15.09}, {"time": "2025-08-18", "value": 14.99}, {"time": "2025-08-19", "value": 15.57}, {"time": "2025-08-20", "value": 15.69}, {"time": "2025-08-21", "value": 16.6}, {"time": "2025-08-22", "value": 14.22}, {"time": "2025-08-25", "value": 14.79}, {"time": "2025-08-26", "value": 14.62}, {"time": "2025-08-27", "value": 14.85}, {"time": "2025-08-28", "value": 14.43}, {"time": "2025-08-29", "value": 15.36}, {"time": "2025-09-02", "value": 17.17}, {"time": "2025-09-03", "value": 16.35}, {"time": "2025-09-04", "value": 15.3}, {"time": "2025-09-05", "value": 15.18}, {"time": "2025-09-08", "value": 15.11}, {"time": "2025-09-09", "value": 15.04}, {"time": "2025-09-10", "value": 15.35}, {"time": "2025-09-11", "value": 14.71}, {"time": "2025-09-12", "value": 14.76}, {"time": "2025-09-15", "value": 15.69}, {"time": "2025-09-16", "value": 16.36}, {"time": "2025-09-17", "value": 15.72}, {"time": "2025-09-18", "value": 15.7}, {"time": "2025-09-19", "value": 15.45}, {"time": "2025-09-22", "value": 16.1}, {"time": "2025-09-23", "value": 16.64}, {"time": "2025-09-24", "value": 16.18}, {"time": "2025-09-25", "value": 16.74}, {"time": "2025-09-26", "value": 15.29}, {"time": "2025-09-29", "value": 16.12}, {"time": "2025-09-30", "value": 16.28}, {"time": "2025-10-01", "value": 16.29}, {"time": "2025-10-02", "value": 16.63}, {"time": "2025-10-03", "value": 16.65}, {"time": "2025-10-06", "value": 16.37}, {"time": "2025-10-07", "value": 17.24}, {"time": "2025-10-08", "value": 16.3}, {"time": "2025-10-09", "value": 16.43}, {"time": "2025-10-10", "value": 21.66}, {"time": "2025-10-13", "value": 19.03}, {"time": "2025-10-14", "value": 20.81}, {"time": "2025-10-15", "value": 20.64}, {"time": "2025-10-16", "value": 25.31}, {"time": "2025-10-17", "value": 20.78}, {"time": "2025-10-20", "value": 18.23}, {"time": "2025-10-21", "value": 17.87}, {"time": "2025-10-22", "value": 18.6}, {"time": "2025-10-23", "value": 17.3}, {"time": "2025-10-24", "value": 16.37}, {"time": "2025-10-27", "value": 15.79}, {"time": "2025-10-28", "value": 16.42}, {"time": "2025-10-29", "value": 16.92}, {"time": "2025-10-30", "value": 16.91}, {"time": "2025-10-31", "value": 17.44}, {"time": "2025-11-03", "value": 17.17}, {"time": "2025-11-04", "value": 19.0}, {"time": "2025-11-05", "value": 18.01}, {"time": "2025-11-06", "value": 19.5}, {"time": "2025-11-07", "value": 19.08}, {"time": "2025-11-10", "value": 17.6}, {"time": "2025-11-11", "value": 17.28}, {"time": "2025-11-12", "value": 17.51}, {"time": "2025-11-13", "value": 20.0}, {"time": "2025-11-14", "value": 19.83}, {"time": "2025-11-17", "value": 22.38}, {"time": "2025-11-18", "value": 24.69}, {"time": "2025-11-19", "value": 23.66}, {"time": "2025-11-20", "value": 26.42}, {"time": "2025-11-21", "value": 23.43}, {"time": "2025-11-24", "value": 20.52}, {"time": "2025-11-25", "value": 18.56}, {"time": "2025-11-26", "value": 17.19}, {"time": "2025-11-28", "value": 16.35}, {"time": "2025-12-01", "value": 17.24}, {"time": "2025-12-02", "value": 16.59}, {"time": "2025-12-03", "value": 16.08}, {"time": "2025-12-04", "value": 15.78}, {"time": "2025-12-05", "value": 15.41}, {"time": "2025-12-08", "value": 16.66}, {"time": "2025-12-09", "value": 16.93}, {"time": "2025-12-10", "value": 15.77}, {"time": "2025-12-11", "value": 14.85}, {"time": "2025-12-12", "value": 15.74}, {"time": "2025-12-15", "value": 16.5}, {"time": "2025-12-16", "value": 16.48}, {"time": "2025-12-17", "value": 17.62}, {"time": "2025-12-18", "value": 16.87}, {"time": "2025-12-19", "value": 14.91}, {"time": "2025-12-22", "value": 14.08}, {"time": "2025-12-23", "value": 14.0}, {"time": "2025-12-24", "value": 13.47}, {"time": "2025-12-26", "value": 13.6}, {"time": "2025-12-29", "value": 14.2}, {"time": "2025-12-30", "value": 14.33}, {"time": "2025-12-31", "value": 14.95}, {"time": "2026-01-02", "value": 14.51}, {"time": "2026-01-05", "value": 14.9}, {"time": "2026-01-06", "value": 14.75}, {"time": "2026-01-07", "value": 15.38}, {"time": "2026-01-08", "value": 15.45}, {"time": "2026-01-09", "value": 14.49}, {"time": "2026-01-12", "value": 15.12}, {"time": "2026-01-13", "value": 15.98}, {"time": "2026-01-14", "value": 16.75}, {"time": "2026-01-15", "value": 15.84}, {"time": "2026-01-16", "value": 15.86}, {"time": "2026-01-20", "value": 20.09}, {"time": "2026-01-21", "value": 16.9}, {"time": "2026-01-22", "value": 15.64}, {"time": "2026-01-23", "value": 16.09}, {"time": "2026-01-26", "value": 16.15}, {"time": "2026-01-27", "value": 16.35}, {"time": "2026-01-28", "value": 16.35}, {"time": "2026-01-29", "value": 16.88}, {"time": "2026-01-30", "value": 17.44}, {"time": "2026-02-02", "value": 16.34}, {"time": "2026-02-03", "value": 18.0}, {"time": "2026-02-04", "value": 18.64}, {"time": "2026-02-05", "value": 21.77}, {"time": "2026-02-06", "value": 20.37}, {"time": "2026-02-09", "value": 17.36}, {"time": "2026-02-10", "value": 17.79}, {"time": "2026-02-11", "value": 17.65}, {"time": "2026-02-12", "value": 20.82}, {"time": "2026-02-13", "value": 20.6}, {"time": "2026-02-17", "value": 20.29}, {"time": "2026-02-18", "value": 19.62}, {"time": "2026-02-19", "value": 20.23}, {"time": "2026-02-20", "value": 19.09}, {"time": "2026-02-23", "value": 21.01}, {"time": "2026-02-24", "value": 19.55}, {"time": "2026-02-25", "value": 17.93}, {"time": "2026-02-26", "value": 18.63}, {"time": "2026-02-27", "value": 19.86}, {"time": "2026-03-02", "value": 21.44}, {"time": "2026-03-03", "value": 23.57}, {"time": "2026-03-04", "value": 21.15}, {"time": "2026-03-05", "value": 23.75}, {"time": "2026-03-06", "value": 29.49}, {"time": "2026-03-09", "value": 25.5}, {"time": "2026-03-10", "value": 24.93}, {"time": "2026-03-11", "value": 24.23}, {"time": "2026-03-12", "value": 27.29}, {"time": "2026-03-13", "value": 27.19}, {"time": "2026-03-16", "value": 23.51}, {"time": "2026-03-17", "value": 22.37}, {"time": "2026-03-18", "value": 25.09}, {"time": "2026-03-19", "value": 24.06}, {"time": "2026-03-20", "value": 26.78}, {"time": "2026-03-23", "value": 26.15}, {"time": "2026-03-24", "value": 26.95}, {"time": "2026-03-25", "value": 25.33}, {"time": "2026-03-26", "value": 27.44}, {"time": "2026-03-27", "value": 31.05}, {"time": "2026-03-30", "value": 30.61}, {"time": "2026-03-31", "value": 25.25}, {"time": "2026-04-01", "value": 24.54}, {"time": "2026-04-02", "value": 23.87}, {"time": "2026-04-06", "value": 24.17}, {"time": "2026-04-07", "value": 25.78}, {"time": "2026-04-08", "value": 21.04}, {"time": "2026-04-09", "value": 19.49}, {"time": "2026-04-10", "value": 19.23}, {"time": "2026-04-13", "value": 19.12}];
+
+// --- Time conversion ---
+function parseTime(dateStr) {
+    if (dateStr.includes(' ')) {
+        // Intraday: "2024-01-15 14:00" -> Unix timestamp (UTC)
+        return Math.floor(new Date(dateStr.replace(' ', 'T') + ':00Z').getTime() / 1000);
+    }
+    return dateStr; // Daily: "2024-01-15" works directly
+}
+
+// Convert all time fields
+CANDLES.forEach(c => c.time = parseTime(c.time));
+MARKERS.forEach(m => m.time = parseTime(m.time));
+OVERLAYS.forEach(o => {
+    if (o.points) o.points.forEach(p => p.time = parseTime(p.time));
+});
+VOLUME.forEach(v => v.time = parseTime(v.time));
+VIX_DATA.forEach(v => v.time = parseTime(v.time));
+
+// --- Header ---
+document.getElementById('title').textContent =
+    META.strategy_label + ' \u2014 ' + META.symbol + ' (' + META.period + ', ' + META.interval + ')';
+
+function statClass(val) {
+    if (val > 0) return 'positive';
+    if (val < 0) return 'negative';
+    return 'neutral';
+}
+
+const statsHTML = [
+    { label: 'Total Return', value: META.total_return_pct.toFixed(2) + '%', cls: statClass(META.total_return_pct) },
+    { label: 'Buy & Hold', value: META.buy_and_hold_return_pct.toFixed(2) + '%', cls: statClass(META.buy_and_hold_return_pct) },
+    { label: 'vs B&H', value: (META.vs_buy_and_hold_pct >= 0 ? '+' : '') + META.vs_buy_and_hold_pct.toFixed(2) + '%', cls: statClass(META.vs_buy_and_hold_pct) },
+    { label: 'Trades', value: META.total_trades, cls: 'neutral' },
+    { label: 'Win Rate', value: META.win_rate_pct + '%', cls: META.win_rate_pct >= 50 ? 'positive' : 'negative' },
+    { label: 'Profit Factor', value: META.profit_factor, cls: META.profit_factor >= 1 ? 'positive' : 'negative' },
+    { label: 'Sharpe', value: META.sharpe_ratio, cls: statClass(META.sharpe_ratio) },
+    { label: 'Max DD', value: META.max_drawdown_pct + '%', cls: 'negative' },
+    { label: 'Final Capital', value: '$' + META.final_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}), cls: statClass(META.final_capital - META.initial_capital) },
+].map(s =>
+    '<div class="stat"><span class="stat-label">' + s.label + '</span>' +
+    '<span class="stat-value ' + s.cls + '">' + s.value + '</span></div>'
+).join('');
+document.getElementById('stats').innerHTML = statsHTML;
+
+// --- Chart ---
+const container = document.getElementById('chart-container');
+const chart = LightweightCharts.createChart(container, {
+    width: container.clientWidth,
+    height: container.clientHeight,
+    layout: {
+        background: { type: 'solid', color: '#131722' },
+        textColor: '#d1d4dc',
+    },
+    grid: {
+        vertLines: { color: '#1e222d' },
+        horzLines: { color: '#1e222d' },
+    },
+    crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+    },
+    rightPriceScale: {
+        borderColor: '#2a2e39',
+    },
+    timeScale: {
+        borderColor: '#2a2e39',
+        timeVisible: CANDLES.length > 0 && typeof CANDLES[0].time === 'number',
+    },
+});
+
+const candleSeries = chart.addCandlestickSeries({
+    upColor: '#26a69a',
+    downColor: '#ef5350',
+    borderUpColor: '#26a69a',
+    borderDownColor: '#ef5350',
+    wickUpColor: '#26a69a',
+    wickDownColor: '#ef5350',
+});
+candleSeries.setData(CANDLES);
+
+// --- Volume Histogram ---
+const volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'volume',
+    scaleMargins: { top: 0.8, bottom: 0 },
+});
+chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
+});
+volumeSeries.setData(VOLUME);
+
+// --- VIX Overlay (separate right price scale) ---
+let vixSeries = null;
+let vixVisible = false;
+if (VIX_DATA.length > 0) {
+    document.getElementById('vix-toggle').style.display = '';
+    vixSeries = chart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 2,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        priceScaleId: 'vix',
+        title: 'VIX',
+        visible: false,
+    });
+    chart.priceScale('vix').applyOptions({
+        scaleMargins: { top: 0.05, bottom: 0.3 },
+        borderVisible: true,
+        borderColor: '#FF9800',
+        textColor: '#FF9800',
+        visible: false,
+    });
+    vixSeries.setData(VIX_DATA);
+
+    // Add horizontal lines at key VIX levels
+    vixSeries.createPriceLine({ price: 25, color: 'rgba(255,152,0,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Exit Boost' });
+    vixSeries.createPriceLine({ price: 30, color: 'rgba(255,87,34,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Fear' });
+    vixSeries.createPriceLine({ price: 35, color: 'rgba(244,67,54,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX Extreme' });
+}
+
+function toggleVix() {
+    if (!vixSeries) return;
+    vixVisible = !vixVisible;
+    document.getElementById('vix-toggle').classList.toggle('active', vixVisible);
+    vixSeries.applyOptions({ visible: vixVisible });
+    chart.priceScale('vix').applyOptions({ visible: vixVisible });
+}
+
+// --- Trade Markers ---
+if (MARKERS.length > 0) {
+    candleSeries.setMarkers(MARKERS);
+}
+
+// --- Overlays ---
+const legendEl = document.getElementById('legend');
+let legendHTML = '';
+
+let rsiSeries = null;
+let rsiVisible = false;
+
+OVERLAYS.forEach(overlay => {
+    const pts = overlay.points || overlay.data || [];
+    const type = overlay.type || 'line';
+
+    if (type === 'rsi_panel' && pts.length > 1) {
+        document.getElementById('rsi-toggle').style.display = '';
+        rsiSeries = chart.addLineSeries({
+            color: overlay.color || '#E040FB',
+            lineWidth: 1,
+            lastValueVisible: true,
+            priceLineVisible: false,
+            crosshairMarkerVisible: true,
+            priceScaleId: 'rsi',
+            title: 'RSI(14)',
+            visible: false,
+        });
+        chart.priceScale('rsi').applyOptions({
+            scaleMargins: { top: 0.75, bottom: 0.0 },
+            borderVisible: true,
+            borderColor: '#E040FB',
+            textColor: '#E040FB',
+            visible: false,
+        });
+        rsiSeries.setData(pts);
+        // Reference lines
+        rsiSeries.createPriceLine({ price: 70, color: 'rgba(224,64,251,0.4)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Overbought' });
+        rsiSeries.createPriceLine({ price: 30, color: 'rgba(224,64,251,0.4)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Oversold' });
+        rsiSeries.createPriceLine({ price: 50, color: 'rgba(224,64,251,0.15)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+
+        if (overlay.label) {
+            legendHTML += '<div class="legend-item">' +
+                '<div class="legend-swatch" style="background:' + (overlay.color || '#E040FB') + '"></div>' +
+                '<span>' + overlay.label + '</span></div>';
+        }
+    } else if ((type === 'line' || type === 'default') && pts.length > 1) {
+        const lineSeries = chart.addLineSeries({
+            color: overlay.color || '#787b86',
+            lineWidth: overlay.lineWidth || 2,
+            lineStyle: overlay.lineStyle || 0,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+        lineSeries.setData(pts);
+
+        if (overlay.label) {
+            legendHTML += '<div class="legend-item">' +
+                '<div class="legend-swatch" style="background:' + overlay.color + '"></div>' +
+                '<span>' + overlay.label + '</span></div>';
+        }
+    } else if (type === 'marker_points' && pts.length > 0) {
+        const ptSeries = chart.addLineSeries({
+            color: 'rgba(0,0,0,0)',
+            lineWidth: 0,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+            pointMarkersVisible: false,
+        });
+        ptSeries.setData(pts);
+
+        const ptMarkers = pts.map(p => ({
+            time: p.time,
+            position: 'inBar',
+            color: overlay.color || '#FFFFFF',
+            shape: 'circle',
+            text: '',
+            size: 1,
+        }));
+        ptSeries.setMarkers(ptMarkers);
+
+        if (overlay.label) {
+            legendHTML += '<div class="legend-item">' +
+                '<div class="legend-swatch" style="background:' + (overlay.color || '#FFFFFF') +
+                '; border-radius: 50%; width: 8px; height: 8px;"></div>' +
+                '<span>' + overlay.label + '</span></div>';
+        }
+    }
+});
+
+function toggleRsi() {
+    if (!rsiSeries) return;
+    rsiVisible = !rsiVisible;
+    document.getElementById('rsi-toggle').classList.toggle('active', rsiVisible);
+    rsiSeries.applyOptions({ visible: rsiVisible });
+    chart.priceScale('rsi').applyOptions({ visible: rsiVisible });
+}
+
+legendEl.innerHTML = legendHTML;
+
+// --- Side Panel Helpers (mutually exclusive — only one open at a time) ---
+function getOpenPanelWidth() {
+    const lp = document.getElementById('legend-panel');
+    const tp = document.getElementById('trade-log-panel');
+    if (lp.classList.contains('visible') || tp.classList.contains('visible')) return 560;
+    return 0;
+}
+function resizeChart() {
+    chart.applyOptions({ width: container.clientWidth - getOpenPanelWidth(), height: container.clientHeight });
+}
+
+// --- Legend Panel ---
+function toggleLegendPanel() {
+    const legend = document.getElementById('legend-panel');
+    const tradeLog = document.getElementById('trade-log-panel');
+    if (legend.classList.contains('visible')) {
+        legend.classList.remove('visible');
+    } else {
+        tradeLog.classList.remove('visible');
+        legend.classList.add('visible');
+    }
+    resizeChart();
+}
+
+// --- Trade Log Panel ---
+function toggleTradeLog() {
+    const legend = document.getElementById('legend-panel');
+    const tradeLog = document.getElementById('trade-log-panel');
+    if (tradeLog.classList.contains('visible')) {
+        tradeLog.classList.remove('visible');
+    } else {
+        legend.classList.remove('visible');
+        tradeLog.classList.add('visible');
+    }
+    resizeChart();
+}
+
+// Entry/exit reason display names
+const ENTRY_NAMES = {
+    'channel_long': 'Channel Long', 'channel_short': 'Channel Short',
+    'breakout_long': 'Breakout Up', 'breakout_short': 'Breakout Down',
+    'fallback_sma': 'SMA Fallback', 'breakout_reentry': 'Breakout Re-entry',
+    'break_short': 'Break Short', 'sma_to_channel': 'SMA \u2192 Channel',
+    'early_momentum': 'Poly-Low Entry', 'sharp_reversal_long': 'Sharp Reversal Long',
+    'sharp_reversal_short': 'Sharp Reversal Short', 'momentum_to_channel': 'Poly-Low \u2192 Channel',
+    'reversal_to_channel': 'Reversal \u2192 Channel',
+    'vol_divergence_long': 'Vol Divergence Long', 'vol_divergence_short': 'Vol Divergence Short',
+    'divergence_to_channel': 'Divergence \u2192 Channel',
+    'waterfall_long': 'Waterfall Recovery Long', 'waterfall_short': 'Waterfall Short',
+    'waterfall_to_channel': 'Waterfall \u2192 Channel',
+    // Smart Hold
+    'initial_entry': 'Initial Entry', 'vix_extreme_fear': 'VIX Extreme Fear',
+    'vix_fear_declining': 'VIX Fear Declining', 'ma_reclaim': 'MA Reclaim',
+    'rsi_oversold_bounce': 'RSI Oversold Bounce', 'ema_momentum': 'EMA Momentum',
+    'quick_reentry': 'Quick Re-entry',
+    'volume_capitulation': 'Volume Capitulation',
+    // Scalping
+    'ema_cross': 'EMA Crossover', 'rsi_bb': 'RSI + Bollinger Band',
+    'macd_hist': 'MACD Histogram', 'stochastic': 'Stochastic Crossover',
+    'ema_cross+rsi_bb': 'EMA + RSI Confluence', 'ema_cross+macd_hist': 'EMA + MACD Confluence',
+    'rsi_bb+macd_hist': 'RSI + MACD Confluence',
+    // Smart Hold RC combo
+    'reversal_channel_reentry': 'Reversal Channel Re-entry', 'ma_reclaim_fallback': 'MA Reclaim Fallback',
+    // RSI Volume Watch
+    'rsi_vol_bullish': 'RSI Volume Bullish', 'rsi_vol_bearish': 'RSI Volume Bearish',
+    // Synthetic Long
+    'deep_itm_call': 'Deep ITM Call', 'otm_put_sell': 'OTM Put Sell',
+    'extreme_add_call': 'VIX Extreme Add Call',
+    // News Volatility
+    'geopolitical_energy': 'Geopolitical Energy', 'geopolitical_defense': 'Geopolitical Defense',
+    'geopolitical_tankers': 'Geopolitical Tankers', 'geopolitical_gold': 'Geopolitical Gold',
+    'geopolitical_single': 'Geopolitical Buy',
+};
+
+const tradeLogBody = document.getElementById('trade-log-body');
+const TRADE_LOG = [{"entry_date": "2024-04-15", "exit_date": "2025-02-24", "entry_price": 4.85, "exit_price": 18.46, "side": "long", "entry_reason": "initial_entry", "return_pct": 280.22, "exit_reason": "ma_breakdown", "days_held": 215, "strategy": "smart_hold_rc"}, {"entry_date": "2025-04-04", "exit_date": "2025-04-08", "entry_price": 12.6, "exit_price": 13.91, "side": "long", "entry_reason": "vix_extreme_fear", "return_pct": 10.0, "exit_reason": "vix_accelerated_exit", "days_held": 2, "strategy": "smart_hold_rc"}, {"entry_date": "2025-07-08", "exit_date": "2025-08-19", "entry_price": 35.08, "exit_price": 32.65, "side": "long", "entry_reason": "ma_reclaim_fallback", "return_pct": -7.33, "exit_reason": "trailing_stop", "days_held": 30, "strategy": "smart_hold_rc"}, {"entry_date": "2026-03-30", "exit_date": "2026-04-01", "entry_price": 10.25, "exit_price": 10.26, "side": "long", "entry_reason": "vix_fear_declining", "return_pct": -0.3, "exit_reason": "ma_breakdown", "days_held": 2, "strategy": "smart_hold_rc"}];
+let tlHTML = '';
+TRADE_LOG.forEach(t => {
+    const pnlCls = (t.return_pct || 0) > 0 ? 'positive' : 'negative';
+    const sideCls = t.side === 'long' ? 'long' : 'short';
+    const entryName = ENTRY_NAMES[t.entry_reason] || (t.entry_reason||'unknown').replace(/_/g, ' ');
+    const entryVers = (t.entry_versions || []).join(' ');
+    const exitVers = (t.exit_versions || []).join(' ');
+    tlHTML += '<div class="trade-row">' +
+        '<div class="trade-row-main">' +
+        '<span class="side ' + sideCls + '">' + t.side.toUpperCase() + '</span>' +
+        '<span class="entry-type">' + entryName + '</span>' +
+        '<span class="dates">' + (t.entry_date||'').substring(0,10) + ' \u2192 ' + (t.exit_date||'').substring(0,10) + '</span>' +
+        '<span class="pnl ' + pnlCls + '">' + ((t.return_pct||0) >= 0 ? '+' : '') + (t.return_pct||0).toFixed(2) + '%</span>' +
+        '<span class="reason">' + (t.exit_reason||'').replace(/_/g, ' ') + '</span>' +
+        '</div>' +
+        '<div class="trade-row-versions">' +
+        '\u25B6 Entry: <span class="entry-ver">' + (entryVers || 'n/a') + '</span>' +
+        ' &nbsp; Exit: <span class="exit-ver">' + (exitVers || 'n/a') + '</span>' +
+        '</div>' +
+        '</div>';
+});
+tradeLogBody.innerHTML = tlHTML || '<div style="color:#787b86">No trades</div>';
+
+// --- Version Legend ---
+function toggleVersionLegend() {
+    const body = document.getElementById('version-legend-body');
+    const arrow = document.getElementById('ver-arrow');
+    body.classList.toggle('open');
+    arrow.textContent = body.classList.contains('open') ? '\u25BC' : '\u25B6';
+}
+
+(function buildVersionLegend() {
+    const body = document.getElementById('version-legend-body');
+    const tags = Object.keys(VERSIONS).sort((a, b) => {
+        const na = parseInt(a.replace('v',''), 10);
+        const nb = parseInt(b.replace('v',''), 10);
+        return na - nb;
+    });
+    if (tags.length === 0) {
+        document.getElementById('version-legend').style.display = 'none';
+        return;
+    }
+    document.getElementById('version-legend-header').innerHTML =
+        '<span id="ver-arrow">\u25B6</span> Strategy Versions (v' +
+        tags[tags.length - 1].replace('v','') + ')';
+    let html = '';
+    tags.forEach(tag => {
+        const v = VERSIONS[tag];
+        html += '<div class="ver-row">' +
+            '<span class="ver-tag">' + tag + '</span>' +
+            '<span class="ver-label">' + v.label + '</span>' +
+            '<span class="ver-desc"> \u2014 ' + v.description + '</span>' +
+            '</div>';
+    });
+    body.innerHTML = html;
+})();
+
+// --- Legend Panel Content (dynamic — built from all known marker types) ---
+(function buildLegendPanel() {
+    const body = document.getElementById('legend-panel-body');
+
+    // Complete registry of all entry/exit types across all strategies
+    // Colors match the chart marker colors exactly (BUY_COLORS / SELL_COLORS / EXIT_COLORS in Python)
+    const ENTRY_REGISTRY = {
+        // Curved Channels — buy entries (green-blue shades)
+        'channel_long':          { abbrev: 'CH-LONG',    name: 'Channel Long',             desc: 'Price bouncing off ascending channel support with bullish close.', side: 'long', color: '#26a69a' },
+        'sma_to_channel':        { abbrev: 'SMA\u2192CH',name: 'SMA to Channel',           desc: 'SMA fallback entry upgraded to channel-based exit management.', side: 'long', color: '#26a69a' },
+        'fallback_sma':          { abbrev: 'SMA',        name: 'Fallback SMA',             desc: 'No channel active \u2014 price crossed above SMA(50) after cooldown.', side: 'long', color: '#4CAF50' },
+        'breakout_long':         { abbrev: 'BRK-UP',     name: 'Breakout Long',            desc: 'Price broke above upper channel boundary. Captures explosive upside moves.', side: 'long', color: '#00E676' },
+        'breakout_reentry':      { abbrev: 'RE-BRK',     name: 'Breakout Re-entry',        desc: 'Existing long broke above channel resistance. Re-opened at 200%.', side: 'long', color: '#00E676' },
+        'early_momentum':        { abbrev: 'EARLY',      name: 'Poly-Low Entry',           desc: 'Polynomial through recent lows has positive slope + volume. 25% exploratory long.', side: 'long', color: '#2196F3' },
+        'momentum_to_channel':   { abbrev: 'EARLY\u2192CH', name: 'Poly-Low \u2192 Channel', desc: 'Poly-low entry upgraded to channel management.', side: 'long', color: '#2196F3' },
+        'sharp_reversal_long':   { abbrev: 'REV-UP',     name: 'Sharp Reversal Long',      desc: 'Large bullish bar (\u22652x ATR) with high volume after bearish bars.', side: 'long', color: '#00BCD4' },
+        'reversal_to_channel':   { abbrev: 'REV\u2192CH',   name: 'Reversal \u2192 Channel', desc: 'Sharp reversal entry upgraded to channel management.', side: 'long', color: '#00BCD4' },
+        'vol_divergence_long':   { abbrev: 'DIV-UP',     name: 'Vol Divergence Long',      desc: 'Price dropping with declining volume \u2014 bullish divergence.', side: 'long', color: '#7C4DFF' },
+        'divergence_to_channel': { abbrev: 'DIV\u2192CH',   name: 'Divergence \u2192 Channel', desc: 'Volume divergence entry upgraded to channel management.', side: 'long', color: '#7C4DFF' },
+        'waterfall_long':        { abbrev: 'WF-UP',      name: 'Waterfall Recovery Long',  desc: 'Waterfall recovery entry on long side.', side: 'long', color: '#FF6D00' },
+        'waterfall_to_channel':  { abbrev: 'WF\u2192CH', name: 'Waterfall \u2192 Channel', desc: 'Waterfall entry upgraded to channel management.', side: 'long', color: '#FF6D00' },
+        // Curved Channels — short entries (red-orange shades)
+        'channel_short':         { abbrev: 'CH-SHORT',   name: 'Channel Short',            desc: 'Price rejecting off descending channel resistance with bearish close.', side: 'short', color: '#ef5350' },
+        'breakout_short':        { abbrev: 'BRK-DN',     name: 'Breakout Short',           desc: 'Price broke below lower channel boundary.', side: 'short', color: '#FF5722' },
+        'break_short':           { abbrev: 'BRK-SH',     name: 'Break Short',              desc: 'Long position flipped to short after channel breakdown.', side: 'short', color: '#FF9800' },
+        'sharp_reversal_short':  { abbrev: 'REV-DN',     name: 'Sharp Reversal Short',     desc: 'Large bearish bar (\u22652x ATR) with high volume after bullish bars.', side: 'short', color: '#E91E63' },
+        'vol_divergence_short':  { abbrev: 'DIV-DN',     name: 'Vol Divergence Short',     desc: 'Price rising with declining volume \u2014 bearish divergence.', side: 'short', color: '#AB47BC' },
+        'waterfall_short':       { abbrev: 'WF-DN',      name: 'Waterfall Short',          desc: 'Waterfall short entry.', side: 'short', color: '#D500F9' },
+        // Smart Hold entries (green-blue shades for buys)
+        'initial_entry':         { abbrev: 'INIT',       name: 'Initial Entry',            desc: 'Buy on first bar \u2014 start fully invested like buy & hold.', side: 'long', color: '#26a69a' },
+        'vix_extreme_fear':      { abbrev: 'VIX-FEAR',   name: 'VIX Extreme Fear',         desc: 'VIX \u2265 35 (extreme fear) + bullish candle. Peak panic buy signal.', side: 'long', color: '#7C4DFF' },
+        'vix_fear_declining':    { abbrev: 'VIX-DEC',    name: 'VIX Fear Declining',       desc: 'VIX \u2265 30 but declining from peak \u2014 fear is peaking, enter on reversal.', side: 'long', color: '#B388FF' },
+        'ma_reclaim':            { abbrev: 'MA-RCL',     name: 'MA Reclaim',               desc: 'Price reclaimed SMA with consecutive closes above + rising fast EMA.', side: 'long', color: '#4CAF50' },
+        'rsi_oversold_bounce':   { abbrev: 'RSI-BNC',    name: 'RSI Oversold Bounce',      desc: 'RSI crossed back above 30 (oversold) with bullish candle.', side: 'long', color: '#2196F3' },
+        'ema_momentum':          { abbrev: 'EMA-MOM',    name: 'EMA Momentum',             desc: 'Price above rising fast EMA for 2+ bars \u2014 momentum re-entry.', side: 'long', color: '#00BCD4' },
+        'quick_reentry':         { abbrev: 'QUICK',      name: 'Quick Re-entry',           desc: 'Fast re-entry after brief exit when trend resumes quickly.', side: 'long', color: '#7C4DFF' },
+        'volume_capitulation':   { abbrev: 'VOL-CAP',    name: 'Volume Capitulation',      desc: 'Consecutive bars of declining price with increasing volume \u2014 selling climax washout.', side: 'long', color: '#E040FB' },
+        // Scalping entries
+        'ema_cross':             { abbrev: 'EMA-X',      name: 'EMA Crossover',            desc: 'EMA(9) crosses EMA(21) with EMA(50) trend filter + ADX \u2265 20 trend strength.', side: 'long', color: '#00BCD4' },
+        'rsi_bb':                { abbrev: 'RSI-BB',     name: 'RSI + Bollinger Band',     desc: 'RSI < 30 (oversold) + price at lower Bollinger Band(20,2). Mean reversion entry.', side: 'long', color: '#7C4DFF' },
+        'macd_hist':             { abbrev: 'MACD-H',     name: 'MACD Histogram Reversal',  desc: '2+ declining MACD histogram bars then a rising bar \u2014 momentum shift. Price vs EMA(50) for direction.', side: 'long', color: '#FF9800' },
+        'stochastic':            { abbrev: 'STOCH',      name: 'Stochastic Crossover',     desc: 'Stochastic %K crosses %D from oversold (< 20) or overbought (> 80) zone with EMA(50) trend filter.', side: 'long', color: '#2196F3' },
+        'ema_cross+rsi_bb':      { abbrev: 'EMA+RSI',    name: 'EMA + RSI Confluence',     desc: 'EMA crossover and RSI+BB signals fired on the same bar.', side: 'long', color: '#26a69a' },
+        'ema_cross+macd_hist':   { abbrev: 'EMA+MACD',   name: 'EMA + MACD Confluence',    desc: 'EMA crossover and MACD histogram reversal fired on the same bar.', side: 'long', color: '#4CAF50' },
+        'rsi_bb+macd_hist':      { abbrev: 'RSI+MACD',   name: 'RSI + MACD Confluence',    desc: 'RSI+BB mean reversion and MACD momentum shift fired on the same bar.', side: 'long', color: '#00E676' },
+        // Smart Hold RC combo entries
+        'reversal_channel_reentry': { abbrev: 'RC-ENTRY', name: 'Reversal Channel Re-entry', desc: 'Downtrend detected (LH+LL), then Higher High broke the sequence, confirmed by Higher Low above last swing low \u2014 structural trend reversal confirmed.', side: 'long', color: '#00E676' },
+        'ma_reclaim_fallback':   { abbrev: 'MA-FALL',   name: 'MA Reclaim Fallback',      desc: 'After 60+ bars without reversal channel signal, re-enter on price reclaiming SMA50 with rising slope + EMA above SMA.', side: 'long', color: '#4CAF50' },
+        // RSI Volume Watch entries
+        'rsi_vol_bullish':       { abbrev: 'RSI-VOL+',  name: 'RSI Volume Bullish',       desc: 'RSI(14) crossed above 50 with volume \u2265 1.3x its 20-bar average \u2014 confirmed bullish momentum shift.', side: 'long', color: '#00E676' },
+        'rsi_vol_bearish':       { abbrev: 'RSI-VOL-',  name: 'RSI Volume Bearish',       desc: 'RSI(14) crossed below 50 with volume \u2265 1.3x its 20-bar average \u2014 confirmed bearish momentum shift.', side: 'short', color: '#E91E63' },
+        // Synthetic Long entries
+        'deep_itm_call':         { abbrev: 'ITM-CALL',   name: 'Deep ITM Call',            desc: 'Buy deep in-the-money LEAPS call (delta \u22480.85, 1yr out) when VIX \u2265 28. Stock-like upside with leverage.', side: 'long', color: '#00E676' },
+        'otm_put_sell':          { abbrev: 'OTM-PUT',    name: 'OTM Put Sell',             desc: 'Sell far out-of-the-money put (25% below price, 1yr out) to collect premium. High VIX = fat premiums.', side: 'short', color: '#FF9800' },
+        'extreme_add_call':      { abbrev: 'VIX-CALL',   name: 'VIX Extreme Add Call',     desc: 'VIX \u2265 35 (extreme fear) \u2014 add second deep ITM call position to double down on the recovery.', side: 'long', color: '#7C4DFF' },
+        // News Volatility entries
+        'geopolitical_energy':   { abbrev: 'GEO-OIL',    name: 'Geopolitical Energy',      desc: 'Oil spike + VIX fear detected \u2014 buy energy ETF (XLE). Oil producers benefit from supply disruption fears.', side: 'long', color: '#FF9800' },
+        'geopolitical_defense':  { abbrev: 'GEO-DEF',    name: 'Geopolitical Defense',     desc: 'Geopolitical escalation detected \u2014 buy defense ETF (ITA). Military spending expectations rise during conflicts.', side: 'long', color: '#2196F3' },
+        'geopolitical_tankers':  { abbrev: 'GEO-TANK',   name: 'Geopolitical Tankers',     desc: 'Strait of Hormuz threat detected \u2014 buy tanker stocks (STNG). Route disruption = longer voyages = higher day rates.', side: 'long', color: '#00BCD4' },
+        'geopolitical_gold':     { abbrev: 'GEO-GOLD',   name: 'Geopolitical Gold',        desc: 'Safe haven flow detected \u2014 buy gold ETF (GLD). Fear drives capital into gold during geopolitical crises.', side: 'long', color: '#FFD700' },
+        'geopolitical_single':   { abbrev: 'GEO-BUY',    name: 'Geopolitical Buy',         desc: 'Geopolitical event detected \u2014 buy single stock. VIX + oil + gold signals confirm macro fear event.', side: 'long', color: '#4CAF50' },
+    };
+    const EXIT_REGISTRY = {
+        // Curved Channels exits (red-orange-yellow shades)
+        'atr_trailing_stop':     { abbrev: 'ATR-TS',     name: 'ATR Trailing Stop',        desc: 'Price hit ATR-based trailing stop.', color: '#ef5350' },
+        'channel_trail_stop':    { abbrev: 'CH-TS',      name: 'Channel Trail Stop',       desc: 'In-channel trailing stop after +2% profit.', color: '#FF7043' },
+        'breakout_up':           { abbrev: 'BRK-UP',     name: 'Breakout Up',              desc: 'Price broke above upper channel \u2014 exit to re-enter at higher size.', color: '#FF5722' },
+        'breakout_down':         { abbrev: 'BRK-DN',     name: 'Breakout Down',            desc: 'Price broke below lower channel.', color: '#FF5722' },
+        'channel_break':         { abbrev: 'CH-BRK',     name: 'Channel Break',            desc: 'Price violated channel boundary beyond tolerance.', color: '#FF9800' },
+        'channel_flip':          { abbrev: 'CH-FLIP',    name: 'Channel Flip',             desc: 'Channel direction changed while position was open.', color: '#FF9800' },
+        'channel_expired':       { abbrev: 'CH-EXP',     name: 'Channel Expired',          desc: 'Channel expired and position was not profitable.', color: '#FFD54F' },
+        'time_exit':             { abbrev: 'TIME',        name: 'Time Exit',                desc: 'Position held max bars without reaching profit target.', color: '#FFAB40' },
+        'fallback_sma_exit':     { abbrev: 'SMA-X',      name: 'Fallback SMA Exit',        desc: 'SMA-entered position closed when price dropped below SMA.', color: '#FFAB40' },
+        'end_of_data':           { abbrev: 'EOD',         name: 'End of Data',              desc: 'Backtest ended with open position. Force-closed at final price.', color: '#BDBDBD' },
+        // Smart Hold exits (red-orange shades)
+        'ma_breakdown':          { abbrev: 'MA-BRK',     name: 'MA Breakdown',             desc: 'Confirmed close below SMA with declining slope + EMA below SMA. Adaptive to volatility.', color: '#ef5350' },
+        'vix_accelerated_exit':  { abbrev: 'VIX-X',      name: 'VIX Accelerated Exit',     desc: 'MA breakdown exit triggered 1 bar faster due to elevated VIX (\u2265 25).', color: '#FF7043' },
+        'trailing_stop':         { abbrev: 'TRAIL',       name: 'Trailing Stop',            desc: 'ATR trailing stop hit \u2014 catastrophic drop protection (6x ATR from peak).', color: '#FF5722' },
+        // RSI Volume Watch exits
+        'rsi_momentum_fade':     { abbrev: 'RSI-FADE',   name: 'RSI Momentum Fade',        desc: 'RSI dropped below 40 (long) or rose above 60 (short) \u2014 momentum that triggered entry is fading.', color: '#FF9800' },
+        // Scalping exits
+        'stop_loss':             { abbrev: 'SL',          name: 'Stop Loss',                desc: 'Price hit ATR-based stop loss level (1.5x ATR from entry).', color: '#ef5350' },
+        'take_profit':           { abbrev: 'TP',          name: 'Take Profit',              desc: 'Price reached ATR-based take profit target (2.5x ATR from entry).', color: '#4CAF50' },
+        // Synthetic Long exits
+        'call_profit_target':    { abbrev: 'CALL-TP',     name: 'Call Profit Target',       desc: 'Deep ITM call reached +50% gain \u2014 close to lock in profit.', color: '#4CAF50' },
+        'call_stop_loss':        { abbrev: 'CALL-SL',     name: 'Call Stop Loss',           desc: 'Deep ITM call hit -40% loss \u2014 cut losses on the call leg.', color: '#ef5350' },
+        'vix_normalized':        { abbrev: 'VIX-NORM',    name: 'VIX Normalized',           desc: 'VIX dropped below 20 (fear subsided) and call is profitable \u2014 exit into calm market.', color: '#00BCD4' },
+        'max_hold':              { abbrev: 'MAX-HOLD',    name: 'Max Hold Time',            desc: 'Call held for 300 days without exit trigger \u2014 close before theta decay accelerates.', color: '#FFAB40' },
+        'put_decay_profit':      { abbrev: 'PUT-DECAY',   name: 'Put Decay Profit',         desc: 'Sold put decayed to \u226410% of original premium \u2014 buy back cheap to close.', color: '#4CAF50' },
+        'put_assigned':          { abbrev: 'PUT-ASGN',    name: 'Put Assigned',             desc: 'Stock dropped below put strike \u2014 assigned, forced to buy shares at strike price.', color: '#ef5350' },
+        'put_expiry':            { abbrev: 'PUT-EXP',     name: 'Put Expiry',               desc: 'Put expired worthless (OTM at expiration) \u2014 full premium kept as profit.', color: '#66BB6A' },
+        // News Volatility exits
+        'profit_target':         { abbrev: 'TP',           name: 'Profit Target',            desc: 'Position reached +20% gain \u2014 lock in geopolitical premium profit.', color: '#4CAF50' },
+        'event_fading':          { abbrev: 'FADE',         name: 'Event Fading',             desc: 'VIX dropped below 18 and oil retraced 50% of spike \u2014 geopolitical fear subsiding.', color: '#00BCD4' },
+    };
+
+    // Find which entry/exit types actually appear in the trade log
+    const usedEntries = new Set();
+    const usedExits = new Set();
+    TRADE_LOG.forEach(t => {
+        if (t.entry_reason) usedEntries.add(t.entry_reason);
+        if (t.exit_reason) usedExits.add(t.exit_reason);
+    });
+
+    // Helper: convert hex color to rgba for background tint
+    function hexToRgba(hex, alpha) {
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
+    // Build entry table (only showing types that appear in this chart's trades)
+    let html = '<h4>Entry Markers</h4>' +
+        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th></tr>';
+    usedEntries.forEach(key => {
+        const info = ENTRY_REGISTRY[key];
+        if (!info) return;
+        const prefix = info.side === 'long' ? 'BUY' : 'SHORT';
+        const c = info.color;
+        html += '<tr>' +
+            '<td><span class="lp-marker" style="background:' + hexToRgba(c, 0.15) + ';color:' + c + '">' + prefix + ' ' + info.abbrev + '</span></td>' +
+            '<td><span class="lp-abbrev" style="color:' + c + '">' + info.abbrev + '</span></td>' +
+            '<td class="lp-name">' + info.name + '</td>' +
+            '<td class="lp-desc">' + info.desc + '</td></tr>';
+    });
+    html += '</table>';
+
+    // Build exit table
+    html += '<h4>Exit Markers</h4>' +
+        '<table><tr><th>Marker</th><th>Abbrev</th><th>Name</th><th>Description</th></tr>';
+    usedExits.forEach(key => {
+        const info = EXIT_REGISTRY[key];
+        if (!info) return;
+        const c = info.color;
+        html += '<tr>' +
+            '<td><span class="lp-marker" style="background:' + hexToRgba(c, 0.15) + ';color:' + c + '">EXIT ' + info.abbrev + '</span></td>' +
+            '<td><span class="lp-abbrev" style="color:' + c + '">' + info.abbrev + '</span></td>' +
+            '<td class="lp-name">' + info.name + '</td>' +
+            '<td class="lp-desc">' + info.desc + '</td></tr>';
+    });
+    html += '</table>';
+
+    // Version tags (if any)
+    const tags = Object.keys(VERSIONS).sort((a, b) => parseInt(a.replace('v',''),10) - parseInt(b.replace('v',''),10));
+    if (tags.length > 0) {
+        html += '<h4>Strategy Version Tags</h4>' +
+            '<table><tr><th>Tag</th><th>Label</th><th>Type</th><th>Description</th></tr>';
+        tags.forEach(tag => {
+            const v = VERSIONS[tag];
+            const typeCls = (v.type === 'exit_type') ? 'exit' : 'entry';
+            html += '<tr>' +
+                '<td><span class="lp-vtag-pill ' + typeCls + '">' + tag + '</span></td>' +
+                '<td class="lp-name">' + v.label + '</td>' +
+                '<td class="lp-vtype">' + v.type.replace(/_/g,' ') + '</td>' +
+                '<td class="lp-desc">' + v.description + '</td></tr>';
+        });
+        html += '</table>';
+    }
+    body.innerHTML = html;
+})();
+
+// --- Fit content ---
+chart.timeScale().fitContent();
+
+// --- Resize ---
+const ro = new ResizeObserver(() => {
+    resizeChart();
+});
+ro.observe(container);
+</script>
+</body>
+</html>

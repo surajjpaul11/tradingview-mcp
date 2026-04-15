@@ -30,26 +30,46 @@ from pathlib import Path
 
 
 def _fetch_vix(period: str = "2y", interval: str = "1d") -> list[dict]:
-    """Fetch VIX data from Yahoo Finance. Returns empty list on failure."""
-    try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval={interval}&range={period}"
-        req = urllib.request.Request(url, headers={"User-Agent": "visualize/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        result = data["chart"]["result"][0]
-        timestamps = result["timestamp"]
-        q = result["indicators"]["quote"][0]
-        fmt = "%Y-%m-%d %H:%M" if interval in ("1h", "30m") else "%Y-%m-%d"
-        candles = []
-        for i, ts in enumerate(timestamps):
-            c = q["close"][i]
-            if c is None:
-                continue
-            candles.append({"date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime(fmt),
-                            "close": round(c, 2)})
-        return candles
-    except Exception:
-        return []
+    """Fetch VIX data from Yahoo Finance. Retries on transient failures.
+
+    Returns an empty list only if all retries fail; in that case a warning
+    is printed to stderr so callers notice — an empty VIX list hides the
+    VIX toggle button in the generated chart.
+    """
+    import sys
+    import time
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval={interval}&range={period}"
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "visualize/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            result = data["chart"]["result"][0]
+            timestamps = result["timestamp"]
+            q = result["indicators"]["quote"][0]
+            fmt = "%Y-%m-%d %H:%M" if interval in ("1h", "30m") else "%Y-%m-%d"
+            candles = []
+            for i, ts in enumerate(timestamps):
+                c = q["close"][i]
+                if c is None:
+                    continue
+                candles.append({"date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime(fmt),
+                                "close": round(c, 2)})
+            if candles:
+                return candles
+            last_err = ValueError("Yahoo returned empty VIX series")
+        except Exception as e:
+            last_err = e
+        if attempt < 2:
+            time.sleep(1 * (2 ** attempt))  # 1s, 2s
+    print(
+        f"[visualize] warning: VIX fetch failed after 3 attempts ({last_err!r}); "
+        "chart will render without VIX overlay.",
+        file=sys.stderr,
+    )
+    return []
 
 
 def _calc_rsi(values: list[float], period: int = 14) -> list[float | None]:

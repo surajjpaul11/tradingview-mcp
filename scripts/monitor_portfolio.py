@@ -1,83 +1,126 @@
 #!/usr/bin/env python3
 """
-Alpaca Paper Portfolio Monitor
-Runs every 15 min during market hours via crontab.
-Only reports when market is open.
+Alpaca Paper Portfolio Monitor — zero external deps, pure stdlib.
 
-Crontab entry (add with: crontab -e):
+Hits Alpaca's REST API directly via urllib so it works without
+`alpaca-trade-api` installed. Reads credentials from .env.
+
+Runs every 15 min during market hours via crontab. Reports full
+position/order state on every run; exits early with just a clock
+check when the market is closed.
+
+Crontab:
   */15 9-16 * * 1-5 cd /home/claude/workspace && python3 scripts/monitor_portfolio.py >> logs/portfolio.log 2>&1
 
-Or run manually:
+Manual:
   python3 scripts/monitor_portfolio.py
 """
+from __future__ import annotations
+
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Load .env
-env_path = Path(__file__).resolve().parent.parent / ".env"
-if env_path.exists():
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key.strip()] = val.strip()
 
-try:
-    import alpaca_trade_api as tradeapi
-except ImportError:
-    print("alpaca-trade-api not installed. Run: pip install alpaca-trade-api")
-    sys.exit(1)
+def _load_env(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
-api = tradeapi.REST(
-    os.environ["ALPACA_API_KEY"],
-    os.environ["ALPACA_API_SECRET"],
-    "https://paper-api.alpaca.markets",
-    api_version="v2",
-)
 
-clock = api.get_clock()
-now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+def _get(base: str, path: str, key: str, secret: str):
+    req = urllib.request.Request(
+        f"{base}{path}",
+        headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
 
-if not clock.is_open:
-    print(f"[{now}] Market closed. Next open: {clock.next_open}")
-    sys.exit(0)
 
-account = api.get_account()
-equity = float(account.equity)
-cash = float(account.cash)
+def main() -> int:
+    root = Path(__file__).resolve().parent.parent
+    _load_env(root / ".env")
 
-print(f"\n[{now}] === PORTFOLIO STATUS ===")
-print(f"Equity: ${equity:,.2f}  Cash: ${cash:,.2f}")
+    key = os.environ.get("ALPACA_API_KEY")
+    secret = os.environ.get("ALPACA_API_SECRET")
+    if not key or not secret:
+        print("ALPACA_API_KEY / ALPACA_API_SECRET not set in .env", file=sys.stderr)
+        return 2
 
-positions = api.list_positions()
-if positions:
-    print(f"\n{'Symbol':8s}  {'Qty':>6s}  {'Entry':>10s}  {'Current':>10s}  {'P&L %':>8s}  {'P&L $':>8s}  {'Mkt Val':>10s}")
-    print("-" * 72)
-    total_pnl = 0.0
-    total_val = 0.0
-    for p in positions:
-        pnl_pct = float(p.unrealized_plpc) * 100
-        pnl_usd = float(p.unrealized_pl)
-        mkt_val = float(p.market_value)
-        total_pnl += pnl_usd
-        total_val += mkt_val
+    paper = os.environ.get("ALPACA_PAPER", "true").lower() == "true"
+    base = "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    try:
+        clock = _get(base, "/v2/clock", key, secret)
+    except urllib.error.HTTPError as e:
+        print(f"[{now}] Alpaca clock request failed: {e}", file=sys.stderr)
+        return 1
+
+    if not clock.get("is_open"):
+        print(f"[{now}] Market closed. Next open: {clock.get('next_open')}")
+        return 0
+
+    account = _get(base, "/v2/account", key, secret)
+    positions = _get(base, "/v2/positions", key, secret)
+    orders = _get(base, "/v2/orders?status=open", key, secret)
+
+    equity = float(account["equity"])
+    cash = float(account["cash"])
+    bp = float(account["buying_power"])
+
+    mode = "PAPER" if paper else "LIVE"
+    print(f"\n[{now}] === PORTFOLIO STATUS ({mode}) ===")
+    print(f"Equity: ${equity:,.2f}  Cash: ${cash:,.2f}  BP: ${bp:,.2f}")
+
+    if positions:
         print(
-            f"{p.symbol:8s}  {p.qty:>6s}  ${float(p.avg_entry_price):>8,.2f}  "
-            f"${float(p.current_price):>8,.2f}  {pnl_pct:>+7.2f}%  "
-            f"${pnl_usd:>+7.2f}  ${mkt_val:>8,.2f}"
+            f"\n{'Symbol':<8} {'Qty':>8} {'Entry':>10} {'Mark':>10} "
+            f"{'P&L %':>8} {'P&L $':>10} {'Mkt Val':>12} {'Side':>6}"
         )
-    print("-" * 72)
-    print(f"{'TOTAL':8s}  {'':>6s}  {'':>10s}  {'':>10s}  {'':>8s}  ${total_pnl:>+7.2f}  ${total_val:>8,.2f}")
-else:
-    print("No positions.")
+        print("-" * 82)
+        total_pl = 0.0
+        total_mv = 0.0
+        for p in positions:
+            pl_pct = float(p["unrealized_plpc"]) * 100
+            pl = float(p["unrealized_pl"])
+            mv = float(p["market_value"])
+            total_pl += pl
+            total_mv += mv
+            print(
+                f"{p['symbol']:<8} {p['qty']:>8} "
+                f"{float(p['avg_entry_price']):>10.2f} "
+                f"{float(p['current_price']):>10.2f} "
+                f"{pl_pct:>+7.2f}% {pl:>+10.2f} "
+                f"{mv:>12.2f} {p['side']:>6}"
+            )
+        print("-" * 82)
+        print(
+            f"{'TOTAL':<8} {'':>8} {'':>10} {'':>10} {'':>8} "
+            f"{total_pl:>+10.2f} {total_mv:>12.2f}"
+        )
+    else:
+        print("\nNo positions.")
 
-orders = api.list_orders(status="open")
-if orders:
-    print(f"\nPending orders: {len(orders)}")
-    for o in orders:
-        print(f"  {o.side.upper()} {o.qty} {o.symbol} — {o.status}")
+    if orders:
+        print(f"\nPending orders: {len(orders)}")
+        for o in orders:
+            limit = f" @ {o['limit_price']}" if o.get("limit_price") else ""
+            print(f"  {o['side'].upper()} {o['qty']} {o['symbol']} {o['type']}{limit} [{o['status']}]")
 
-print()
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

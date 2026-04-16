@@ -617,8 +617,16 @@ def main():
         sys.path.insert(0, str(strategies_dir.parent))
         from strategies.visualize import generate_chart_html
 
+        vix_candles = fetch_ohlcv("^VIX", args.period, args.interval)
+        print(f"  Fetched {len(vix_candles)} VIX candles")
+
         chart_path = script_dir / f"hyperbolic_runner_chart_{args.symbol.replace('-', '_')}_{args.period}.html"
-        generate_chart_html(result=result, candles=candles, output_path=chart_path)
+        generate_chart_html(
+            result=result,
+            candles=candles,
+            output_path=chart_path,
+            vix_candles=vix_candles,
+        )
         print(f"  Chart saved to: {chart_path}\n")
 
 

@@ -1,5 +1,10 @@
 # TradingView MCP — Project Context
 
+## On First Prompt of Session
+
+Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
+
+
 ## What This Is
 
 A fork of [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp) — a Python FastMCP server providing TradingView market analysis tools to AI assistants. We are extending it with backtesting, and eventually paper trading and live trade execution.
@@ -214,6 +219,11 @@ Add more strategies following the paired `.py` + `.pine` convention:
 
 ```bash
 # Install
+
+## On First Prompt of Session
+
+Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
+
 uv sync
 
 # Start MCP server (stdio)
@@ -247,35 +257,13 @@ python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
 ## Inspiration
 
 Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. Our fork goes further by adding execution capability.
-## Docker Container Instructions
+## Docker Container (Skills)
 
-**READ ON STARTUP:** This project runs inside a Docker container. You MUST read and follow these files:
+This project runs inside a Docker container. Ports **8000–8004** are mapped to the host.
 
-- `mandatory_instructions.md` — Networking rules and port allocation
-- `container_restart_instructions.md` — Pre-restart checklist to preserve work
+Use these skills for details (loaded on-demand to save tokens):
+- `/docker-networking` — Server binding rules, port allocation
+- `/container-restart` — Pre-restart checklist to preserve work
+- `/session-resume` — Startup protocol for restoring state
 
-### Port Allocation
-
-This container has ports **8000–8004** mapped to the host. Only these ports are accessible from outside the container.
-
-| Port | Suggested Use |
-|------|---------------|
-| 8000 | Primary server / API |
-| 8001 | Secondary service / admin dashboard |
-| 8002 | WebSocket server |
-| 8003 | Development / hot-reload server |
-| 8004 | Testing / debug server |
-
-### Networking Rules
-
-- **Always bind to `0.0.0.0`**, never `127.0.0.1` or `localhost`
-- **Only use ports in your allocated range** — other ports are not mapped to the host
-- Servers are accessible from the host at `http://localhost:<port>`
-
-### Before Container Restart
-
-Before the container is stopped or restarted, follow the checklist in `container_restart_instructions.md`:
-1. Commit and push all code changes
-2. Update `memory.md` and `last-instruction-and-plan.md`
-3. Record active loops in `loops.md`
-4. Ensure all installed packages are in the project's dependency file
+**Key rules:** Always bind to `0.0.0.0`. Only use ports 8000–8004. Commit and push before restarts.

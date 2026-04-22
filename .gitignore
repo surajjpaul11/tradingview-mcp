@@ -214,5 +214,8 @@ __marimo__/
 # Local development and testing files
 test_nyse.py
 scripts/fetch_nyse_tickers.py
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/restore_loops.py
+loops.state.json
 data/

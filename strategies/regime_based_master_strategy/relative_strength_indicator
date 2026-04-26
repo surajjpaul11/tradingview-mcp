@@ -1,0 +1,13 @@
+//@version=5
+indicator('Relative Strength', shorttitle='RS', timeframe='')
+comparativeTickerId = input.symbol('SPX', title='Comparative Symbol')
+lenght = input.int(50, minval=1, title='Period')
+showMA = input(defval=false, title='Show Moving Average')
+lenghtMA = input.int(10, minval=1, title='Moving Average Period')
+baseSymbol = request.security(syminfo.tickerid, timeframe.period, close)
+comparativeSymbol = request.security(comparativeTickerId, timeframe.period, close)
+hline(0, color=color.black, linestyle=hline.style_dotted)
+res = baseSymbol / baseSymbol[lenght] / (comparativeSymbol / comparativeSymbol[lenght]) - 1
+plot(res, title='RS', color=color.new(#1155CC, 0))
+sma_1 = ta.sma(res, lenghtMA)
+plot(showMA ? sma_1 : na, color=color.new(color.gray, 0))

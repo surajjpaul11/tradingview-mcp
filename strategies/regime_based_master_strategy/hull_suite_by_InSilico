@@ -1,0 +1,68 @@
+//@version=5
+strategy("Hull Suite Strategy by InSilico - Converted", overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+
+// === INPUTS === 
+src = input(close, title="Source")
+modeSwitch = input.string("Hma", title="Hull Variation", options=["Hma", "Thma", "Ehma"])
+length = input.int(55, title="Length (180-200 for floating S/R, 55 for swing entry)")
+lengthMult = input.float(1.0, title="Length Multiplier")
+
+useHtf = input.bool(false, title="Use Higher Timeframe Hull?")
+htf = input.timeframe("240", title="HTF Resolution")
+
+// === FUNCTIONS ===
+// HMA
+hma(_src, _len) =>
+    fast = ta.wma(_src, math.round(_len / 2))
+    slow = ta.wma(_src, _len)
+    ta.wma(2 * fast - slow, math.round(math.sqrt(_len)))
+
+// EHMA
+ehma(_src, _len) =>
+    fast = ta.ema(_src, math.round(_len / 2))
+    slow = ta.ema(_src, _len)
+    ta.ema(2 * fast - slow, math.round(math.sqrt(_len)))
+
+// THMA
+thma(_src, _len) =>
+    part1 = ta.wma(_src, math.round(_len / 3))
+    part2 = ta.wma(_src, math.round(_len / 2))
+    part3 = ta.wma(_src, _len)
+    ta.wma(part1 * 3 - part2 - part3, math.round(_len))
+
+// Hull variation selector using switch-case
+egetHull(_mode, _src, _len) =>
+    switch _mode
+        "Hma"  => hma(_src, _len)
+        "Ehma" => ehma(_src, _len)
+        "Thma" => thma(_src, _len)
+        => na
+
+// === CALCULATE HULL ===
+calcLen = math.round(length * lengthMult)
+_hullRaw = egetHull(modeSwitch, src, calcLen)
+_hull = useHtf ? request.security(syminfo.tickerid, htf, _hullRaw) : _hullRaw
+
+// Align series
+MHULL = _hull
+SHULL = _hull[2]
+
+// Trend direction and color
+hullIsUp = MHULL > SHULL
+hullColor = hullIsUp ? color.green : color.red
+
+// Strategy signals
+longSignal = ta.crossover(MHULL, SHULL)
+exitSignal = ta.crossunder(MHULL, SHULL)
+
+// Entries and exits
+if (longSignal)
+    strategy.entry("Long", strategy.long)
+
+if (exitSignal)
+    strategy.close("Long")
+
+// Plots
+plot(MHULL, title="Main Hull MA", color=hullColor, linewidth=2)
+plot(SHULL, title="Secondary Hull MA", color=hullColor, linewidth=1)
+hline(0, title="Zero Line", color=color.gray)

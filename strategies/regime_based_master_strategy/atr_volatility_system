@@ -1,0 +1,42 @@
+//@version=4
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ceyhun
+
+study("ATR Volatility Based System Jim Berg",shorttitle="ATR Volatility Based System", overlay=true)
+
+Length = input(10, title="Atr Length")
+len1 = input(20, title="Entry Signal Length")
+len2 = input(20, title="Exit Signal Length")
+len3 = input(13,title="Trailing Stop Length")
+BarColour = input(true, title="Barcolor")
+
+EntrySignal = close > lowest(low, len1) + 2 * atr(Length)
+ExitSignal = close < highest(high, len2) - 2 * atr(Length)
+TrailStop = highest(close - 2 * atr(Length), 15)
+ProfitTaker = ema(high,len3) + 2 * atr(Length)
+
+barColour = EntrySignal ? #0000FF : ExitSignal ? #FFFF00 : #808080
+barcolor(BarColour ? barColour : na)
+
+a = plot(lowest(low, len1) + 2 * atr(Length), color=#0000FF, title="Entry Signal", linewidth=2)
+b = plot(highest(high, len2) - 2 * atr(Length), color=#FF0000, title="Exit Signal", linewidth=2)
+plot(TrailStop, "Trailing Stop", color=#000000, linewidth=2)
+plot(ProfitTaker, "Profit Taker", color=#008000, linewidth=2)
+
+col = EntrySignal ? #008000 : ExitSignal ? #FF0000 : #FFFF00
+fill(a, b, color=col)
+
+Entry = crossover(close, lowest(low, len1) + 2 * atr(Length))
+Exit = crossunder(close, highest(high, len2) - 2 * atr(Length))
+Trail = crossunder(close, highest(close - 2 * atr(Length),15))
+Profit = crossover(close, ema(high, len3) + 2 * atr(Length))
+
+plotshape(Entry, color=#0000FF, style=shape.labelup, location=location.belowbar,text="Entry",textcolor=color.white)
+plotshape(Exit, color=#FF0000, style=shape.labeldown, text="Exit",textcolor=color.white)
+plotshape(Trail, color=#000000, style=shape.diamond, location=location.belowbar,text="Trailing\nStop",size=size.small)
+plotshape(Profit, color=#008000, style=shape.diamond, text="Profit\nTaker",size=size.small)
+
+alertcondition(Entry, title="Entry Signal", message="Entry Signal")
+alertcondition(Exit, title="Exit Signal", message="Exit Signal ")
+alertcondition(Trail, title="Trailing Stop", message="Trailing Stop")
+alertcondition(Profit, title="Profit Taker", message="Profit  Taker")

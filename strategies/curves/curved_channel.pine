@@ -1,0 +1,452 @@
+//@version=6
+indicator("Curved Price Channel Path", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ═══════════════════════════════════════════════════════════════
+//  INPUTS
+// ═══════════════════════════════════════════════════════════════
+string GP = "Pivot Detection"
+int   i_pL   = input.int(5,  "Pivot Left Bars",    minval=2, maxval=20, group=GP)
+int   i_pR   = input.int(5,  "Pivot Right Bars",   minval=2, maxval=20, group=GP)
+int   i_maxP = input.int(20, "Max Pivots to Scan", minval=6, maxval=50, group=GP)
+
+
+
+
+string GC = "Channel"
+int   i_minT = input.int(4,     "Min Touch Points",    minval=3, maxval=10, group=GC,
+     tooltip="Minimum pivot points the curve must touch to form a valid channel boundary")
+float i_tolP = input.float(0.5, "Touch Tolerance (%)", minval=0.1, maxval=3.0, step=0.1, group=GC,
+     tooltip="Max allowed deviation between curve and pivot to count as a touch")
+int   i_deg  = input.int(2,     "Polynomial Degree",   minval=1, maxval=3, group=GC,
+     tooltip="1=linear, 2=quadratic (parabolic), 3=cubic")
+
+string GV = "Visual"
+color i_ascCol = input.color(color.green, "Ascending Channel",  group=GV)
+color i_dscCol = input.color(color.red,   "Descending Channel", group=GV)
+color i_dotCol = input.color(color.white, "Touch Points",       group=GV)
+
+float TOL = i_tolP / 100.0
+
+// ═══════════════════════════════════════════════════════════════
+//  PIVOT DETECTION & STORAGE
+// ═══════════════════════════════════════════════════════════════
+float ph = ta.pivothigh(high, i_pL, i_pR)
+float pl = ta.pivotlow(low,  i_pL, i_pR)
+
+var array<int>   phB = array.new<int>()    // pivot high bar indices
+var array<float> phV = array.new<float>()  // pivot high values
+var array<int>   plB = array.new<int>()    // pivot low bar indices
+var array<float> plV = array.new<float>()  // pivot low values
+
+if not na(ph)
+    array.push(phB, bar_index[i_pR])
+    array.push(phV, ph)
+    if array.size(phB) > i_maxP
+        array.shift(phB)
+        array.shift(phV)
+
+if not na(pl)
+    array.push(plB, bar_index[i_pR])
+    array.push(plV, pl)
+    if array.size(plB) > i_maxP
+        array.shift(plB)
+        array.shift(plV)
+
+// ═══════════════════════════════════════════════════════════════
+//  POLYNOMIAL FIT — Least Squares via Gaussian Elimination
+//  Supports degree 1 (linear), 2 (quadratic), 3 (cubic)
+//  X values normalized to [0,1] to prevent float precision loss
+// ═══════════════════════════════════════════════════════════════
+f_polyfit(array<int> xA, array<float> yA, int deg) =>
+    int n  = array.size(xA)
+    float r0 = na, float r1 = 0.0, float r2 = 0.0, float r3 = 0.0
+    int   ro = 0
+    float rs = 1.0
+
+    int minPts = deg + 1
+    if n >= minPts
+        ro := array.get(xA, 0)
+        rs := math.max(1.0, float(array.get(xA, n - 1) - ro))
+
+        // Accumulate power sums and cross-products (scalars only, no arrays)
+        float S0 = float(n)
+        float S1 = 0.0, float S2 = 0.0, float S3 = 0.0
+        float S4 = 0.0, float S5 = 0.0, float S6 = 0.0
+        float Ty = 0.0, float Txy = 0.0, float Tx2y = 0.0, float Tx3y = 0.0
+
+        for i = 0 to n - 1
+            float x  = (array.get(xA, i) - ro) / rs
+            float y  = array.get(yA, i)
+            float x2 = x * x
+            float x3 = x2 * x
+            S1  += x
+            S2  += x2
+            S3  += x3
+            S4  += x2 * x2
+            S5  += x2 * x3
+            S6  += x3 * x3
+            Ty  += y
+            Txy += x * y
+            Tx2y += x2 * y
+            Tx3y += x3 * y
+
+        if deg == 1
+            // ── Linear: 2×2 system ─────────────────────────────
+            float D = S0 * S2 - S1 * S1
+            if math.abs(D) > 1e-12
+                r0 := (Ty * S2  - S1 * Txy) / D
+                r1 := (S0 * Txy - Ty * S1)  / D
+
+        else if deg == 2
+            // ── Quadratic: 3×3 Cramer's rule ────────────────────
+            float D = S0*(S2*S4 - S3*S3) - S1*(S1*S4 - S2*S3) + S2*(S1*S3 - S2*S2)
+            if math.abs(D) > 1e-12
+                r0 := (Ty*(S2*S4 - S3*S3)  - S1*(Txy*S4 - Tx2y*S3) + S2*(Txy*S3 - Tx2y*S2)) / D
+                r1 := (S0*(Txy*S4 - Tx2y*S3) - Ty*(S1*S4 - S2*S3)  + S2*(S1*Tx2y - S2*Txy)) / D
+                r2 := (S0*(S2*Tx2y - S3*Txy) - S1*(S1*Tx2y - S2*Txy) + Ty*(S1*S3 - S2*S2))  / D
+
+        else
+            // ── Cubic: 4×5 augmented matrix, scalar Gaussian elimination
+            // Row 0: [S0  S1  S2  S3  | Ty  ]
+            // Row 1: [S1  S2  S3  S4  | Txy ]
+            // Row 2: [S2  S3  S4  S5  | Tx2y]
+            // Row 3: [S3  S4  S5  S6  | Tx3y]
+            float a00 = S0, float a01 = S1, float a02 = S2, float a03 = S3, float a04 = Ty
+            float a10 = S1, float a11 = S2, float a12 = S3, float a13 = S4, float a14 = Txy
+            float a20 = S2, float a21 = S3, float a22 = S4, float a23 = S5, float a24 = Tx2y
+            float a30 = S3, float a31 = S4, float a32 = S5, float a33 = S6, float a34 = Tx3y
+
+            // Pivot col 0 — eliminate a10, a20, a30
+            if math.abs(a00) > 1e-12
+                float f1 = a10 / a00
+                a10 := 0.0, a11 -= f1*a01, a12 -= f1*a02, a13 -= f1*a03, a14 -= f1*a04
+                float f2 = a20 / a00
+                a20 := 0.0, a21 -= f2*a01, a22 -= f2*a02, a23 -= f2*a03, a24 -= f2*a04
+                float f3 = a30 / a00
+                a30 := 0.0, a31 -= f3*a01, a32 -= f3*a02, a33 -= f3*a03, a34 -= f3*a04
+
+            // Pivot col 1 — swap rows 1/2 if needed, eliminate a21, a31
+            if math.abs(a21) > math.abs(a11)
+                float t1=a11, float t2=a12, float t3=a13, float t4=a14
+                a11:=a21, a12:=a22, a13:=a23, a14:=a24
+                a21:=t1,  a22:=t2,  a23:=t3,  a24:=t4
+            if math.abs(a31) > math.abs(a11)
+                float t1=a11, float t2=a12, float t3=a13, float t4=a14
+                a11:=a31, a12:=a32, a13:=a33, a14:=a34
+                a31:=t1,  a32:=t2,  a33:=t3,  a34:=t4
+            if math.abs(a11) > 1e-12
+                float f2 = a21 / a11
+                a21 := 0.0, a22 -= f2*a12, a23 -= f2*a13, a24 -= f2*a14
+                float f3 = a31 / a11
+                a31 := 0.0, a32 -= f3*a12, a33 -= f3*a13, a34 -= f3*a14
+
+            // Pivot col 2 — swap rows 2/3 if needed, eliminate a32
+            if math.abs(a32) > math.abs(a22)
+                float t2=a22, float t3=a23, float t4=a24
+                a22:=a32, a23:=a33, a24:=a34
+                a32:=t2,  a33:=t3,  a34:=t4
+            if math.abs(a22) > 1e-12
+                float f3 = a32 / a22
+                a32 := 0.0, a33 -= f3*a23, a34 -= f3*a24
+
+            // Back substitution
+            if math.abs(a33) > 1e-12
+                r3 := a34 / a33
+            if math.abs(a22) > 1e-12
+                r2 := (a24 - a23 * nz(r3)) / a22
+            if math.abs(a11) > 1e-12
+                r1 := (a14 - a12 * nz(r2) - a13 * nz(r3)) / a11
+            if math.abs(a00) > 1e-12
+                r0 := (a04 - a01 * nz(r1) - a02 * nz(r2) - a03 * nz(r3)) / a00
+
+    [r0, r1, r2, r3, ro, rs]
+
+// ═══════════════════════════════════════════════════════════════
+//  EVALUATE POLYNOMIAL at bar index `bi`
+// ═══════════════════════════════════════════════════════════════
+f_ev(float c0, float c1, float c2, float c3, int o, float s, int bi) =>
+    float x = (bi - o) / s
+    c0 + c1 * x + c2 * x * x + c3 * x * x * x
+
+// ═══════════════════════════════════════════════════════════════
+//  ASCENDING SEQUENCE — dual-greedy longest increasing subsequence
+//  Forward greedy: start from oldest, keep higher values
+//  Backward greedy: start from newest, go back keeping lower values
+//  Returns the longer of the two (tie → backward, includes latest pivot)
+// ═══════════════════════════════════════════════════════════════
+f_ascSeq(array<int> bars, array<float> vals) =>
+    int n = array.size(bars)
+    // Forward pass
+    array<int>   fb = array.new<int>()
+    array<float> fv = array.new<float>()
+    if n >= 1
+        array.push(fb, array.get(bars, 0))
+        array.push(fv, array.get(vals, 0))
+        float lp = array.get(vals, 0)
+        if n >= 2
+            for i = 1 to n - 1
+                float p = array.get(vals, i)
+                if p > lp
+                    array.push(fb, array.get(bars, i))
+                    array.push(fv, p)
+                    lp := p
+    // Backward pass
+    array<int>   bb = array.new<int>()
+    array<float> bv = array.new<float>()
+    if n >= 1
+        float lp2 = array.get(vals, n - 1)
+        array.unshift(bb, array.get(bars, n - 1))
+        array.unshift(bv, lp2)
+        if n >= 2
+            for i = n - 2 to 0
+                float p = array.get(vals, i)
+                if p < lp2
+                    array.unshift(bb, array.get(bars, i))
+                    array.unshift(bv, p)
+                    lp2 := p
+    bool useFwd = array.size(fb) > array.size(bb)
+    array<int>   rB = useFwd ? fb : bb
+    array<float> rV = useFwd ? fv : bv
+    [rB, rV]
+
+// ═══════════════════════════════════════════════════════════════
+//  DESCENDING SEQUENCE — dual-greedy longest decreasing subsequence
+// ═══════════════════════════════════════════════════════════════
+f_dscSeq(array<int> bars, array<float> vals) =>
+    int n = array.size(bars)
+    // Forward pass
+    array<int>   fb = array.new<int>()
+    array<float> fv = array.new<float>()
+    if n >= 1
+        array.push(fb, array.get(bars, 0))
+        array.push(fv, array.get(vals, 0))
+        float lp = array.get(vals, 0)
+        if n >= 2
+            for i = 1 to n - 1
+                float p = array.get(vals, i)
+                if p < lp
+                    array.push(fb, array.get(bars, i))
+                    array.push(fv, p)
+                    lp := p
+    // Backward pass
+    array<int>   bb = array.new<int>()
+    array<float> bv = array.new<float>()
+    if n >= 1
+        float lp2 = array.get(vals, n - 1)
+        array.unshift(bb, array.get(bars, n - 1))
+        array.unshift(bv, lp2)
+        if n >= 2
+            for i = n - 2 to 0
+                float p = array.get(vals, i)
+                if p > lp2
+                    array.unshift(bb, array.get(bars, i))
+                    array.unshift(bv, p)
+                    lp2 := p
+    bool useFwd = array.size(fb) > array.size(bb)
+    array<int>   rB = useFwd ? fb : bb
+    array<float> rV = useFwd ? fv : bv
+    [rB, rV]
+
+// ═══════════════════════════════════════════════════════════════
+//  CHANNEL BOUNDARY FIT
+//  Takes a sequence, fits polynomial, validates touch points
+//  Touch bar/val arrays updated in-place (passed by reference)
+//  Returns: [c0, c1, c2, c3, origin, scale, startBar, endBar, extendTo, valid]
+// ═══════════════════════════════════════════════════════════════
+f_fitBound(array<int> seqB, array<float> seqV, int deg, int minT, float tol,
+     array<int> outTB, array<float> outTV) =>
+    float c0 = na, float c1 = 0.0, float c2 = 0.0, float c3 = 0.0
+    int   o  = 0
+    float s  = 1.0
+    int   sb = na, int eb = na, int ext = na
+    bool  ok = false
+
+    if array.size(seqB) >= minT
+        [fc0, fc1, fc2, fc3, fo, fs] = f_polyfit(seqB, seqV, deg)
+        if not na(fc0)
+            // Validate each point: curve must pass within tolerance
+            array.clear(outTB)
+            array.clear(outTV)
+            for i = 0 to array.size(seqB) - 1
+                float pred = f_ev(fc0, fc1, fc2, fc3, fo, fs, array.get(seqB, i))
+                float act  = array.get(seqV, i)
+                float err  = math.abs(pred - act) / math.max(math.abs(act), 1e-8)
+                if err <= tol
+                    array.push(outTB, array.get(seqB, i))
+                    array.push(outTV, array.get(seqV, i))
+            if array.size(outTB) >= minT
+                c0 := fc0, c1 := fc1, c2 := fc2, c3 := fc3
+                o  := fo,  s  := fs
+                sb := array.get(outTB, 0)
+                eb := array.get(outTB, array.size(outTB) - 1)
+                // Extension = at least the gap between last two touch points
+                int gap = array.size(outTB) >= 2 ?
+                     array.get(outTB, array.size(outTB) - 1) - array.get(outTB, array.size(outTB) - 2) : 20
+                ext := eb + math.max(gap, 10)
+                ok  := true
+    [c0, c1, c2, c3, o, s, sb, eb, ext, ok]
+
+// ═══════════════════════════════════════════════════════════════
+//  FORWARD EXTENSION — draw dashed line segments past current bar
+// ═══════════════════════════════════════════════════════════════
+f_drawExt(float c0, float c1, float c2, float c3, int o, float s,
+     int fromBar, int toBar, color col, array<line> store) =>
+    if toBar > fromBar
+        int segs   = math.min(10, toBar - fromBar)
+        int stepSz = math.max(1, int(math.round((toBar - fromBar) / segs)))
+        int b      = fromBar
+        int count  = 0
+        while b < toBar and count < 20
+            int bN  = math.min(b + stepSz, toBar)
+            float y1 = f_ev(c0, c1, c2, c3, o, s, b)
+            float y2 = f_ev(c0, c1, c2, c3, o, s, bN)
+            if not na(y1) and not na(y2)
+                array.push(store, line.new(b, y1, bN, y2, color=col, width=2, style=line.style_dashed))
+            b     := bN
+            count += 1
+            if b >= toBar
+                break
+
+// ═══════════════════════════════════════════════════════════════
+//  PERSISTENT STATE — one set per channel boundary
+// ═══════════════════════════════════════════════════════════════
+// Ascending Higher Highs (upper boundary)
+var float ah0 = na, var float ah1 = 0.0, var float ah2 = 0.0, var float ah3 = 0.0
+var int aho = 0, var float ahs = 1.0
+var int ahSb = na, var int ahEb = na, var int ahEx = na, var bool ahOk = false
+var array<int>   ahTB = array.new<int>()
+var array<float> ahTV = array.new<float>()
+
+// Ascending Higher Lows (lower boundary)
+var float al0 = na, var float al1 = 0.0, var float al2 = 0.0, var float al3 = 0.0
+var int alo = 0, var float als = 1.0
+var int alSb = na, var int alEb = na, var int alEx = na, var bool alOk = false
+var array<int>   alTB = array.new<int>()
+var array<float> alTV = array.new<float>()
+
+// Descending Lower Highs (upper boundary)
+var float dh0 = na, var float dh1 = 0.0, var float dh2 = 0.0, var float dh3 = 0.0
+var int dho = 0, var float dhs = 1.0
+var int dhSb = na, var int dhEb = na, var int dhEx = na, var bool dhOk = false
+var array<int>   dhTB = array.new<int>()
+var array<float> dhTV = array.new<float>()
+
+// Descending Lower Lows (lower boundary)
+var float dl0 = na, var float dl1 = 0.0, var float dl2 = 0.0, var float dl3 = 0.0
+var int dlo = 0, var float dls = 1.0
+var int dlSb = na, var int dlEb = na, var int dlEx = na, var bool dlOk = false
+var array<int>   dlTB = array.new<int>()
+var array<float> dlTV = array.new<float>()
+
+// ═══════════════════════════════════════════════════════════════
+//  REFIT — triggered when a new pivot is detected
+// ═══════════════════════════════════════════════════════════════
+if not na(ph) or not na(pl)
+    // ── Ascending Higher Highs ──────────────────────────────
+    [ascHhB, ascHhV] = f_ascSeq(phB, phV)
+    [ra0, ra1, ra2, ra3, rao, ras, raSb, raEb, raEx, raOk] = f_fitBound(ascHhB, ascHhV, i_deg, i_minT, TOL, ahTB, ahTV)
+    ah0 := ra0, ah1 := ra1, ah2 := ra2, ah3 := ra3
+    aho := rao, ahs := ras, ahSb := raSb, ahEb := raEb, ahEx := raEx, ahOk := raOk
+
+    // ── Ascending Higher Lows ───────────────────────────────
+    [ascHlB, ascHlV] = f_ascSeq(plB, plV)
+    [rb0, rb1, rb2, rb3, rbo, rbs, rbSb, rbEb, rbEx, rbOk] = f_fitBound(ascHlB, ascHlV, i_deg, i_minT, TOL, alTB, alTV)
+    al0 := rb0, al1 := rb1, al2 := rb2, al3 := rb3
+    alo := rbo, als := rbs, alSb := rbSb, alEb := rbEb, alEx := rbEx, alOk := rbOk
+
+    // ── Descending Lower Highs ──────────────────────────────
+    [dscLhB, dscLhV] = f_dscSeq(phB, phV)
+    [rc0, rc1, rc2, rc3, rco, rcs, rcSb, rcEb, rcEx, rcOk] = f_fitBound(dscLhB, dscLhV, i_deg, i_minT, TOL, dhTB, dhTV)
+    dh0 := rc0, dh1 := rc1, dh2 := rc2, dh3 := rc3
+    dho := rco, dhs := rcs, dhSb := rcSb, dhEb := rcEb, dhEx := rcEx, dhOk := rcOk
+
+    // ── Descending Lower Lows ───────────────────────────────
+    [dscLlB, dscLlV] = f_dscSeq(plB, plV)
+    [rd0, rd1, rd2, rd3, rdo, rds, rdSb, rdEb, rdEx, rdOk] = f_fitBound(dscLlB, dscLlV, i_deg, i_minT, TOL, dlTB, dlTV)
+    dl0 := rd0, dl1 := rd1, dl2 := rd2, dl3 := rd3
+    dlo := rdo, dls := rds, dlSb := rdSb, dlEb := rdEb, dlEx := rdEx, dlOk := rdOk
+
+// ═══════════════════════════════════════════════════════════════
+//  EVALUATE CURVES — compute polynomial value on every bar
+// ═══════════════════════════════════════════════════════════════
+float aUp = ahOk and bar_index >= nz(ahSb, bar_index + 1) and bar_index <= nz(ahEx, 0) ?
+     f_ev(ah0, ah1, ah2, ah3, aho, ahs, bar_index) : na
+float aLo = alOk and bar_index >= nz(alSb, bar_index + 1) and bar_index <= nz(alEx, 0) ?
+     f_ev(al0, al1, al2, al3, alo, als, bar_index) : na
+float dUp = dhOk and bar_index >= nz(dhSb, bar_index + 1) and bar_index <= nz(dhEx, 0) ?
+     f_ev(dh0, dh1, dh2, dh3, dho, dhs, bar_index) : na
+float dLo = dlOk and bar_index >= nz(dlSb, bar_index + 1) and bar_index <= nz(dlEx, 0) ?
+     f_ev(dl0, dl1, dl2, dl3, dlo, dls, bar_index) : na
+
+// ═══════════════════════════════════════════════════════════════
+//  PLOTS & FILLS
+// ═══════════════════════════════════════════════════════════════
+pAU = plot(aUp, "Ascending Upper (HH)",  color=i_ascCol, linewidth=2)
+pAL = plot(aLo, "Ascending Lower (HL)",  color=i_ascCol, linewidth=2)
+fill(pAU, pAL, color=color.new(i_ascCol, 85), title="Ascending Fill")
+
+pDU = plot(dUp, "Descending Upper (LH)", color=i_dscCol, linewidth=2)
+pDL = plot(dLo, "Descending Lower (LL)", color=i_dscCol, linewidth=2)
+fill(pDU, pDL, color=color.new(i_dscCol, 85), title="Descending Fill")
+
+// ═══════════════════════════════════════════════════════════════
+//  TOUCH POINT MARKERS & FORWARD EXTENSION — drawn on last bar
+// ═══════════════════════════════════════════════════════════════
+var array<label> gLbl = array.new<label>()
+var array<line>  gExt = array.new<line>()
+
+if barstate.islast
+    // ── Clean up previous drawings ──────────────────────────
+    for i = 0 to array.size(gLbl) - 1
+        label.delete(array.get(gLbl, i))
+    array.clear(gLbl)
+    for i = 0 to array.size(gExt) - 1
+        line.delete(array.get(gExt, i))
+    array.clear(gExt)
+
+    // ── White touch-point dots ──────────────────────────────
+    if ahOk
+        for i = 0 to array.size(ahTB) - 1
+            array.push(gLbl, label.new(array.get(ahTB, i), array.get(ahTV, i), "●",
+                 xloc=xloc.bar_index, style=label.style_none, textcolor=i_dotCol, size=size.normal))
+    if alOk
+        for i = 0 to array.size(alTB) - 1
+            array.push(gLbl, label.new(array.get(alTB, i), array.get(alTV, i), "●",
+                 xloc=xloc.bar_index, style=label.style_none, textcolor=i_dotCol, size=size.normal))
+    if dhOk
+        for i = 0 to array.size(dhTB) - 1
+            array.push(gLbl, label.new(array.get(dhTB, i), array.get(dhTV, i), "●",
+                 xloc=xloc.bar_index, style=label.style_none, textcolor=i_dotCol, size=size.normal))
+    if dlOk
+        for i = 0 to array.size(dlTB) - 1
+            array.push(gLbl, label.new(array.get(dlTB, i), array.get(dlTV, i), "●",
+                 xloc=xloc.bar_index, style=label.style_none, textcolor=i_dotCol, size=size.normal))
+
+    // ── Forward extension (dashed) past current bar ─────────
+    if ahOk and nz(ahEx, 0) > bar_index
+        f_drawExt(ah0, ah1, ah2, ah3, aho, ahs, bar_index, ahEx, i_ascCol, gExt)
+    if alOk and nz(alEx, 0) > bar_index
+        f_drawExt(al0, al1, al2, al3, alo, als, bar_index, alEx, i_ascCol, gExt)
+    if dhOk and nz(dhEx, 0) > bar_index
+        f_drawExt(dh0, dh1, dh2, dh3, dho, dhs, bar_index, dhEx, i_dscCol, gExt)
+    if dlOk and nz(dlEx, 0) > bar_index
+        f_drawExt(dl0, dl1, dl2, dl3, dlo, dls, bar_index, dlEx, i_dscCol, gExt)
+
+// ═══════════════════════════════════════════════════════════════
+//  INFO TABLE — show detected channel stats
+// ═══════════════════════════════════════════════════════════════
+var table infoTbl = table.new(position.top_right, 3, 3, bgcolor=color.new(color.black, 80))
+if barstate.islast
+    table.cell(infoTbl, 0, 0, "Channel",      text_color=color.gray,  text_size=size.small)
+    table.cell(infoTbl, 1, 0, "Upper",         text_color=color.gray,  text_size=size.small)
+    table.cell(infoTbl, 2, 0, "Lower",         text_color=color.gray,  text_size=size.small)
+    table.cell(infoTbl, 0, 1, "Ascending",     text_color=i_ascCol,    text_size=size.small)
+    table.cell(infoTbl, 1, 1, ahOk ? str.tostring(array.size(ahTB)) + " pts" : "—",
+         text_color=ahOk ? i_ascCol : color.gray, text_size=size.small)
+    table.cell(infoTbl, 2, 1, alOk ? str.tostring(array.size(alTB)) + " pts" : "—",
+         text_color=alOk ? i_ascCol : color.gray, text_size=size.small)
+    table.cell(infoTbl, 0, 2, "Descending",    text_color=i_dscCol,    text_size=size.small)
+    table.cell(infoTbl, 1, 2, dhOk ? str.tostring(array.size(dhTB)) + " pts" : "—",
+         text_color=dhOk ? i_dscCol : color.gray, text_size=size.small)
+    table.cell(infoTbl, 2, 2, dlOk ? str.tostring(array.size(dlTB)) + " pts" : "—",
+         text_color=dlOk ? i_dscCol : color.gray, text_size=size.small)

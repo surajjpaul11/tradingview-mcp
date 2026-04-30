@@ -43,10 +43,52 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
 |---------|-------------------|--------------------|--------------------|
 | **Setup Time** | 5 minutes | Hours (Docker, Conda...) | Weeks (Contracts) |
 | **Cost** | Free & Open Source | Variable | $30k+/year |
-| **Backtesting** | ✅ 6 strategies + Sharpe | ❌ Manual scripting | ✅ Proprietary |
+| **Backtesting** | ✅ 11 strategies + Sharpe (incl. shorts) | ❌ Manual scripting | ✅ Proprietary |
 | **Live Sentiment** | ✅ Reddit + RSS news | ❌ Separate setup | ✅ Terminal |
 | **Market Data** | ✅ Live / Real-Time | Historical / Delayed | Live |
 | **API Keys** | **None required** | Multiple (OpenAI, etc.) | N/A |
+
+---
+
+## 🆕 Fork Additions: Custom Strategies
+
+This fork adds five custom strategies with Python and Pine Script implementations. Full details in [`strategies/STRATEGIES.md`](strategies/STRATEGIES.md).
+
+### VWMA 17 Strategy
+Trend following with adaptive Kaufman Efficiency Ratio filter. Supports long + short. Uses VWMA(17) crossover with ATR-based SL/TP. The ER dynamically selects SMA(200) in trending markets or SMA(100) in choppy markets.
+
+### Higher Highs Strategy
+Multi-timeframe market structure strategy. Detects trends via 3+ consecutive higher highs/higher lows on HTF (4H), enters on LTF (1H) pullback confirmations. Exits via HTF structure flip or trend exhaustion detector (RSI divergence + volume dry-up + ATR spike). Optional trailing stop with configurable profit threshold.
+
+### Buy and Protect Strategy
+Buy-and-hold with downside protection. Enters long immediately and stays invested like B&H, but exits when 2+ danger signals fire simultaneously: rapid price decline (8% from peak), SMA(200) breakdown, or volatility spike (ATR > 3x average). Captures ~86% of B&H returns with significantly lower drawdowns.
+
+### Straight Line Strategy
+Trendline break strategy with 4-point confirmation. Draws support/resistance lines through swing points, requires 2+ additional confirmations within 1.5% tolerance. Trades the break with 1-bar confirmation. Long-only by default, optional short selling. Best on assets with clear trend reversals.
+
+### Volatility Harvester Strategy (NEW)
+Mean reversion for choppy/volatile markets. Uses Kaufman ER to detect directionless markets, then buys panic dips and shorts sharp rips. ATR Z-Score entries with volume confirmation. Triple-layer exits: mean reversion, time limit, stop loss.
+
+```bash
+# VWMA17
+python strategies/vwma17_strategy.py --symbol BTC-USD --period 2y
+
+# Higher Highs (default: structure + exhaustion exits)
+python strategies/higher_highs_strategy.py --symbol SPY --period 2y --long-only
+
+# Buy and Protect (B&H with crash protection)
+python strategies/buy_and_protect_strategy.py --symbol SPY --period 2y
+
+# Straight Line (trendline break)
+python strategies/straight_line_strategy.py --symbol SPY --period 2y
+
+# Volatility Harvester (mean reversion in choppy markets)
+python strategies/volatility_harvester_strategy.py --symbol BTC-USD --period 2y
+```
+
+The `strategies/` directory contains paired files — same strategy name, different extensions:
+- `.py` — Standalone Python backtester with CLI
+- `.pine` — TradingView Pine Script v6 equivalent
 
 ---
 
@@ -189,16 +231,21 @@ Unlike basic screeners, this framework deploys **specialized AI agents** that de
 
 | Tool | Description |
 |------|-------------|
-| `backtest_strategy` | Backtest 1 of 6 strategies with institutional metrics (Sharpe, Calmar, Expectancy) |
-| `compare_strategies` | Run all 6 strategies on same symbol and rank by performance |
+| `backtest_strategy` | Backtest 1 of 11 strategies with institutional metrics (Sharpe, Calmar, Expectancy) |
+| `compare_strategies` | Run all strategies on same symbol and rank by performance |
 
-**6 Strategies to Test:**
+**11 Strategies to Test:** ([full details](strategies/STRATEGIES.md))
 - `rsi` — RSI oversold/overbought mean reversion
 - `bollinger` — Bollinger Band mean reversion
 - `macd` — MACD golden/death cross
 - `ema_cross` — EMA 20/50 Golden/Death Cross
-- `supertrend` — ATR-based Supertrend trend following 🔥
+- `supertrend` — ATR-based Supertrend trend following
 - `donchian` — Donchian Channel breakout (Turtle Trader style)
+- `vwma17` — VWMA(17) crossover with adaptive ER trend filter (long + short)
+- `higher_highs` — Multi-timeframe market structure with exhaustion detection (long + short)
+- `buy_and_protect` — Buy-and-hold with 2+ signal confluence crash protection (long only)
+- `straight_line` — Trendline break with 4-point confirmation (long + optional short)
+- `volatility_harvester` — Mean reversion for choppy markets with ER regime gate (long + short)
 
 **Metrics you get:** Win Rate, Total Return, Sharpe Ratio, Calmar Ratio, Max Drawdown, Profit Factor, Expectancy, Best/Worst Trade, vs Buy-and-Hold, with **realistic commission + slippage simulation**.
 

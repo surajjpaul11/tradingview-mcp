@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enhanced Straight Lines Strategy — Visual Guide</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px 30px 60px; }
+  h1 { text-align: center; margin-bottom: 6px; color: #58a6ff; font-size: 28px; }
+  .subtitle { text-align: center; color: #8b949e; margin-bottom: 30px; font-size: 14px; }
+
+  /* Navigation tabs */
+  .tab-bar { display: flex; justify-content: center; gap: 8px; margin-bottom: 30px; flex-wrap: wrap; }
+  .tab-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid #30363d; background: #161b22; color: #8b949e; cursor: pointer; font-size: 13px; transition: all .2s; }
+  .tab-btn:hover { border-color: #58a6ff; color: #c9d1d9; }
+  .tab-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; font-weight: 600; }
+
+  .scene { display: none; }
+  .scene.active { display: block; }
+
+  .chart-container { max-width: 960px; margin: 0 auto 40px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; }
+  .chart-title { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
+  .chart-desc { color: #8b949e; font-size: 13px; margin-bottom: 18px; line-height: 1.6; }
+  canvas { width: 100%; border-radius: 8px; background: #0d1117; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .rules-box { max-width: 960px; margin: 0 auto 40px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; }
+  .rules-box h2 { color: #58a6ff; margin-bottom: 14px; font-size: 18px; }
+  .rules-box table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rules-box th { text-align: left; padding: 8px 10px; border-bottom: 2px solid #30363d; color: #58a6ff; }
+  .rules-box td { padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  .buy { color: #3fb950; font-weight: 600; }
+  .sell { color: #f85149; font-weight: 600; }
+  .short { color: #f0883e; font-weight: 600; }
+  .neutral { color: #d29922; font-weight: 600; }
+
+  .vol-box { max-width: 960px; margin: 0 auto 40px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; }
+  .vol-box h2 { color: #58a6ff; margin-bottom: 14px; font-size: 18px; }
+  .vol-formula { font-family: 'SF Mono', Menlo, monospace; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.8; margin: 12px 0; }
+  .vol-examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+  .vol-example { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
+  .vol-example .pct { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .vol-example .label { font-size: 11px; color: #8b949e; }
+
+  .param-table { max-width: 960px; margin: 0 auto 40px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; }
+  .param-table h2 { color: #58a6ff; margin-bottom: 14px; font-size: 18px; }
+  .param-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .param-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid #30363d; color: #58a6ff; }
+  .param-table td { padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  .param-table code { background: #0d1117; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Enhanced Straight Lines Strategy</h1>
+<p class="subtitle">Channel-based trend following with volume-weighted position sizing &amp; tax-optimized swing trades</p>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showScene('uptrend')">1. Uptrend Channel</button>
+  <button class="tab-btn" onclick="showScene('upswing')">2. Uptrend Swings</button>
+  <button class="tab-btn" onclick="showScene('trendflip')">3. Trend Flip</button>
+  <button class="tab-btn" onclick="showScene('downtrend')">4. Downtrend Channel</button>
+  <button class="tab-btn" onclick="showScene('downswing')">5. Downtrend Swings</button>
+  <button class="tab-btn" onclick="showScene('horizontal')">6. Horizontal / Neutral</button>
+  <button class="tab-btn" onclick="showScene('rules')">Rules Summary</button>
+  <button class="tab-btn" onclick="showScene('volume')">Volume Sizing</button>
+  <button class="tab-btn" onclick="showScene('params')">Parameters</button>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 1: UPTREND CHANNEL                                     -->
+<!-- ============================================================ -->
+<div id="uptrend" class="scene active">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#3fb950;">Scene 1: Uptrend Channel — Bounce Up from Support = BUY</div>
+    <div class="chart-desc">
+      Both trendlines slope <strong>upward</strong> → confirmed uptrend.<br>
+      The <strong style="color:#3fb950;">support line</strong> connects the last 3 higher lows.
+      The <strong style="color:#f0883e;">resistance line</strong> connects the last 3 higher highs.<br>
+      When price enters the support zone (within 1.5%) and 2 consecutive bullish candles confirm the bounce → <strong class="buy">BUY</strong> (volume-weighted %).
+    </div>
+    <canvas id="canvas-uptrend" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (higher lows)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (higher highs)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Touch points (last 3)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950; border: 2px solid #fff"></div> Bounce UP = BUY</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(63,185,80,0.15)"></div> Support zone (1.5%)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 2: UPTREND SWINGS (partial sell/rebuy)                 -->
+<!-- ============================================================ -->
+<div id="upswing" class="scene">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#d29922;">Scene 2: Uptrend Swings — Bounce Down from Resistance = PARTIAL SELL</div>
+    <div class="chart-desc">
+      Still in uptrend (both lines up). Price reaches the <strong style="color:#f0883e;">resistance zone</strong> (higher highs line)
+      and 2 consecutive bearish candles confirm a bounce down → <strong class="sell">SELL</strong> volume-weighted % (20-80%, not 100%).<br>
+      This is <strong>tax-optimized</strong>: we don't fully exit an uptrend, just take profit on the swing.<br>
+      When price bounces back up from support → <strong class="buy">BUY BACK</strong> the sold portion (volume-weighted %).
+    </div>
+    <canvas id="canvas-upswing" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (higher lows)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (higher highs)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f85149; border: 2px solid #fff"></div> Bounce DOWN from resistance = PARTIAL SELL</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950; border: 2px solid #fff"></div> Bounce UP from support = BUY BACK</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(240,136,62,0.15)"></div> Resistance zone (1.5%)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 3: TREND FLIP                                          -->
+<!-- ============================================================ -->
+<div id="trendflip" class="scene">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#f85149;">Scene 3: Trend Flip — SELL 100%</div>
+    <div class="chart-desc">
+      Trendline slopes <strong>disagree</strong> or both turn down → trend is no longer up.<br>
+      This is a <strong>regime change</strong>, not a swing. We <strong class="sell">SELL 100%</strong> of all holdings immediately, regardless of volume.<br>
+      After the full exit, we wait for a downtrend channel to form before entering shorts.<br>
+      The diagram shows support breaking while resistance flattens — lines disagree → neutral/down → full exit.
+    </div>
+    <canvas id="canvas-trendflip" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (was rising, now broken)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (flattening)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f85149; border: 3px solid #f85149"></div> TREND FLIP = SELL 100%</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div> Old trendlines (discarded)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 4: DOWNTREND CHANNEL (short entry)                     -->
+<!-- ============================================================ -->
+<div id="downtrend" class="scene">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#f0883e;">Scene 4: Downtrend Channel — Bounce Down from Resistance = SHORT</div>
+    <div class="chart-desc">
+      Both trendlines slope <strong>downward</strong> → confirmed downtrend channel.<br>
+      The <strong style="color:#f0883e;">resistance line</strong> connects the last 3 lower highs.
+      The <strong style="color:#3fb950;">support line</strong> connects the last 3 lower lows.<br>
+      When price bounces down from resistance (2-bar bearish confirmation in zone) → <strong class="short">SHORT</strong> (volume-weighted %).<br>
+      We do NOT short on the trend flip itself — we wait for the channel to form and a confirmed bounce.
+    </div>
+    <canvas id="canvas-downtrend" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (lower highs)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (lower lows)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e; border: 2px solid #fff"></div> Bounce DOWN from resistance = SHORT</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(240,136,62,0.15)"></div> Resistance zone (1.5%)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 5: DOWNTREND SWINGS (close shorts)                     -->
+<!-- ============================================================ -->
+<div id="downswing" class="scene">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#3fb950;">Scene 5: Downtrend Swings — Bounce Up from Support = CLOSE SHORT</div>
+    <div class="chart-desc">
+      Inside the downtrend channel. Price reaches the <strong style="color:#3fb950;">support zone</strong> (lower lows line)
+      and 2 consecutive bullish candles confirm a bounce up → <strong class="buy">CLOSE SHORT</strong> (volume-weighted %).<br>
+      When price bounces back down from resistance → <strong class="short">RE-ENTER SHORT</strong> (volume-weighted %).<br>
+      This mirrors the uptrend swing logic but for short positions.
+    </div>
+    <canvas id="canvas-downswing" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (lower highs)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (lower lows)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950; border: 2px solid #fff"></div> Bounce UP from support = CLOSE SHORT</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e; border: 2px solid #fff"></div> Bounce DOWN from resistance = RE-SHORT</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENE 6: HORIZONTAL / NEUTRAL                                -->
+<!-- ============================================================ -->
+<div id="horizontal" class="scene">
+  <div class="chart-container">
+    <div class="chart-title" style="color:#d29922;">Scene 6: Horizontal / Neutral — Lines Disagree or Both Flat</div>
+    <div class="chart-desc">
+      When support and resistance slopes <strong>disagree</strong> (one up, one down = converging/diverging wedge)
+      or both are nearly flat → trend is <strong class="neutral">NEUTRAL</strong>.<br>
+      If we were long → <strong class="sell">SELL 100%</strong> (same as trend flip — regime change).<br>
+      If we were short → <strong class="buy">CLOSE ALL SHORTS</strong>.<br>
+      Stay flat (no positions) until a clear trend re-establishes. The chart shows a converging wedge where
+      support slopes up but resistance slopes down — lines disagree → neutral.
+    </div>
+    <canvas id="canvas-horizontal" height="420"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Support (sloping up)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Resistance (sloping down)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#d29922; border: 2px solid #fff"></div> Lines disagree = NEUTRAL → exit all</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- RULES SUMMARY                                                -->
+<!-- ============================================================ -->
+<div id="rules" class="scene">
+  <div class="rules-box">
+    <h2>Complete Trading Rules</h2>
+    <table>
+      <thead>
+        <tr><th>Situation</th><th>Trend</th><th>Action</th><th>Sizing</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Bounce UP from higher lows (support)</td>
+          <td style="color:#3fb950">Uptrend</td>
+          <td class="buy">BUY</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+        <tr>
+          <td>Bounce DOWN from higher highs (resistance)</td>
+          <td style="color:#3fb950">Uptrend</td>
+          <td class="sell">PARTIAL SELL</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+        <tr>
+          <td>Trend flips UP → DOWN or HORIZONTAL</td>
+          <td class="neutral">Regime change</td>
+          <td class="sell">SELL 100%</td>
+          <td>Full exit (ignore volume)</td>
+        </tr>
+        <tr>
+          <td>Trend flips DOWN → UP or HORIZONTAL</td>
+          <td class="neutral">Regime change</td>
+          <td class="buy">CLOSE ALL SHORTS</td>
+          <td>Full exit (ignore volume)</td>
+        </tr>
+        <tr>
+          <td>Bounce DOWN from lower highs (resistance)</td>
+          <td style="color:#f85149">Downtrend</td>
+          <td class="short">SHORT</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+        <tr>
+          <td>Bounce UP from lower lows (support)</td>
+          <td style="color:#f85149">Downtrend</td>
+          <td class="buy">CLOSE SHORT</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+        <tr>
+          <td>Bounce DOWN from lower highs (no trend yet)</td>
+          <td class="neutral">Forming</td>
+          <td class="sell">SELL (if holding)</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+        <tr>
+          <td>Bounce UP from lower lows</td>
+          <td class="neutral">Any</td>
+          <td class="buy">BUY</td>
+          <td>Volume-weighted 20-80%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules-box">
+    <h2>Trend Determination (Relative Agreement)</h2>
+    <table>
+      <thead>
+        <tr><th>Support Slope</th><th>Resistance Slope</th><th>Trend</th></tr>
+      </thead>
+      <tbody>
+        <tr><td style="color:#3fb950">Up ↗</td><td style="color:#3fb950">Up ↗</td><td style="color:#3fb950"><strong>UPTREND</strong></td></tr>
+        <tr><td style="color:#f85149">Down ↘</td><td style="color:#f85149">Down ↘</td><td style="color:#f85149"><strong>DOWNTREND</strong></td></tr>
+        <tr><td style="color:#3fb950">Up ↗</td><td style="color:#f85149">Down ↘</td><td class="neutral"><strong>NEUTRAL</strong> (converging wedge)</td></tr>
+        <tr><td style="color:#f85149">Down ↘</td><td style="color:#3fb950">Up ↗</td><td class="neutral"><strong>NEUTRAL</strong> (diverging wedge)</td></tr>
+        <tr><td>Flat →</td><td>Flat →</td><td class="neutral"><strong>NEUTRAL</strong> (range-bound)</td></tr>
+        <tr><td style="color:#3fb950">Up ↗</td><td>Flat →</td><td class="neutral"><strong>NEUTRAL</strong> (ascending wedge)</td></tr>
+        <tr><td>Flat →</td><td style="color:#f85149">Down ↘</td><td class="neutral"><strong>NEUTRAL</strong> (descending wedge)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VOLUME SIZING                                                -->
+<!-- ============================================================ -->
+<div id="volume" class="scene">
+  <div class="vol-box">
+    <h2>Volume-Weighted Position Sizing</h2>
+    <p style="color:#8b949e; font-size:13px; margin-bottom:14px;">
+      Uses the 2 confirmation candles from the bounce detection. Higher volume = more conviction = larger trade.
+    </p>
+    <div class="vol-formula">
+      <span style="color:#d2a8ff;">avg_vol</span> = mean(<span style="color:#79c0ff;">vol[confirm_bar_1]</span>, <span style="color:#79c0ff;">vol[confirm_bar_2]</span>)<br>
+      <span style="color:#d2a8ff;">vol_ratio</span> = <span style="color:#d2a8ff;">avg_vol</span> / SMA(<span style="color:#79c0ff;">volume</span>, 20)<br>
+      <span style="color:#d2a8ff;">trade_pct</span> = clamp(<span style="color:#d2a8ff;">vol_ratio</span> &times; 25%, <span style="color:#3fb950;">floor=20%</span>, <span style="color:#f85149;">ceiling=80%</span>)<br><br>
+      <span style="color:#8b949e;">Exception: Trend flip → always 100% (regime change, not a swing trade)</span>
+    </div>
+    <div class="vol-examples">
+      <div class="vol-example">
+        <div class="pct" style="color:#8b949e;">20%</div>
+        <div class="label">Vol ratio &lt; 0.8x<br>Low conviction (floor)</div>
+      </div>
+      <div class="vol-example">
+        <div class="pct" style="color:#79c0ff;">25%</div>
+        <div class="label">Vol ratio = 1.0x<br>Average volume</div>
+      </div>
+      <div class="vol-example">
+        <div class="pct" style="color:#3fb950;">50%</div>
+        <div class="label">Vol ratio = 2.0x<br>Double average</div>
+      </div>
+      <div class="vol-example">
+        <div class="pct" style="color:#f0883e;">75%</div>
+        <div class="label">Vol ratio = 3.0x<br>High conviction</div>
+      </div>
+      <div class="vol-example">
+        <div class="pct" style="color:#f85149;">80%</div>
+        <div class="label">Vol ratio &gt; 3.2x<br>Max conviction (ceiling)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PARAMETERS                                                   -->
+<!-- ============================================================ -->
+<div id="params" class="scene">
+  <div class="param-table">
+    <h2>Strategy Parameters</h2>
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>min_touches</code></td><td>3</td><td>Number of swing points to fit trendline (switchable to 2)</td></tr>
+        <tr><td><code>tolerance</code></td><td>1.5%</td><td>Zone width for "near trendline" bounce detection</td></tr>
+        <tr><td><code>pivot_lookback</code></td><td>5</td><td>Bars left/right for swing high/low detection</td></tr>
+        <tr><td><code>vol_ma_period</code></td><td>20</td><td>Moving average period for volume baseline</td></tr>
+        <tr><td><code>vol_base_pct</code></td><td>25%</td><td>Base multiplier: trade_pct = vol_ratio &times; this</td></tr>
+        <tr><td><code>vol_floor_pct</code></td><td>20%</td><td>Minimum position size per trade</td></tr>
+        <tr><td><code>vol_ceiling_pct</code></td><td>80%</td><td>Maximum position size per trade</td></tr>
+        <tr><td><code>confirm_bars</code></td><td>2</td><td>Consecutive candles needed to confirm a bounce</td></tr>
+        <tr><td><code>enable_short</code></td><td>true</td><td>Enable short positions in downtrend channel</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
+function showScene(id) {
+  document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const btns = document.querySelectorAll('.tab-btn');
+  const ids = ['uptrend','upswing','trendflip','downtrend','downswing','horizontal','rules','volume','params'];
+  const idx = ids.indexOf(id);
+  if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
+  // Redraw the canvas for the active scene
+  setTimeout(() => drawAll(), 50);
+}
+
+// ============================================================
+// DRAWING HELPERS
+// ============================================================
+const C = {
+  green: '#3fb950', red: '#f85149', orange: '#f0883e', blue: '#58a6ff',
+  purple: '#d2a8ff', yellow: '#d29922', gray: '#8b949e', bg: '#0d1117',
+  candle_up: '#3fb950', candle_dn: '#f85149',
+};
+
+function drawCandle(ctx, x, w, o, h, l, c, yScale, yOff) {
+  const toY = v => yOff + (1 - yScale(v)) * (ctx.canvas.height - 80) + 40;
+  const color = c >= o ? C.candle_up : C.candle_dn;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  // Wick
+  ctx.beginPath();
+  ctx.moveTo(x + w/2, toY(h));
+  ctx.lineTo(x + w/2, toY(l));
+  ctx.stroke();
+  // Body
+  const bodyTop = toY(Math.max(o, c));
+  const bodyBot = toY(Math.min(o, c));
+  const bodyH = Math.max(bodyBot - bodyTop, 1);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 2, bodyTop, w - 4, bodyH);
+}
+
+function drawLine(ctx, points, color, dash, yScale, yOff, canvasH) {
+  const toY = v => yOff + (1 - yScale(v)) * (canvasH - 80) + 40;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const y = toY(p[1]);
+    if (i === 0) ctx.moveTo(p[0], y); else ctx.lineTo(p[0], y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawZone(ctx, points, color, yScale, yOff, canvasH, tolerance) {
+  const toY = v => yOff + (1 - yScale(v)) * (canvasH - 80) + 40;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  // Top edge
+  points.forEach((p, i) => {
+    const y = toY(p[1] * (1 + tolerance));
+    if (i === 0) ctx.moveTo(p[0], y); else ctx.lineTo(p[0], y);
+  });
+  // Bottom edge (reversed)
+  for (let i = points.length - 1; i >= 0; i--) {
+    const y = toY(points[i][1] * (1 - tolerance));
+    ctx.lineTo(points[i][0], y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDot(ctx, x, y, r, color, label) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  if (label) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, y - r - 5);
+  }
+}
+
+function drawSignal(ctx, x, y, text, color, above) {
+  const yOff2 = above ? -18 : 22;
+  // Arrow
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  if (above) {
+    ctx.moveTo(x, y - 4);
+    ctx.lineTo(x - 6, y - 14);
+    ctx.lineTo(x + 6, y - 14);
+  } else {
+    ctx.moveTo(x, y + 4);
+    ctx.lineTo(x - 6, y + 14);
+    ctx.lineTo(x + 6, y + 14);
+  }
+  ctx.closePath();
+  ctx.fill();
+  // Label
+  ctx.fillStyle = color;
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x, y + yOff2 + (above ? -4 : 4));
+}
+
+function drawVolBar(ctx, x, w, vol, maxVol, canvasH, isSignal) {
+  const h = (vol / maxVol) * 50;
+  const y = canvasH - h - 2;
+  ctx.fillStyle = isSignal ? 'rgba(88,166,255,0.6)' : 'rgba(139,148,158,0.2)';
+  ctx.fillRect(x + 1, y, w - 2, h);
+}
+
+// ============================================================
+// SCENE DATA GENERATORS
+// ============================================================
+
+function genUptrend() {
+  // Rising channel: higher highs and higher lows
+  const base = [100, 102, 99, 103, 101, 106, 103, 108, 105, 110, 107, 113, 109, 115, 112, 117, 114, 120, 116, 122, 119, 125, 121, 127, 123];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 2;
+    const h = Math.max(o, c) + Math.random() * 2;
+    const l = Math.min(o, c) - Math.random() * 2;
+    const v = 800 + Math.random() * 400;
+    candles.push({ o, h, l, c, v });
+  }
+  // Support touches (higher lows): indices 2, 6, 10 (values ~99, 103, 107)
+  const supportTouches = [
+    { idx: 2, price: candles[2].l },
+    { idx: 6, price: candles[6].l },
+    { idx: 10, price: candles[10].l },
+  ];
+  // Bounce signal at index 11 (after touch at 10)
+  const bounceIdx = 11;
+  return { candles, supportTouches, bounceIdx, type: 'uptrend' };
+}
+
+function genUpswing() {
+  // Rising channel with a bounce DOWN from resistance and then back UP from support
+  const base = [100, 104, 101, 106, 103, 109, 105, 112, 108, 114, 111, 116, 113, 118, 115, 120, 117, 121, 114, 112, 115, 118, 121, 124, 126];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 1.5;
+    const h = Math.max(o, c) + Math.random() * 2;
+    const l = Math.min(o, c) - Math.random() * 2;
+    const v = 800 + Math.random() * 400;
+    candles.push({ o, h, l, c, v });
+  }
+  // Make sell signal bars high volume
+  candles[17].v = 1800;
+  candles[18].v = 1900;
+  // Make buy-back signal bars moderate volume
+  candles[20].v = 1200;
+  candles[21].v = 1300;
+  return { candles, sellIdx: 18, buyBackIdx: 21 };
+}
+
+function genTrendflip() {
+  // Rising then flattening/breaking
+  const base = [100, 104, 101, 107, 103, 110, 106, 112, 108, 113, 109, 111, 107, 108, 104, 106, 102, 103, 99, 101, 97, 98, 95, 96, 93];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 1.5;
+    const h = Math.max(o, c) + Math.random() * 2;
+    const l = Math.min(o, c) - Math.random() * 2;
+    const v = 800 + Math.random() * 400;
+    candles.push({ o, h, l, c, v });
+  }
+  return { candles, flipIdx: 12 };
+}
+
+function genDowntrend() {
+  // Falling channel: lower highs and lower lows
+  const base = [130, 128, 131, 126, 129, 124, 127, 121, 124, 119, 122, 116, 119, 114, 117, 111, 114, 109, 112, 106, 109, 104, 107, 101, 104];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 2;
+    const h = Math.max(o, c) + Math.random() * 2;
+    const l = Math.min(o, c) - Math.random() * 2;
+    const v = 800 + Math.random() * 400;
+    candles.push({ o, h, l, c, v });
+  }
+  // Resistance touches (lower highs): indices 2, 6, 10
+  const resTouches = [
+    { idx: 2, price: candles[2].h },
+    { idx: 6, price: candles[6].h },
+    { idx: 10, price: candles[10].h },
+  ];
+  // Short signal after bounce from resistance at 11
+  candles[10].v = 1600;
+  candles[11].v = 1700;
+  return { candles, resTouches, shortIdx: 11 };
+}
+
+function genDownswing() {
+  const base = [130, 127, 131, 125, 128, 122, 126, 119, 123, 117, 121, 114, 118, 112, 116, 109, 113, 107, 111, 105, 109, 103, 107, 101, 104];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 1.5;
+    const h = Math.max(o, c) + Math.random() * 2;
+    const l = Math.min(o, c) - Math.random() * 2;
+    const v = 800 + Math.random() * 400;
+    candles.push({ o, h, l, c, v });
+  }
+  candles[11].v = 1500;
+  candles[12].v = 1600;
+  candles[17].v = 1400;
+  candles[18].v = 1500;
+  return { candles, coverIdx: 12, reshortIdx: 18 };
+}
+
+function genHorizontal() {
+  // Converging wedge: support rising, resistance falling
+  const base = [110, 112, 108, 114, 107, 113, 108, 112, 109, 111, 109, 111, 110, 110, 110, 111, 109, 110, 110, 110, 109, 111, 110, 110, 110];
+  const candles = [];
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i];
+    const o = c + (Math.random() - 0.5) * 1;
+    const h = Math.max(o, c) + Math.random() * 1.5;
+    const l = Math.min(o, c) - Math.random() * 1.5;
+    const v = 600 + Math.random() * 300;
+    candles.push({ o, h, l, c, v });
+  }
+  return { candles, neutralIdx: 10 };
+}
+
+// ============================================================
+// MAIN DRAW FUNCTIONS
+// ============================================================
+
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return null;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 420 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas.style.height = '420px';
+  ctx.clearRect(0, 0, rect.width, 420);
+  return { ctx, w: rect.width, h: 420 };
+}
+
+function drawScene1() {
+  const setup = setupCanvas('canvas-uptrend');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genUptrend();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 3;
+  const maxP = Math.max(...allPrices) + 3;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  // Volume bars
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, false));
+
+  // Support zone & line
+  const st = data.supportTouches;
+  const supportPts = [];
+  for (let i = 0; i < n; i++) {
+    const slope = (st[2].price - st[0].price) / (st[2].idx - st[0].idx);
+    const val = st[0].price + slope * (i - st[0].idx);
+    supportPts.push([30 + i * cw + cw/2, val]);
+  }
+  drawZone(ctx, supportPts, 'rgba(63,185,80,0.08)', yScale, 0, h, 0.015);
+  drawLine(ctx, supportPts, C.green, [], yScale, 0, h);
+
+  // Resistance line (higher highs)
+  const resSlope = (candles[11].h - candles[1].h) / 10;
+  const resPts = [];
+  for (let i = 0; i < n; i++) {
+    resPts.push([30 + i * cw + cw/2, candles[1].h + resSlope * (i - 1)]);
+  }
+  drawLine(ctx, resPts, C.orange, [6, 4], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Touch points
+  st.forEach(t => {
+    const x = 30 + t.idx * cw + cw/2;
+    drawDot(ctx, x, toY(t.price), 6, C.blue, null);
+  });
+
+  // Bounce signal
+  const bx = 30 + data.bounceIdx * cw + cw/2;
+  const by = toY(candles[data.bounceIdx].l);
+  drawSignal(ctx, bx, by, 'BUY', C.green, false);
+
+  // Labels
+  ctx.fillStyle = C.green;
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Support (last 3 higher lows)', 40, 30);
+  ctx.fillStyle = C.orange;
+  ctx.fillText('Resistance (higher highs)', w - 200, 30);
+}
+
+function drawScene2() {
+  const setup = setupCanvas('canvas-upswing');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genUpswing();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 3;
+  const maxP = Math.max(...allPrices) + 3;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  // Volume bars — highlight signal bars
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => {
+    const isSig = (i === 17 || i === 18 || i === 20 || i === 21);
+    drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, isSig);
+  });
+
+  // Support line (rising)
+  const supSlope = 0.65;
+  const supBase = 99;
+  const supportPts = [];
+  for (let i = 0; i < n; i++) supportPts.push([30 + i * cw + cw/2, supBase + supSlope * i]);
+  drawLine(ctx, supportPts, C.green, [], yScale, 0, h);
+
+  // Resistance line (rising) with zone
+  const resSlope = 0.55;
+  const resBase = 106;
+  const resPts = [];
+  for (let i = 0; i < n; i++) resPts.push([30 + i * cw + cw/2, resBase + resSlope * i]);
+  drawZone(ctx, resPts, 'rgba(240,136,62,0.08)', yScale, 0, h, 0.015);
+  drawLine(ctx, resPts, C.orange, [6, 4], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Sell signal at resistance bounce
+  const sx = 30 + data.sellIdx * cw + cw/2;
+  const sy = toY(candles[data.sellIdx].h);
+  drawSignal(ctx, sx, sy, 'SELL ~47%', C.red, true);
+
+  // Buy-back signal at support bounce
+  const bx = 30 + data.buyBackIdx * cw + cw/2;
+  const by = toY(candles[data.buyBackIdx].l);
+  drawSignal(ctx, bx, by, 'BUY BACK', C.green, false);
+
+  // Volume annotation
+  ctx.fillStyle = C.blue;
+  ctx.font = '11px sans-serif';
+  ctx.fillText('↑ High vol = larger sell %', 30 + 17 * cw, h - 55);
+  ctx.fillText('↑ Moderate vol = smaller buy %', 30 + 20 * cw - 10, h - 55);
+
+  ctx.fillStyle = C.orange;
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Resistance zone', w - 160, 30);
+  ctx.fillStyle = C.green;
+  ctx.fillText('Support', 40, 30);
+}
+
+function drawScene3() {
+  const setup = setupCanvas('canvas-trendflip');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genTrendflip();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 5;
+  const maxP = Math.max(...allPrices) + 5;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, false));
+
+  // Old support (rising, then breaks) — dashed after flip
+  const supPts1 = [];
+  for (let i = 0; i <= 10; i++) supPts1.push([30 + i * cw + cw/2, 99 + 1.0 * i]);
+  drawLine(ctx, supPts1, C.green, [], yScale, 0, h);
+  const supPts2 = [];
+  for (let i = 10; i < n; i++) supPts2.push([30 + i * cw + cw/2, 99 + 1.0 * i]);
+  drawLine(ctx, supPts2, C.gray, [4, 4], yScale, 0, h);
+
+  // Old resistance (rising then flattening)
+  const resPts1 = [];
+  for (let i = 0; i <= 8; i++) resPts1.push([30 + i * cw + cw/2, 106 + 0.9 * i]);
+  drawLine(ctx, resPts1, C.orange, [], yScale, 0, h);
+  const resPts2 = [];
+  for (let i = 8; i < n; i++) resPts2.push([30 + i * cw + cw/2, 106 + 0.9 * 8 - 0.3 * (i - 8)]);
+  drawLine(ctx, resPts2, C.gray, [4, 4], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Trend flip signal
+  const fx = 30 + data.flipIdx * cw + cw/2;
+  const fy = toY(candles[data.flipIdx].c);
+  drawSignal(ctx, fx, fy, 'SELL 100%', C.red, true);
+
+  // Vertical line at flip
+  ctx.strokeStyle = C.red;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(fx, 35);
+  ctx.lineTo(fx, h - 5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = C.red;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('← UPTREND', 40, 30);
+  ctx.fillText('REGIME CHANGE →', fx + 10, 30);
+  ctx.fillStyle = C.gray;
+  ctx.font = '11px sans-serif';
+  ctx.fillText('Lines disagree → NEUTRAL → full exit', fx + 10, 48);
+}
+
+function drawScene4() {
+  const setup = setupCanvas('canvas-downtrend');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genDowntrend();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 3;
+  const maxP = Math.max(...allPrices) + 3;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => {
+    const isSig = (i === 10 || i === 11);
+    drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, isSig);
+  });
+
+  // Resistance (lower highs) with zone
+  const rt = data.resTouches;
+  const resSlope = (rt[2].price - rt[0].price) / (rt[2].idx - rt[0].idx);
+  const resPts = [];
+  for (let i = 0; i < n; i++) resPts.push([30 + i * cw + cw/2, rt[0].price + resSlope * (i - rt[0].idx)]);
+  drawZone(ctx, resPts, 'rgba(240,136,62,0.08)', yScale, 0, h, 0.015);
+  drawLine(ctx, resPts, C.orange, [], yScale, 0, h);
+
+  // Support (lower lows)
+  const supSlope = -1.1;
+  const supBase = candles[1].l;
+  const supPts = [];
+  for (let i = 0; i < n; i++) supPts.push([30 + i * cw + cw/2, supBase + supSlope * (i - 1)]);
+  drawLine(ctx, supPts, C.green, [6, 4], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Touch points on resistance
+  rt.forEach(t => {
+    const x = 30 + t.idx * cw + cw/2;
+    drawDot(ctx, x, toY(t.price), 6, C.blue, null);
+  });
+
+  // Short signal
+  const sx = 30 + data.shortIdx * cw + cw/2;
+  const sy = toY(candles[data.shortIdx].h);
+  drawSignal(ctx, sx, sy, 'SHORT', C.orange, true);
+
+  ctx.fillStyle = C.orange;
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Resistance (last 3 lower highs)', 40, 30);
+  ctx.fillStyle = C.green;
+  ctx.fillText('Support (lower lows)', w - 200, 30);
+}
+
+function drawScene5() {
+  const setup = setupCanvas('canvas-downswing');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genDownswing();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 3;
+  const maxP = Math.max(...allPrices) + 3;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => {
+    const isSig = (i === 11 || i === 12 || i === 17 || i === 18);
+    drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, isSig);
+  });
+
+  // Resistance (lower highs)
+  const resSlope = -0.95;
+  const resBase = 132;
+  const resPts = [];
+  for (let i = 0; i < n; i++) resPts.push([30 + i * cw + cw/2, resBase + resSlope * i]);
+  drawLine(ctx, resPts, C.orange, [], yScale, 0, h);
+
+  // Support (lower lows) with zone
+  const supSlope = -1.05;
+  const supBase = 126;
+  const supPts = [];
+  for (let i = 0; i < n; i++) supPts.push([30 + i * cw + cw/2, supBase + supSlope * i]);
+  drawZone(ctx, supPts, 'rgba(63,185,80,0.08)', yScale, 0, h, 0.015);
+  drawLine(ctx, supPts, C.green, [6, 4], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Close short at support bounce
+  const cx = 30 + data.coverIdx * cw + cw/2;
+  const cy = toY(candles[data.coverIdx].l);
+  drawSignal(ctx, cx, cy, 'CLOSE SHORT', C.green, false);
+
+  // Re-short at resistance bounce
+  const rx = 30 + data.reshortIdx * cw + cw/2;
+  const ry = toY(candles[data.reshortIdx].h);
+  drawSignal(ctx, rx, ry, 'RE-SHORT', C.orange, true);
+
+  ctx.fillStyle = C.blue;
+  ctx.font = '11px sans-serif';
+  ctx.fillText('↑ Vol-weighted sizing', 30 + 11 * cw, h - 55);
+
+  ctx.fillStyle = C.orange;
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Resistance (lower highs)', 40, 30);
+  ctx.fillStyle = C.green;
+  ctx.fillText('Support zone (lower lows)', w - 220, 30);
+}
+
+function drawScene6() {
+  const setup = setupCanvas('canvas-horizontal');
+  if (!setup) return;
+  const { ctx, w, h } = setup;
+  const data = genHorizontal();
+  const candles = data.candles;
+  const n = candles.length;
+  const cw = (w - 60) / n;
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  const minP = Math.min(...allPrices) - 4;
+  const maxP = Math.max(...allPrices) + 4;
+  const yScale = v => (v - minP) / (maxP - minP);
+  const toY = v => (1 - yScale(v)) * (h - 80) + 40;
+
+  const maxVol = Math.max(...candles.map(c => c.v));
+  candles.forEach((c, i) => drawVolBar(ctx, 30 + i * cw, cw, c.v, maxVol, h, false));
+
+  // Support line (rising) — converging
+  const supPts = [];
+  for (let i = 0; i < n; i++) supPts.push([30 + i * cw + cw/2, 106 + 0.18 * i]);
+  drawLine(ctx, supPts, C.green, [], yScale, 0, h);
+
+  // Resistance line (falling) — converging
+  const resPts = [];
+  for (let i = 0; i < n; i++) resPts.push([30 + i * cw + cw/2, 115.5 - 0.22 * i]);
+  drawLine(ctx, resPts, C.orange, [], yScale, 0, h);
+
+  // Candles
+  candles.forEach((c, i) => drawCandle(ctx, 30 + i * cw, cw, c.o, c.h, c.l, c.c, yScale, 0));
+
+  // Neutral signal
+  const nx = 30 + data.neutralIdx * cw + cw/2;
+  const ny = toY(candles[data.neutralIdx].c);
+  drawSignal(ctx, nx, ny, 'EXIT ALL', C.yellow, true);
+
+  // Arrows showing convergence
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(30 + 20 * cw, toY(106 + 0.18 * 20));
+  ctx.lineTo(30 + 20 * cw, toY(115.5 - 0.22 * 20));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = C.yellow;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('CONVERGING = NEUTRAL', 30 + 15 * cw, 30);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = C.gray;
+  ctx.fillText('Support ↗ but Resistance ↘ → lines disagree', 40, h - 60);
+  ctx.fillText('Close all positions, wait for clear trend', 40, h - 44);
+}
+
+// ============================================================
+// DRAW ALL VISIBLE CANVASES
+// ============================================================
+function drawAll() {
+  drawScene1();
+  drawScene2();
+  drawScene3();
+  drawScene4();
+  drawScene5();
+  drawScene6();
+}
+
+// Initial draw
+window.addEventListener('load', drawAll);
+window.addEventListener('resize', drawAll);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+// This Pine Script™ v6 strategy is subject to the Terms of Usage at https://www.tradingview.com/pine-script-docs/
+// © EMA 21 Price Crossover Strategy
+
+//@version=6
+strategy("EMA 21 Price Crossover (Long + Short)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.1, slippage=1)
+
+// ─── Inputs ───
+emaPeriod       = input.int(21, "EMA Period", minval=1)
+
+// ATR Exit Options (disabled by default)
+useAtrExits     = input.bool(false, "Enable ATR-Based Stop Loss / Take Profit")
+atrPeriod       = input.int(14, "ATR Period", minval=1)
+atrSlMult       = input.float(1.5, "ATR Stop Loss Multiplier", minval=0.1, step=0.1)
+atrTpMult       = input.float(2.0, "ATR Take Profit Multiplier", minval=0.1, step=0.1)
+
+// Date Filter
+useDateFilter   = input.bool(false, "Use Date Range Filter")
+startDate       = input.time(timestamp("2024-01-01"), "Start Date")
+endDate         = input.time(timestamp("2026-12-31"), "End Date")
+
+// ─── Calculations ───
+ema21   = ta.ema(close, emaPeriod)
+atr     = ta.atr(atrPeriod)
+
+// ─── Conditions ───
+inDateRange = not useDateFilter or (time >= startDate and time <= endDate)
+
+// Price crossover/crossunder the EMA
+longSignal  = ta.crossover(close, ema21) and inDateRange
+shortSignal = ta.crossunder(close, ema21) and inDateRange
+
+// ─── Strategy Execution ───
+if longSignal
+    // Close any open short, then go long
+    if strategy.position_size < 0
+        strategy.close("Short")
+    if useAtrExits
+        strategy.entry("Long", strategy.long)
+        strategy.exit("Long Exit", "Long", stop=close - atr * atrSlMult, limit=close + atr * atrTpMult)
+    else
+        strategy.entry("Long", strategy.long)
+
+if shortSignal
+    // Close any open long, then go short
+    if strategy.position_size > 0
+        strategy.close("Long")
+    if useAtrExits
+        strategy.entry("Short", strategy.short)
+        strategy.exit("Short Exit", "Short", stop=close + atr * atrSlMult, limit=close - atr * atrTpMult)
+    else
+        strategy.entry("Short", strategy.short)
+
+// Crossover exit (when ATR exits are off, the flip handles it;
+// this ensures clean exit if no opposite signal fires at end)
+if not useAtrExits
+    if strategy.position_size > 0 and shortSignal
+        strategy.close("Long")
+    if strategy.position_size < 0 and longSignal
+        strategy.close("Short")
+
+// ─── Plotting ───
+emaPlot = plot(ema21, "EMA 21", color=color.new(color.blue, 0), linewidth=2)
+pricePlot = plot(close, "Close", display=display.none)
+
+// Color fill between price and EMA to show trend
+fill(emaPlot, pricePlot, close > ema21 ? color.new(color.green, 90) : color.new(color.red, 90))
+
+// Entry markers
+plotshape(longSignal, "Long Entry", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(shortSignal, "Short Entry", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Background color for position direction
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 95) : strategy.position_size < 0 ? color.new(color.red, 95) : na)

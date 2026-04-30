@@ -1,0 +1,157 @@
+// This Pine Script™ v6 indicator/strategy is subject to the Terms of Usage at https://www.tradingview.com/pine-script-docs/
+// © Higher Highs / Lower Lows Market Structure Strategy
+
+//@version=6
+strategy("Higher Highs Strategy (MTF)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// ─── Inputs ───
+pivotLookback   = input.int(5, "Pivot Lookback (bars left/right)", minval=1, maxval=20)
+minSwings       = input.int(2, "Min Consecutive HH/HL or LL/LH", minval=1, maxval=5)
+htfTimeframe    = input.timeframe("240", "HTF Timeframe", tooltip="Higher timeframe for structure (240 = 4H)")
+
+useDateFilter   = input.bool(false, "Use Date Range Filter")
+startDate       = input.time(timestamp("2024-01-01"), "Start Date")
+endDate         = input.time(timestamp("2026-12-31"), "End Date")
+
+// ─── HTF Swing Detection ───
+// Fetch HTF high/low
+htfHigh = request.security(syminfo.tickerid, htfTimeframe, high)
+htfLow  = request.security(syminfo.tickerid, htfTimeframe, low)
+
+// Detect HTF pivots
+htfPivotHigh = request.security(syminfo.tickerid, htfTimeframe, ta.pivothigh(high, pivotLookback, pivotLookback))
+htfPivotLow  = request.security(syminfo.tickerid, htfTimeframe, ta.pivotlow(low, pivotLookback, pivotLookback))
+
+// Track last swing highs and lows on HTF (need minSwings+1 to compare)
+var float[] htfSwingHighs = array.new_float(0)
+var float[] htfSwingLows  = array.new_float(0)
+
+maxTrack = minSwings + 1
+
+if not na(htfPivotHigh)
+    array.push(htfSwingHighs, htfPivotHigh)
+    if array.size(htfSwingHighs) > maxTrack
+        array.shift(htfSwingHighs)
+
+if not na(htfPivotLow)
+    array.push(htfSwingLows, htfPivotLow)
+    if array.size(htfSwingLows) > maxTrack
+        array.shift(htfSwingLows)
+
+// ─── HTF Structure Assessment ───
+isHH(arr, count) =>
+    result = array.size(arr) >= count + 1
+    if result
+        for i = array.size(arr) - count to array.size(arr) - 1
+            if array.get(arr, i) <= array.get(arr, i - 1)
+                result := false
+    result
+
+isLL(arr, count) =>
+    result = array.size(arr) >= count + 1
+    if result
+        for i = array.size(arr) - count to array.size(arr) - 1
+            if array.get(arr, i) >= array.get(arr, i - 1)
+                result := false
+    result
+
+htfBullish = isHH(htfSwingHighs, minSwings) and isHH(htfSwingLows, minSwings)
+htfBearish = isLL(htfSwingHighs, minSwings) and isLL(htfSwingLows, minSwings)
+
+// ─── LTF Swing Detection (current chart timeframe) ───
+ltfPivotHigh = ta.pivothigh(high, pivotLookback, pivotLookback)
+ltfPivotLow  = ta.pivotlow(low, pivotLookback, pivotLookback)
+
+var float prevLtfSwingHigh = na
+var float prevLtfSwingLow  = na
+var float lastLtfSwingHigh = na
+var float lastLtfSwingLow  = na
+
+if not na(ltfPivotHigh)
+    prevLtfSwingHigh := lastLtfSwingHigh
+    lastLtfSwingHigh := ltfPivotHigh
+
+if not na(ltfPivotLow)
+    prevLtfSwingLow := lastLtfSwingLow
+    lastLtfSwingLow := ltfPivotLow
+
+// LTF higher low = current swing low > previous swing low
+ltfHigherLow  = not na(ltfPivotLow)  and not na(prevLtfSwingLow)  and lastLtfSwingLow  > prevLtfSwingLow
+// LTF lower high = current swing high < previous swing high
+ltfLowerHigh  = not na(ltfPivotHigh) and not na(prevLtfSwingHigh) and lastLtfSwingHigh < prevLtfSwingHigh
+
+// ─── HTF Structure Break Detection ───
+// Track previous HTF swing for break detection
+var float prevHtfSwingLow  = na
+var float lastHtfSwingLow  = na
+var float prevHtfSwingHigh = na
+var float lastHtfSwingHigh = na
+
+if not na(htfPivotHigh)
+    prevHtfSwingHigh := lastHtfSwingHigh
+    lastHtfSwingHigh := htfPivotHigh
+
+if not na(htfPivotLow)
+    prevHtfSwingLow := lastHtfSwingLow
+    lastHtfSwingLow := htfPivotLow
+
+// Structure break: HTF lower low (breaks bullish) or HTF higher high (breaks bearish)
+htfLowerLow   = not na(htfPivotLow)  and not na(prevHtfSwingLow)  and lastHtfSwingLow  < prevHtfSwingLow
+htfHigherHigh = not na(htfPivotHigh) and not na(prevHtfSwingHigh) and lastHtfSwingHigh > prevHtfSwingHigh
+
+// ─── Date Filter ───
+inDateRange = not useDateFilter or (time >= startDate and time <= endDate)
+
+// ─── Entry Conditions ───
+longCondition  = htfBullish and ltfHigherLow  and inDateRange
+shortCondition = htfBearish and ltfLowerHigh  and inDateRange
+
+// ─── Exit Conditions (structure break) ───
+exitLong  = htfLowerLow   and strategy.position_size > 0
+exitShort = htfHigherHigh and strategy.position_size < 0
+
+// ─── Strategy Execution ───
+if longCondition
+    strategy.entry("Long", strategy.long)
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+
+if exitLong
+    strategy.close("Long", comment="HTF Structure Break")
+
+if exitShort
+    strategy.close("Short", comment="HTF Structure Break")
+
+// ─── Plotting: HTF Structure ───
+bgcolor(htfBullish ? color.new(color.green, 92) : htfBearish ? color.new(color.red, 92) : na, title="HTF Structure")
+
+// ─── Plotting: Swing Points ───
+plotshape(not na(ltfPivotHigh), title="LTF Swing High", location=location.abovebar, style=shape.circle, color=color.new(color.red, 30), size=size.tiny, offset=-pivotLookback)
+plotshape(not na(ltfPivotLow),  title="LTF Swing Low",  location=location.belowbar, style=shape.circle, color=color.new(color.green, 30), size=size.tiny, offset=-pivotLookback)
+
+// ─── Signal Markers ───
+plotshape(longCondition,  title="Long Entry",  location=location.belowbar, style=shape.triangleup,   color=color.green, size=size.small, text="Long",  offset=-pivotLookback)
+plotshape(shortCondition, title="Short Entry", location=location.abovebar, style=shape.triangledown, color=color.red,   size=size.small, text="Short", offset=-pivotLookback)
+plotshape(exitLong,       title="Exit Long",   location=location.abovebar, style=shape.xcross,       color=color.orange, size=size.small, text="Exit L", offset=-pivotLookback)
+plotshape(exitShort,      title="Exit Short",  location=location.belowbar, style=shape.xcross,       color=color.orange, size=size.small, text="Exit S", offset=-pivotLookback)
+
+// ─── Info Table ───
+var table infoTable = table.new(position.top_right, 2, 4, bgcolor=color.new(color.gray, 85))
+if barstate.islast
+    structLabel = htfBullish ? "BULLISH" : htfBearish ? "BEARISH" : "NEUTRAL"
+    structColor = htfBullish ? color.green : htfBearish ? color.red : color.gray
+    table.cell(infoTable, 0, 0, "HTF Structure", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 0, structLabel, text_color=structColor, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Pivot Lookback", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(pivotLookback), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 2, "Min Swings", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 2, str.tostring(minSwings), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 3, "HTF", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, htfTimeframe, text_color=color.white, text_size=size.small)
+
+// ─── Alerts ───
+alertcondition(longCondition,  title="HH Long Entry",    message="Higher Highs: Long entry — HTF bullish + LTF higher low confirmed")
+alertcondition(shortCondition, title="HH Short Entry",   message="Higher Highs: Short entry — HTF bearish + LTF lower high confirmed")
+alertcondition(exitLong,       title="HH Exit Long",     message="Higher Highs: Exit long — HTF structure break (lower low)")
+alertcondition(exitShort,      title="HH Exit Short",    message="Higher Highs: Exit short — HTF structure break (higher high)")

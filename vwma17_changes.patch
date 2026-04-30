@@ -1,0 +1,40 @@
+diff --git a/README.md b/README.md
+index 16f70be..2b61557 100644
+--- a/README.md
++++ b/README.md
+@@ -43,13 +43,34 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
+ |---------|-------------------|--------------------|--------------------|
+ | **Setup Time** | 5 minutes | Hours (Docker, Conda...) | Weeks (Contracts) |
+ | **Cost** | Free & Open Source | Variable | $30k+/year |
+-| **Backtesting** | ✅ 6 strategies + Sharpe | ❌ Manual scripting | ✅ Proprietary |
++| **Backtesting** | ✅ 7 strategies + Sharpe (incl. shorts) | ❌ Manual scripting | ✅ Proprietary |
+ | **Live Sentiment** | ✅ Reddit + RSS news | ❌ Separate setup | ✅ Terminal |
+ | **Market Data** | ✅ Live / Real-Time | Historical / Delayed | Live |
+ | **API Keys** | **None required** | Multiple (OpenAI, etc.) | N/A |
+ 
+ ---
+ 
++## 🆕 VWMA 17 Strategy (Fork Addition)
++
++This fork adds the **VWMA 17 strategy** — the first strategy supporting both long and short positions with ATR-based stop loss and take profit.
++
++**Entry:** Close crosses above VWMA(17) → Long | Close crosses below VWMA(17) → Short
++**Exit:** ATR-based stop loss (1.5x) and take profit (2.0x)
++
++```bash
++# Backtest via MCP tool
++backtest_strategy(symbol="BTC-USD", strategy="vwma17", period="2y")
++
++# Or run standalone
++python strategies/vwma17_strategy.py --symbol BTC-USD --period 2y
++```
++
++The `strategies/` directory contains paired files — same strategy name, different extensions:
++- `vwma17_strategy.py` — Standalone Python backtester
++- `vwma17_strategy.pine` — TradingView Pine Script v6
++
++---
++
+ ## 🚀 Quick Start (5 Minutes)
+ 
+ ### Install via pip

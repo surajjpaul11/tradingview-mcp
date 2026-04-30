@@ -18,6 +18,14 @@ from tradingview_mcp.core.services.sentiment_service import analyze_sentiment
 from tradingview_mcp.core.services.news_service import fetch_news_summary
 from tradingview_mcp.core.services.yahoo_finance_service import get_price, get_prices_bulk, get_market_snapshot
 from tradingview_mcp.core.services.backtest_service import run_backtest, compare_strategies as _compare_strategies, walk_forward_backtest
+from tradingview_mcp.core.services.signal_service import get_live_signal, check_all_strategies as _check_all_strategies
+from tradingview_mcp.core.services.execution_service import execute_order as _execute_order
+from tradingview_mcp.core.services.trade_db import (
+    close_trade as _close_trade,
+    get_trade_history as _get_trade_history,
+    get_pnl_summary as _get_pnl_summary,
+    get_equity_curve as _get_equity_curve,
+)
 
 try:
     from tradingview_ta import TA_Handler, get_multiple_analysis
@@ -2987,6 +2995,9 @@ def backtest_strategy(
                                 'ema_cross'  — Buy EMA20>EMA50 crossover, Sell on reversal
                                 'supertrend' — Buy on bullish Supertrend flip
                                 'donchian'   — Buy Donchian Channel breakout (Turtle Trader style)
+                                'vwma17'     — VWMA(17) crossover with ATR stop-loss & take-profit
+                                'higher_highs' — Multi-timeframe market structure (HH/HL detection)
+                                'enhanced_lines' — Channel trend following with volume-weighted bounce trading
         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
         initial_capital:      Starting capital in USD (default: $10,000)
         commission_pct:       Per-trade commission % (default: 0.1%)
@@ -3014,7 +3025,7 @@ def compare_strategies(
     initial_capital: float = 10000.0,
     interval: str = "1d",
 ) -> dict:
-    """Run all 6 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian) on the
+    """Run all 7 strategies (RSI, Bollinger, MACD, EMA Cross, Supertrend, Donchian, VWMA17) on the
     same symbol and return a ranked performance leaderboard.
 
     Args:
@@ -3100,6 +3111,234 @@ def market_snapshot() -> dict:
     return get_market_snapshot()
 
 
+# ─── Live Trading: Signal Detection & Execution ──────────────────────────────
+
+@mcp.tool()
+def check_signal(
+    symbol: str,
+    strategy: str = "vwma17",
+    interval: str = "1d",
+) -> dict:
+    """Check if a trading strategy has an active signal (buy/sell) on the latest bar.
+
+    This is a READ-ONLY operation — no orders are placed. Use this to monitor
+    whether a strategy would trigger a trade right now.
+
+    Args:
+        symbol:   Yahoo Finance symbol (e.g. BTC-USD, AAPL, ETH-USD, SPY)
+        strategy: Strategy to check. Options:
+                  rsi, bollinger, macd, ema_cross, supertrend, donchian,
+                  vwma17, higher_highs
+        interval: Candle interval — 1d (daily), 1h (hourly), or 30m
+
+    Returns:
+        Signal result with:
+          signal: "long" | "short" | "exit" | "none"
+          price:  current price
+          stop_loss / take_profit: levels (if applicable)
+    """
+    return get_live_signal(symbol, strategy, interval)
+
+
+@mcp.tool()
+def check_all_signals(
+    symbol: str,
+    interval: str = "1d",
+) -> dict:
+    """Check ALL strategies for active signals on a single symbol.
+
+    Runs every available strategy and highlights any that have an active
+    long/short signal on the current bar. Useful for finding confluence.
+
+    Args:
+        symbol:   Yahoo Finance symbol (e.g. BTC-USD, AAPL, SPY)
+        interval: Candle interval — 1d, 1h, or 30m
+    """
+    return _check_all_strategies(symbol, interval)
+
+
+@mcp.tool()
+def execute_trade(
+    symbol: str,
+    strategy: str,
+    capital_usd: float,
+    broker: str = "bitget",
+    interval: str = "1d",
+    dry_run: bool = True,
+) -> dict:
+    """Check for a strategy signal and execute a trade if one is active.
+
+    SAFETY: dry_run=True by default — no real orders are placed unless you
+    explicitly set dry_run=False. Always test with dry_run first.
+
+    Supported brokers:
+      - bitget:  Crypto (BTC/USDT, ETH/USDT, etc.) — requires BITGET_* env vars
+      - alpaca:  Stocks/ETFs (AAPL, SPY, etc.) — requires ALPACA_* env vars
+
+    Args:
+        symbol:      Trading symbol.
+                     For Bitget: use Yahoo format (BTC-USD) — auto-converted to BTC/USDT.
+                     For Alpaca: stock ticker (AAPL, SPY, TSLA).
+        strategy:    Strategy to check for signal (vwma17, rsi, macd, etc.)
+        capital_usd: Dollar amount to deploy on this trade
+        broker:      "bitget" (crypto) or "alpaca" (stocks)
+        interval:    Candle interval for signal detection (1d, 1h, 30m)
+        dry_run:     If True (default), simulate without placing a real order.
+                     Set to False for live execution.
+
+    Returns:
+        Combined signal check + order result (or simulation).
+    """
+    # Step 1: Check for a live signal
+    signal = get_live_signal(symbol, strategy, interval)
+
+    if "error" in signal:
+        return {"signal_check": signal, "order": None, "executed": False}
+
+    if signal["signal"] not in ("long", "short"):
+        return {
+            "signal_check": signal,
+            "order": None,
+            "executed": False,
+            "reason": f"No active signal (current: {signal['signal']}). No order placed.",
+        }
+
+    # Step 2: Map symbol to broker format
+    side = "buy" if signal["signal"] == "long" else "sell"
+
+    if broker.lower() == "bitget":
+        # Convert Yahoo format to ccxt: BTC-USD → BTC/USDT
+        exec_symbol = symbol.upper().replace("-USD", "/USDT").replace("-", "/")
+    else:
+        # Alpaca: just use ticker
+        exec_symbol = symbol.upper().split("-")[0]  # BTC-USD → BTC (shouldn't happen for stocks)
+
+    # Step 3: Execute (or simulate)
+    order = _execute_order(
+        symbol=exec_symbol,
+        side=side,
+        capital_usd=capital_usd,
+        stop_loss=signal.get("stop_loss"),
+        take_profit=signal.get("take_profit"),
+        broker=broker,
+        dry_run=dry_run,
+        strategy=strategy,
+    )
+
+    return {
+        "signal_check": signal,
+        "order": order,
+        "executed": "error" not in order,
+        "broker": broker,
+        "dry_run": dry_run,
+    }
+
+
+# ─── Trade Tracking: History, P&L, Close ─────────────────────────────────────
+
+@mcp.tool()
+def trade_history(
+    strategy: str = "",
+    symbol: str = "",
+    broker: str = "",
+    status: str = "",
+    limit: int = 50,
+) -> dict:
+    """Query your trade history from the local database.
+
+    Every trade (dry_run and live) is automatically logged. Use filters
+    to narrow results by strategy, symbol, broker, or status.
+
+    Args:
+        strategy: Filter by strategy name (e.g. "vwma17", "rsi"). Empty = all.
+        symbol:   Filter by symbol (e.g. "BTC/USDT", "AAPL"). Empty = all.
+        broker:   Filter by broker ("bitget" or "alpaca"). Empty = all.
+        status:   Filter by status ("open" or "closed"). Empty = all.
+        limit:    Max trades to return (default 50, max 500).
+    """
+    trades = _get_trade_history(
+        strategy=strategy or None,
+        symbol=symbol or None,
+        broker=broker or None,
+        status=status or None,
+        limit=limit,
+    )
+    return {
+        "total_returned": len(trades),
+        "filters": {"strategy": strategy, "symbol": symbol, "broker": broker, "status": status},
+        "trades": trades,
+    }
+
+
+@mcp.tool()
+def trade_pnl_summary(
+    strategy: str = "",
+    symbol: str = "",
+    broker: str = "",
+) -> dict:
+    """Get aggregated P&L summary for your traded strategies.
+
+    Shows total P&L, win rate, best/worst trade, and per-strategy breakdown.
+    Use this for portfolio performance review and strategy comparison.
+
+    Args:
+        strategy: Filter by strategy (e.g. "vwma17"). Empty = all strategies.
+        symbol:   Filter by symbol. Empty = all symbols.
+        broker:   Filter by broker. Empty = all brokers.
+    """
+    return _get_pnl_summary(
+        strategy=strategy or None,
+        symbol=symbol or None,
+        broker=broker or None,
+    )
+
+
+@mcp.tool()
+def trade_equity_curve(
+    strategy: str = "",
+    symbol: str = "",
+    broker: str = "",
+) -> dict:
+    """Get cumulative P&L over time — ready for plotting.
+
+    Returns one data point per closed trade: date, individual P&L,
+    and running cumulative P&L. Use this to chart strategy performance.
+
+    Args:
+        strategy: Filter by strategy. Empty = all.
+        symbol:   Filter by symbol. Empty = all.
+        broker:   Filter by broker. Empty = all.
+    """
+    curve = _get_equity_curve(
+        strategy=strategy or None,
+        symbol=symbol or None,
+        broker=broker or None,
+    )
+    return {
+        "data_points": len(curve),
+        "final_cumulative_pnl_usd": curve[-1]["cumulative_pnl_usd"] if curve else 0,
+        "curve": curve,
+    }
+
+
+@mcp.tool()
+def close_open_trade(
+    trade_id: str,
+    exit_price: float,
+    exit_reason: str = "manual",
+) -> dict:
+    """Manually close an open trade and compute P&L.
+
+    Use this when a trade was opened via execute_trade and you want to
+    record the exit. The P&L will be computed automatically.
+
+    Args:
+        trade_id:     The trade_id returned from execute_trade
+        exit_price:   The price at which the position was closed
+        exit_reason:  Why it was closed ("manual", "stop_loss", "take_profit", "signal_flip")
+    """
+    return _close_trade(trade_id, exit_price, exit_reason)
+
+
 if __name__ == "__main__":
 	main()
-

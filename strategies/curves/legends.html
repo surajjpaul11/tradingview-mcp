@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curved Channel Strategy — Chart Legend Reference</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #131722;
+    color: #d1d4dc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 40px 60px;
+    max-width: 1100px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+h1 {
+    font-size: 24px;
+    color: #e0e3eb;
+    margin-bottom: 8px;
+}
+.subtitle {
+    color: #787b86;
+    font-size: 14px;
+    margin-bottom: 32px;
+}
+h2 {
+    font-size: 18px;
+    color: #e0e3eb;
+    margin: 36px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2a2e39;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    font-size: 13px;
+}
+thead th {
+    text-align: left;
+    padding: 10px 14px;
+    background: #1e222d;
+    color: #787b86;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 11px;
+    border-bottom: 2px solid #2a2e39;
+}
+tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1e222d;
+    vertical-align: top;
+}
+tbody tr:hover { background: rgba(42,46,57,0.4); }
+.abbrev {
+    font-weight: 700;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.abbrev.entry { color: #26a69a; }
+.abbrev.exit { color: #ef5350; }
+.reason-name { color: #d1d4dc; white-space: nowrap; }
+.marker-example {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.marker-example.buy { background: rgba(38,166,154,0.15); color: #26a69a; }
+.marker-example.sell { background: rgba(239,83,80,0.15); color: #ef5350; }
+.ver-tag {
+    display: inline-block;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 1px 2px;
+}
+.ver-tag.entry { background: rgba(77,208,225,0.15); color: #4dd0e1; }
+.ver-tag.exit { background: rgba(255,183,77,0.15); color: #ffb74d; }
+.desc { color: #9598a1; }
+.help-text { color: #787b86; font-size: 12px; margin-top: 4px; }
+.section-intro {
+    color: #9598a1;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+.back-link {
+    display: inline-block;
+    margin-top: 40px;
+    color: #4dd0e1;
+    text-decoration: none;
+    font-size: 13px;
+}
+.back-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<h1>Curved Channel Strategy &mdash; Chart Legend Reference</h1>
+<p class="subtitle">Complete guide to every marker abbreviation, entry/exit mechanism, and version tag shown on backtest charts.</p>
+
+<!-- ============================================================ -->
+<h2>Entry Marker Abbreviations</h2>
+<p class="section-intro">These appear on chart markers as <span class="marker-example buy">BUY &lt;ABBREV&gt;</span> or <span class="marker-example sell">SHORT &lt;ABBREV&gt;</span>. Each tells you exactly what mechanism triggered the position.</p>
+
+<table>
+<thead>
+<tr>
+    <th>Marker Text</th>
+    <th>Abbreviation</th>
+    <th>Full Name</th>
+    <th>Description &amp; How It Helps</th>
+    <th>Versions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td><span class="marker-example buy">BUY CH-LONG</span></td>
+    <td class="abbrev entry">CH-LONG</td>
+    <td class="reason-name">Channel Long</td>
+    <td class="desc">Price is inside an ascending polynomial channel, bouncing off the lower support curve with a bullish close. Requires volume confirmation, 2-bar channel presence, channel maturity, and SMA trend alignment. <span class="help-text">This is the core entry &mdash; buying near support within a rising channel gives favorable risk/reward.</span></td>
+    <td><span class="ver-tag entry">v1</span><span class="ver-tag entry">v8</span><span class="ver-tag entry">v21</span><span class="ver-tag entry">v25</span><span class="ver-tag entry">v48</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">SHORT CH-SHORT</span></td>
+    <td class="abbrev exit">CH-SHORT</td>
+    <td class="reason-name">Channel Short</td>
+    <td class="desc">Price is inside a descending polynomial channel, rejecting off the upper resistance curve with a bearish close. Only allowed when price is below SMA(200) and volume confirms. <span class="help-text">Selling near resistance in a falling channel captures downside momentum safely.</span></td>
+    <td><span class="ver-tag entry">v3</span><span class="ver-tag entry">v8</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY BRK-UP</span></td>
+    <td class="abbrev entry">BRK-UP</td>
+    <td class="reason-name">Breakout Long</td>
+    <td class="desc">Price broke above the upper channel boundary by more than the breakout threshold (2% for ETFs, 1.5% for crypto). Signals strong bullish momentum escaping the channel. An ATR trailing stop is activated immediately. <span class="help-text">Catches explosive moves when price escapes a consolidation channel to the upside.</span></td>
+    <td><span class="ver-tag entry">v2</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">SHORT BRK-DN</span></td>
+    <td class="abbrev exit">BRK-DN</td>
+    <td class="reason-name">Breakout Short</td>
+    <td class="desc">Price broke below the lower channel boundary beyond the breakout threshold. Requires the SMA(200) short filter to pass. An ATR trailing stop is activated. <span class="help-text">Captures breakdowns when price collapses through channel support with conviction.</span></td>
+    <td><span class="ver-tag entry">v2</span><span class="ver-tag entry">v3</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY SMA</span></td>
+    <td class="abbrev entry">SMA</td>
+    <td class="reason-name">Fallback SMA</td>
+    <td class="desc">No channel is active, but price crossed above the SMA(50) with a bullish close after waiting a minimum number of bars since the last exit. Prevents long flat periods with zero exposure. <span class="help-text">Keeps you in the market during trendless periods when no polynomial channel can be detected.</span></td>
+    <td><span class="ver-tag entry">v5</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY RE-BRK</span></td>
+    <td class="abbrev entry">RE-BRK</td>
+    <td class="reason-name">Breakout Re-entry</td>
+    <td class="desc">While already long inside an ascending channel, price broke above the resistance boundary. The existing position was closed and a new position opened at 200% size to ride the breakout momentum with an ATR trail. <span class="help-text">Pyramids into strength &mdash; doubles down when a winning channel position turns into a breakout.</span></td>
+    <td><span class="ver-tag entry">v2</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">SHORT BRK-SH</span></td>
+    <td class="abbrev exit">BRK-SH</td>
+    <td class="reason-name">Break Short</td>
+    <td class="desc">While holding a long position, price broke below channel support with enough magnitude to trigger a short entry. The long was closed and a short was opened. Requires the SMA(200) filter. <span class="help-text">Flips direction when a channel breakdown is convincing enough &mdash; captures the reversal instead of just stopping out.</span></td>
+    <td><span class="ver-tag entry">v2</span><span class="ver-tag entry">v3</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY SMA&rarr;CH</span></td>
+    <td class="abbrev entry">SMA&rarr;CH</td>
+    <td class="reason-name">SMA to Channel</td>
+    <td class="desc">Originally entered via the fallback SMA mechanism, but a polynomial channel later formed around the position. The entry was reclassified and now benefits from channel-based exit logic (channel trail stop, breakout detection). <span class="help-text">Shows that what started as a simple SMA entry got upgraded to full channel management &mdash; the best of both entry types.</span></td>
+    <td><span class="ver-tag entry">v5</span><span class="ver-tag entry">v1</span><span class="ver-tag entry">v8</span><span class="ver-tag entry">v21</span><span class="ver-tag entry">v25</span><span class="ver-tag entry">v48</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY EARLY</span></td>
+    <td class="abbrev entry">EARLY</td>
+    <td class="reason-name">Poly-Low Entry</td>
+    <td class="desc">Fits a degree-2 polynomial through the last 12 bar lows. Enters a 25% long when the derivative at the right edge is positive (lows trending up) and volume &ge;80% of its moving average. Channel-gated: only fires before the first channel forms. One-shot per backtest. <span class="help-text">Reduces the gap between B&amp;H start and the strategy's first trade by detecting upward-curving lows before channels can form.</span></td>
+    <td><span class="ver-tag entry">v49</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY REV-UP</span></td>
+    <td class="abbrev entry">REV-UP</td>
+    <td class="reason-name">Sharp Reversal Long</td>
+    <td class="desc">A single bar moves up by &ge;2x ATR with volume &ge;2x its 20-bar average, after at least 2 of the prior 3 bars were bearish. Opens a 25% speculative long with an ATR trailing stop. <span class="help-text">Catches sharp bullish reversals backed by institutional volume &mdash; the kind of V-bottom moves that channel detection is too slow to capture.</span></td>
+    <td><span class="ver-tag entry">v50</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">SHORT REV-DN</span></td>
+    <td class="abbrev exit">REV-DN</td>
+    <td class="reason-name">Sharp Reversal Short</td>
+    <td class="desc">A single bar moves down by &ge;2x ATR with volume &ge;2x its 20-bar average, after at least 2 of the prior 3 bars were bullish. Opens a 25% speculative short with an ATR trailing stop. Requires the SMA(200) short filter. <span class="help-text">Catches sharp bearish reversals &mdash; the sudden distribution events that precede larger sell-offs.</span></td>
+    <td><span class="ver-tag entry">v50</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY EARLY&rarr;CH</span></td>
+    <td class="abbrev entry">EARLY&rarr;CH</td>
+    <td class="reason-name">Early to Channel</td>
+    <td class="desc">Originally entered via early momentum (25%), then an ascending channel formed around the position. The position was upgraded to 100% and channel-based exit logic took over. <span class="help-text">The best outcome for an early entry &mdash; the exploratory bet gets validated by channel confirmation and scaled up.</span></td>
+    <td><span class="ver-tag entry">v49</span><span class="ver-tag entry">v1</span><span class="ver-tag entry">v8</span><span class="ver-tag entry">v21</span><span class="ver-tag entry">v25</span><span class="ver-tag entry">v48</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY REV&rarr;CH</span></td>
+    <td class="abbrev entry">REV&rarr;CH</td>
+    <td class="reason-name">Reversal to Channel</td>
+    <td class="desc">Originally entered via sharp reversal, then a channel formed in the same direction. The position was upgraded to channel management with full exit logic. <span class="help-text">A reversal bet that turned out to be the start of a new trend, confirmed by channel detection.</span></td>
+    <td><span class="ver-tag entry">v50</span><span class="ver-tag entry">v1</span><span class="ver-tag entry">v8</span><span class="ver-tag entry">v21</span><span class="ver-tag entry">v25</span><span class="ver-tag entry">v48</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY DIV-UP</span></td>
+    <td class="abbrev entry">DIV-UP</td>
+    <td class="reason-name">Steep Reversal Long</td>
+    <td class="desc">Price was falling steeply (recent 5-bar slope &ge;Nx the 20-bar baseline), then a bar made a higher high confirming a potential bottom. Opens a 25% long with ATR trailing stop. <strong>Disabled by default.</strong> <span class="help-text">Counter-trend entry on exhausted sell-offs. Testing showed marginal results on daily bars; may work better on intraday.</span></td>
+    <td><span class="ver-tag entry">v51</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">SHORT DIV-DN</span></td>
+    <td class="abbrev exit">DIV-DN</td>
+    <td class="reason-name">Steep Reversal Short</td>
+    <td class="desc">Price was rising steeply (recent 5-bar slope &ge;Nx the 20-bar baseline), then a bar made a lower low confirming a potential top. Opens a 25% short with ATR trailing stop. <strong>Disabled by default.</strong> <span class="help-text">Counter-trend entry on parabolic rises. Requires both DIVERG_ENABLED and DIVERG_SHORT_ENABLED flags.</span></td>
+    <td><span class="ver-tag entry">v51</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example buy">BUY DIV&rarr;CH</span></td>
+    <td class="abbrev entry">DIV&rarr;CH</td>
+    <td class="reason-name">Divergence to Channel</td>
+    <td class="desc">Originally entered via steep slope reversal, then a channel formed in the same direction. Position upgraded to 100% with channel management. <span class="help-text">A counter-trend bet validated by subsequent channel formation.</span></td>
+    <td><span class="ver-tag entry">v51</span><span class="ver-tag entry">v1</span><span class="ver-tag entry">v8</span><span class="ver-tag entry">v21</span><span class="ver-tag entry">v25</span><span class="ver-tag entry">v48</span></td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>Exit Marker Abbreviations</h2>
+<p class="section-intro">These appear on chart markers as <span class="marker-example sell">EXIT &lt;ABBREV&gt;</span> or <span class="marker-example buy">COVER &lt;ABBREV&gt;</span>. Each tells you why the position was closed.</p>
+
+<table>
+<thead>
+<tr>
+    <th>Marker Text</th>
+    <th>Abbreviation</th>
+    <th>Full Name</th>
+    <th>Description &amp; How It Helps</th>
+    <th>Versions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td><span class="marker-example sell">EXIT ATR-TS</span></td>
+    <td class="abbrev exit">ATR-TS</td>
+    <td class="reason-name">ATR Trailing Stop</td>
+    <td class="desc">Price hit the ATR-based trailing stop. For longs, the stop trails 2.0x ATR below the highest high since entry. For shorts, 1.5x ATR above the lowest low. The stop only moves in the favorable direction. <span class="help-text">Locks in profits while giving the trade room to breathe. Tighter for shorts (1.5x) since downtrends tend to be sharper.</span></td>
+    <td><span class="ver-tag exit">v2</span> (longs) &nbsp; <span class="ver-tag exit">v2</span><span class="ver-tag exit">v23</span> (shorts)</td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT CH-TS</span></td>
+    <td class="abbrev exit">CH-TS</td>
+    <td class="reason-name">Channel Trail Stop</td>
+    <td class="desc">The in-channel trailing stop triggered. Activates after the position reaches +2% profit while still inside a channel. Uses a tighter 1.5x ATR trail to protect gains without waiting for a full channel break. <span class="help-text">Captures quick channel profits instead of giving them back &mdash; especially effective in choppy ascending channels.</span></td>
+    <td><span class="ver-tag exit">v9</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT BRK-UP</span></td>
+    <td class="abbrev exit">BRK-UP</td>
+    <td class="reason-name">Breakout Up</td>
+    <td class="desc">Price broke above the upper channel boundary by more than the breakout threshold. The existing long is closed so it can be immediately re-entered at a larger size (200%) with breakout momentum trailing. <span class="help-text">Not a loss exit &mdash; this closes a profitable channel position to re-open bigger for the breakout.</span></td>
+    <td><span class="ver-tag exit">v2</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT BRK-DN</span></td>
+    <td class="abbrev exit">BRK-DN</td>
+    <td class="reason-name">Breakout Down</td>
+    <td class="desc">Price broke below the lower channel boundary by more than the breakout threshold. For longs this is a protective exit; a short may immediately follow if conditions are met. <span class="help-text">Cuts losses quickly on channel breakdowns rather than hoping for a bounce.</span></td>
+    <td><span class="ver-tag exit">v2</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT CH-BRK</span></td>
+    <td class="abbrev exit">CH-BRK</td>
+    <td class="reason-name">Channel Break</td>
+    <td class="desc">Price closed below channel support (for longs) or above channel resistance (for shorts) by more than the touch tolerance, but less than the breakout threshold. A moderate violation that invalidates the channel thesis. <span class="help-text">Exits on the smaller channel violations that don't qualify as full breakouts.</span></td>
+    <td>&mdash;</td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT CH-FLIP</span></td>
+    <td class="abbrev exit">CH-FLIP</td>
+    <td class="reason-name">Channel Flip</td>
+    <td class="desc">The active channel type changed direction while a position was open. For example, holding a long when the channel flips from ascending to descending. <span class="help-text">Prevents holding a position against the new trend direction when market structure reverses.</span></td>
+    <td>&mdash;</td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT CH-EXP</span></td>
+    <td class="abbrev exit">CH-EXP</td>
+    <td class="reason-name">Channel Expired</td>
+    <td class="desc">The polynomial channel expired (no more projected data points) and the position was not profitable enough to ride with an ATR trail. Profitable positions are kept open with trailing stop management. <span class="help-text">Only exits losing positions on channel expiry &mdash; winners ride on with ATR protection (v10).</span></td>
+    <td><span class="ver-tag exit">v10</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT TIME</span></td>
+    <td class="abbrev exit">TIME</td>
+    <td class="reason-name">Time Exit</td>
+    <td class="desc">Position was held for the maximum allowed bars (default 20) without reaching +1% profit. Prevents capital from being tied up in stagnant trades. <span class="help-text">Frees capital from dead trades so it can be deployed in new opportunities.</span></td>
+    <td>&mdash;</td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT SMA-X</span></td>
+    <td class="abbrev exit">SMA-X</td>
+    <td class="reason-name">Fallback SMA Exit</td>
+    <td class="desc">A position entered via the fallback SMA mechanism was closed because price dropped back below SMA(50). Requires a minimum 3-bar hold before the exit can trigger. <span class="help-text">Exits SMA-based trades when the simple trend signal reverses, with a hold buffer to avoid whipsaws.</span></td>
+    <td><span class="ver-tag exit">v5</span><span class="ver-tag exit">v32</span></td>
+</tr>
+<tr>
+    <td><span class="marker-example sell">EXIT EOD</span></td>
+    <td class="abbrev exit">EOD</td>
+    <td class="reason-name">End of Data</td>
+    <td class="desc">The backtest reached the last available candle and the open position was force-closed at the final close price. Not a strategy signal. <span class="help-text">Ensures all positions are accounted for in the backtest results. Ignore for strategy evaluation.</span></td>
+    <td>&mdash;</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>Strategy Version Tags</h2>
+<p class="section-intro">Version tags appear in the Trade Log panel's second row (e.g. <span class="ver-tag entry">v8</span> <span class="ver-tag entry">v25</span> <span class="ver-tag entry">v48</span>). Each tag references an improvement that was tested, kept, and contributes to that specific trade decision.</p>
+
+<table>
+<thead>
+<tr>
+    <th>Tag</th>
+    <th>Label</th>
+    <th>Type</th>
+    <th>Description &amp; How It Helps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td><span class="ver-tag entry">v1</span></td>
+    <td>Full Channel</td>
+    <td>Entry Filter</td>
+    <td class="desc">Widened entry zone to the full channel width (support to resistance) instead of requiring price near the boundary. <span class="help-text">Catches more entries that would have been missed by a narrow boundary-only trigger.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v2</span></td>
+    <td>Breakout Detect</td>
+    <td>Exit Type</td>
+    <td class="desc">Detects when price breaks beyond the channel boundary by a threshold percentage and activates an ATR trailing stop. Also enables breakout re-entry at larger position size. <span class="help-text">The foundation for all breakout-related entries and exits. Turns channel violations into trading opportunities.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v3</span></td>
+    <td>Short SMA Filter</td>
+    <td>Entry Filter</td>
+    <td class="desc">Only allows short entries when price is below SMA(200). Prevents shorting in strong uptrends. <span class="help-text">Dramatically reduces losing short trades by ensuring you only short when the long-term trend is bearish.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v5</span></td>
+    <td>Fallback SMA</td>
+    <td>Entry Filter</td>
+    <td class="desc">When no channel is detected, uses SMA(50) crossover as a simpler entry signal after waiting for a cooldown period. <span class="help-text">Eliminates long flat periods with zero exposure. Keeps capital working even when channels are absent.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v8</span></td>
+    <td>Volume Confirm</td>
+    <td>Entry Filter</td>
+    <td class="desc">Requires volume to be at least 1.2x its 20-bar moving average before allowing entry. <span class="help-text">Filters out low-conviction entries. Higher volume at entry confirms institutional participation.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag exit">v9</span></td>
+    <td>Channel Trail</td>
+    <td>Exit Type</td>
+    <td class="desc">Activates a tighter trailing stop (1.5x ATR) once a channel position reaches +2% profit. <span class="help-text">Locks in channel profits before they can evaporate. Especially effective in choppy channels that oscillate within the boundaries.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag exit">v10</span></td>
+    <td>Ride Winners</td>
+    <td>Exit Type</td>
+    <td class="desc">When a channel expires, profitable positions are kept open with ATR trailing stop management instead of being force-closed. <span class="help-text">Lets winning trades run beyond channel expiry instead of cutting them at an arbitrary point.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v21</span></td>
+    <td>Channel Age</td>
+    <td>Entry Filter</td>
+    <td class="desc">Requires channels to exist for at least 3 bars before allowing entry. Applied to ETFs only (crypto channels are more volatile and form faster). <span class="help-text">Prevents entries on freshly-detected channels that may be false positives from noisy data.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag exit">v23</span></td>
+    <td>Tight Short Trail</td>
+    <td>Exit Type</td>
+    <td class="desc">Uses a tighter 1.5x ATR trailing stop for short positions (vs 2.0x for longs). <span class="help-text">Shorts tend to reverse faster than longs, so a tighter trail captures more downside profit before the bounce.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v25</span></td>
+    <td>2-Bar Confirm</td>
+    <td>Entry Filter</td>
+    <td class="desc">Requires the previous bar's close to also be inside the channel before allowing entry. <span class="help-text">Ensures price is genuinely within the channel rather than just touching it on a single spike.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v30</span></td>
+    <td>Crypto Breakout</td>
+    <td>Channel Detection</td>
+    <td class="desc">Lowers the breakout threshold from 2.0% to 1.5% for crypto assets. <span class="help-text">Crypto channels tend to be wider, so a lower percentage still represents significant momentum.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag exit">v32</span></td>
+    <td>SMA Min Hold</td>
+    <td>Exit Type</td>
+    <td class="desc">Requires a minimum 3-bar hold before a fallback SMA exit can trigger. <span class="help-text">Prevents whipsaw exits where price briefly dips below SMA(50) and immediately recovers.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v39</span></td>
+    <td>Crypto Extend</td>
+    <td>Channel Detection</td>
+    <td class="desc">Extends projected channel lifetime to 30 bars for crypto (vs 20 for ETFs). <span class="help-text">Crypto trends run longer, so channels need more room to project forward without expiring prematurely.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v48</span></td>
+    <td>SMA Trend Filter</td>
+    <td>Entry Filter</td>
+    <td class="desc">Requires close to be above SMA(50) * 0.99 for ascending channel long entries. The 0.99 buffer allows entries slightly below the SMA. <span class="help-text">Aligns channel entries with the medium-term trend. The 1% buffer was the sweet spot &mdash; strict (1.00) hurt QQQ, softer (0.98) had no effect.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v49</span></td>
+    <td>Poly-Low Entry</td>
+    <td>Entry Filter</td>
+    <td class="desc">Fits a degree-2 polynomial through the last 12 bar lows. Enters a 25% long when the slope at the right edge is positive and volume &ge;80% of its MA. Channel-gated: only active before the first channel forms. One-shot per backtest. <span class="help-text">Closes the gap between B&amp;H start and first strategy trade by detecting upward-curving lows before polynomial channels can form.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v51</span></td>
+    <td>Steep Reversal</td>
+    <td>Entry Filter</td>
+    <td class="desc">Counter-trend entry when recent 5-bar slope exceeds 20-bar baseline by Nx. Confirmation via lower-low (short) or higher-high (long). <strong>Disabled by default</strong> &mdash; testing showed counter-trend 25% bets on daily bars don't generate positive alpha. <span class="help-text">Code retained for potential intraday use where mean reversion is more reliable.</span></td>
+</tr>
+<tr>
+    <td><span class="ver-tag entry">v50</span></td>
+    <td>Sharp Reversal</td>
+    <td>Entry Filter</td>
+    <td class="desc">Enters a 25% position when a single bar moves &ge;2x ATR with &ge;2x average volume, following bars in the opposite direction. Can fire multiple times whenever the position is flat. <span class="help-text">Captures high-conviction reversal events that channel detection is too slow to react to &mdash; V-bottoms and distribution spikes.</span></td>
+</tr>
+</tbody>
+</table>
+
+<p style="color:#787b86; font-size: 12px; margin-top: 40px; border-top: 1px solid #2a2e39; padding-top: 16px;">
+    Curved Channel Strategy v51 &mdash; Generated by the Curved Channel backtesting system.
+    Version tags in <span style="color:#4dd0e1;">cyan</span> indicate entry mechanisms; <span style="color:#ffb74d;">amber</span> indicates exit mechanisms.
+</p>
+
+</body>
+</html>

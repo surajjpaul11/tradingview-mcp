@@ -1,0 +1,449 @@
+// Enhanced Lines Strategy — Pine Script v6
+// ==========================================
+// Channel-based trendline bounce strategy with volume-weighted position sizing.
+//
+// Trades bounces WITHIN a channel (not breaks through one):
+//   Uptrend:   buy at support bounce, partial sell at resistance bounce
+//   Downtrend: short at resistance bounce, partial cover at support bounce
+//   Regime change: close all positions immediately
+//
+// Volume-weighted sizing: recent_vol / vol_SMA * base_pct, clamped [floor, ceiling].
+// FIFO partial exits handled via strategy pyramiding.
+//
+// Visuals:
+//   Green line  — ascending support trendline
+//   Red line    — descending/ascending resistance trendline
+//   White dots  — the last i_minTouches swing points used to fit each trendline
+//   ▲ Green     — support bounce → long entry (uptrend)
+//   ▽ Orange    — resistance bounce → partial long exit (uptrend)
+//   ▽ Red       — resistance bounce → short entry (downtrend)
+//   ▲ Blue      — support bounce → short cover (downtrend)
+//   ✕ White     — regime change (trend flip while in a position)
+//
+// Changelog:
+//   - Fixed: strategy.entry() qty_type param removed (not valid in Pine v6;
+//            default_qty_type on strategy() declaration already sets this globally)
+//   - Added: white circle markers at the i_minTouches anchor swing points used
+//            to fit each trendline, toggled by "Show Channel Lines"
+//
+// Equivalent to: strategies/enhanced_lines_strategy.py
+
+//@version=6
+strategy("Enhanced Lines — Channel Bounce",
+     overlay        = true,
+     pyramiding     = 10,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 25,
+     initial_capital = 10000,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.1,
+     slippage       = 1,
+     process_orders_on_close = false)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+i_pivotLookback = input.int(5,     "Pivot Lookback",        minval=2, maxval=20,
+                            tooltip="Bars left/right for swing point detection")
+i_minTouches    = input.int(3,     "Min Touches",           minval=2, maxval=5,
+                            tooltip="Points needed to confirm a trendline")
+i_tolerance     = input.float(1.5, "Tolerance %",           minval=0.1, maxval=5.0, step=0.1,
+                            tooltip="Proximity tolerance for trendline touches") / 100
+i_confirmBars   = input.int(2,     "Confirm Bars",          minval=1, maxval=5,
+                            tooltip="Consecutive bars to confirm a bounce")
+i_trendHoldMin  = input.int(3,     "Trend Hold Min",        minval=1, maxval=10,
+                            tooltip="Bars of consistent new trend before regime change")
+i_enableShort   = input.bool(true, "Enable Short",
+                            tooltip="Allow short positions in downtrends")
+
+grpVol          = "Volume Sizing"
+i_volMaPeriod   = input.int(20,    "Volume MA Period",      minval=5,   maxval=100, group=grpVol)
+i_volBasePct    = input.float(0.25,"Base Size %",           minval=0.05,maxval=1.0, step=0.05, group=grpVol,
+                            tooltip="Base position size as fraction of capacity")
+i_volFloorPct   = input.float(0.20,"Floor Size %",          minval=0.05,maxval=1.0, step=0.05, group=grpVol)
+i_volCeilingPct = input.float(0.80,"Ceiling Size %",        minval=0.10,maxval=1.0, step=0.05, group=grpVol)
+
+grpVis          = "Visuals"
+i_showChannel   = input.bool(true, "Show Channel Lines",    group=grpVis)
+i_showBounces   = input.bool(true, "Show Bounce Signals",   group=grpVis)
+i_showTrend     = input.bool(true, "Show Trend Background", group=grpVis)
+i_showMidpoint  = input.bool(true, "Show Bar Midpoint Line", group=grpVis,
+                            tooltip="Continuous line through (high+low)/2 of every bar")
+
+// =============================================================================
+// SWING POINT DETECTION
+// =============================================================================
+
+// ta.pivothigh / ta.pivotlow return the pivot value at the pivot bar (delayed by lookback)
+pivotHigh = ta.pivothigh(high, i_pivotLookback, i_pivotLookback)
+pivotLow  = ta.pivotlow(low,  i_pivotLookback, i_pivotLookback)
+
+// Store confirmed swing points in arrays (bar_index, price)
+var swingHighBars   = array.new_int(0)
+var swingHighPrices = array.new_float(0)
+var swingLowBars    = array.new_int(0)
+var swingLowPrices  = array.new_float(0)
+
+// Max swing points to retain (rolling window)
+maxSwings = i_minTouches * 3
+
+if not na(pivotHigh)
+    // Pivot is confirmed i_pivotLookback bars ago
+    int pivBar = bar_index - i_pivotLookback
+    array.push(swingHighBars, pivBar)
+    array.push(swingHighPrices, pivotHigh)
+    if array.size(swingHighBars) > maxSwings
+        array.shift(swingHighBars)
+        array.shift(swingHighPrices)
+
+if not na(pivotLow)
+    int pivBar = bar_index - i_pivotLookback
+    array.push(swingLowBars, pivBar)
+    array.push(swingLowPrices, pivotLow)
+    if array.size(swingLowBars) > maxSwings
+        array.shift(swingLowBars)
+        array.shift(swingLowPrices)
+
+// =============================================================================
+// TRENDLINE FITTING
+// =============================================================================
+
+// Fit a trendline through the last minTouches points.
+// Returns [anchor1_bar, anchor1_price, anchor2_bar, anchor2_price, slope, valid]
+type Trendline
+    int   bar1
+    float price1
+    int   bar2
+    float price2
+    float slope
+    bool  valid
+
+fitTrendline(array<int> bars, array<float> prices, int minTouches, float tol, string dir) =>
+    var Trendline result = Trendline.new(0, 0.0, 0, 0.0, 0.0, false)
+    int sz = array.size(bars)
+    if sz < minTouches
+        result := Trendline.new(0, 0.0, 0, 0.0, 0.0, false)
+    else
+        // Take last minTouches points
+        int startIdx   = sz - minTouches
+        int b1         = array.get(bars, startIdx)
+        float p1       = array.get(prices, startIdx)
+        int b2         = array.get(bars, sz - 1)
+        float p2       = array.get(prices, sz - 1)
+
+        float sl       = b2 != b1 ? (p2 - p1) / (b2 - b1) : 0.0
+
+        // Direction check
+        bool dirOk = (dir == "ascending" and sl > 0) or (dir == "descending" and sl < 0)
+
+        // Collinearity check: all intermediate points within tolerance
+        bool collinear = true
+        if dirOk and minTouches > 2
+            for k = startIdx + 1 to sz - 2
+                int bk       = array.get(bars, k)
+                float pk     = array.get(prices, k)
+                float proj   = p1 + sl * (bk - b1)
+                float dev    = proj > 0 ? math.abs(pk - proj) / proj : 1.0
+                if dev > tol
+                    collinear := false
+                    break
+
+        if dirOk and collinear
+            result := Trendline.new(b1, p1, b2, p2, sl, true)
+        else
+            result := Trendline.new(0, 0.0, 0, 0.0, 0.0, false)
+    result
+
+// Project trendline value at a given bar
+trendlineAt(Trendline tl, int atBar) =>
+    tl.price1 + tl.slope * (atBar - tl.bar1)
+
+// =============================================================================
+// BUILD CHANNEL (4 trendlines)
+// =============================================================================
+
+Trendline higherHighs = fitTrendline(swingHighBars, swingHighPrices, i_minTouches, i_tolerance, "ascending")
+Trendline higherLows  = fitTrendline(swingLowBars,  swingLowPrices,  i_minTouches, i_tolerance, "ascending")
+Trendline lowerHighs  = fitTrendline(swingHighBars, swingHighPrices, i_minTouches, i_tolerance, "descending")
+Trendline lowerLows   = fitTrendline(swingLowBars,  swingLowPrices,  i_minTouches, i_tolerance, "descending")
+
+// Select best support/resistance pair
+// Prefer uptrend channel (higher_lows + higher_highs), then downtrend, then mixed
+Trendline support    = Trendline.new(0, 0.0, 0, 0.0, 0.0, false)
+Trendline resistance = Trendline.new(0, 0.0, 0, 0.0, 0.0, false)
+
+if higherLows.valid and higherHighs.valid
+    support    := higherLows
+    resistance := higherHighs
+else if lowerLows.valid and lowerHighs.valid
+    support    := lowerLows
+    resistance := lowerHighs
+else
+    support    := higherLows.valid  ? higherLows  : lowerLows
+    resistance := higherHighs.valid ? higherHighs : lowerHighs
+
+// =============================================================================
+// TREND DETERMINATION WITH HYSTERESIS
+// =============================================================================
+
+flatThreshold = 0.0002 * close
+supSlope      = support.valid    ? support.slope    : 0.0
+resSlope      = resistance.valid ? resistance.slope : 0.0
+
+bool bothValid = support.valid and resistance.valid
+bool supUp     = supSlope > flatThreshold
+bool supDn     = supSlope < -flatThreshold
+bool resUp     = resSlope > flatThreshold
+bool resDn     = resSlope < -flatThreshold
+
+string rawTrend = "neutral"
+if bothValid and supUp and resUp
+    rawTrend := "uptrend"
+else if bothValid and supDn and resDn
+    rawTrend := "downtrend"
+
+// Hysteresis state
+var string confirmedTrend = "neutral"
+var string pendingTrend   = "neutral"
+var int    pendingCount   = 0
+
+if rawTrend != confirmedTrend
+    if rawTrend == pendingTrend
+        pendingCount += 1
+    else
+        pendingTrend := rawTrend
+        pendingCount := 1
+    if pendingCount >= i_trendHoldMin
+        confirmedTrend := rawTrend
+        pendingTrend   := rawTrend
+        pendingCount   := 0
+else
+    pendingTrend := confirmedTrend
+    pendingCount := 0
+
+// Track previous trend for regime change detection
+var string prevTrend = "neutral"
+bool regimeChange    = confirmedTrend != prevTrend and prevTrend != "neutral"
+
+// =============================================================================
+// BOUNCE DETECTION
+// =============================================================================
+
+// Support bounce (direction "up"): low touches support zone, then confirmBars bullish closes
+// Resistance bounce (direction "down"): high touches resistance zone, then confirmBars bearish closes
+
+detectBounce(Trendline tl, string dir, int confirmBars) =>
+    bool result = false
+    if tl.valid and bar_index >= confirmBars
+        int startBar    = bar_index - confirmBars + 1
+        bool touched    = false
+        bool confirmed  = true
+
+        for k = startBar to bar_index
+            float proj = trendlineAt(tl, k)
+            if proj > 0
+                if dir == "up"
+                    float lowDev = (low[bar_index - k] - proj) / proj
+                    if lowDev <= i_tolerance
+                        touched := true
+                else
+                    float highDev = (high[bar_index - k] - proj) / proj
+                    if highDev >= -i_tolerance
+                        touched := true
+
+        if touched
+            for k = startBar to bar_index
+                int offset = bar_index - k
+                if dir == "up"
+                    if close[offset] <= open[offset]
+                        confirmed := false
+                        break
+                else
+                    if close[offset] >= open[offset]
+                        confirmed := false
+                        break
+
+        result := touched and confirmed
+    result
+
+bool supportBounce    = detectBounce(support,    "up",   i_confirmBars)
+bool resistanceBounce = detectBounce(resistance, "down", i_confirmBars)
+
+// =============================================================================
+// VOLUME-WEIGHTED POSITION SIZING
+// =============================================================================
+
+volSma   = ta.sma(volume, i_volMaPeriod)
+
+calcTradePct() =>
+    float volRatio = volSma > 0 ? volume / volSma : 1.0
+    float rawPct   = volRatio * i_volBasePct
+    math.max(i_volFloorPct, math.min(i_volCeilingPct, rawPct))
+
+float tradePct = calcTradePct()
+
+// Convert to percent of equity for strategy orders
+float sizePctOfEquity = tradePct * 100  // e.g., 0.25 -> 25%
+
+// =============================================================================
+// STRATEGY EXECUTION
+// =============================================================================
+
+float posSize = strategy.position_size
+
+// --- REGIME CHANGE: close ALL positions ---
+if regimeChange and posSize != 0
+    if posSize > 0
+        strategy.close_all(comment="Trend Flip [L]")
+    else
+        strategy.close_all(comment="Trend Flip [S]")
+
+// --- UPTREND: bounce logic ---
+if confirmedTrend == "uptrend"
+    // Support bounce -> scale INTO long (pyramiding allows multiple entries)
+    // qty is interpreted as % of equity because default_qty_type = strategy.percent_of_equity
+    if supportBounce and posSize >= 0
+        strategy.entry("Long", strategy.long, qty=sizePctOfEquity, comment="Support Bounce")
+
+    // Resistance bounce -> trim long by volume-weighted fraction of current position
+    if resistanceBounce and posSize > 0
+        float closeQty = math.abs(posSize) * tradePct
+        if closeQty > 0
+            strategy.close("Long", qty=closeQty, comment="Resistance Bounce")
+
+// --- DOWNTREND: bounce logic (short) ---
+if confirmedTrend == "downtrend" and i_enableShort
+    // Resistance bounce -> scale INTO short
+    if resistanceBounce and posSize <= 0
+        strategy.entry("Short", strategy.short, qty=sizePctOfEquity, comment="Resistance Bounce")
+
+    // Support bounce -> cover short by volume-weighted fraction of current position
+    if supportBounce and posSize < 0
+        float coverQty = math.abs(posSize) * tradePct
+        if coverQty > 0
+            strategy.close("Short", qty=coverQty, comment="Support Bounce")
+
+// Update previous trend AFTER order logic so regimeChange fires correctly next bar
+prevTrend := confirmedTrend
+
+// =============================================================================
+// VISUALS
+// =============================================================================
+
+// --- Channel lines ---
+// Note: lines and touch-point labels are only drawn/updated on the LAST bar
+// (barstate.islast), which is why the channel appears only at the right edge.
+// The lines extend 50 bars back from the last bar for visual context.
+var line supportLine    = na
+var line resistanceLine = na
+
+// Touch-point label arrays — hold the i_minTouches white circle markers
+// placed at the exact swing-point anchors used to fit each trendline.
+var label[] supportTouchLbls    = array.new_label(0)
+var label[] resistanceTouchLbls = array.new_label(0)
+
+if i_showChannel and (barstate.islastconfirmedhistory or barstate.isrealtime)
+    // Delete stale lines before redrawing
+    if not na(supportLine)
+        line.delete(supportLine)
+    if not na(resistanceLine)
+        line.delete(resistanceLine)
+
+    // Draw support line (green) spanning last 50 bars
+    if support.valid
+        float sVal1 = trendlineAt(support, bar_index - 50)
+        float sVal2 = trendlineAt(support, bar_index)
+        supportLine := line.new(bar_index - 50, sVal1, bar_index, sVal2,
+                               color=color.green, width=2, style=line.style_solid)
+
+    // Draw resistance line (red) spanning last 50 bars
+    if resistance.valid
+        float rVal1 = trendlineAt(resistance, bar_index - 50)
+        float rVal2 = trendlineAt(resistance, bar_index)
+        resistanceLine := line.new(bar_index - 50, rVal1, bar_index, rVal2,
+                                  color=color.red, width=2, style=line.style_solid)
+
+    // --- Touch-point markers ---
+    // Show white circles at the i_minTouches swing lows / swing highs
+    // that were used as anchors when fitting each trendline.
+    // Stale labels are deleted each bar before new ones are created.
+    for lbl in supportTouchLbls
+        label.delete(lbl)
+    array.clear(supportTouchLbls)
+    for lbl in resistanceTouchLbls
+        label.delete(lbl)
+    array.clear(resistanceTouchLbls)
+
+    // Support anchors: last i_minTouches entries in swingLowBars/swingLowPrices
+    if support.valid
+        int supSz    = array.size(swingLowBars)
+        int supStart = supSz - i_minTouches
+        if supStart >= 0
+            for k = supStart to supSz - 1
+                array.push(supportTouchLbls,
+                    label.new(array.get(swingLowBars, k), array.get(swingLowPrices, k),
+                              text="", style=label.style_circle,
+                              color=color.white, size=size.small))
+
+    // Resistance anchors: last i_minTouches entries in swingHighBars/swingHighPrices
+    if resistance.valid
+        int resSz    = array.size(swingHighBars)
+        int resStart = resSz - i_minTouches
+        if resStart >= 0
+            for k = resStart to resSz - 1
+                array.push(resistanceTouchLbls,
+                    label.new(array.get(swingHighBars, k), array.get(swingHighPrices, k),
+                              text="", style=label.style_circle,
+                              color=color.white, size=size.small))
+
+// --- Bounce signals ---
+plotshape(i_showBounces and supportBounce    and confirmedTrend == "uptrend",
+          title="Support Bounce",   style=shape.triangleup,
+          location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+
+plotshape(i_showBounces and resistanceBounce and confirmedTrend == "uptrend",
+          title="Resistance Bounce", style=shape.triangledown,
+          location=location.abovebar, color=color.new(color.orange, 0), size=size.small)
+
+plotshape(i_showBounces and resistanceBounce and confirmedTrend == "downtrend" and i_enableShort,
+          title="Short Entry",      style=shape.triangledown,
+          location=location.abovebar, color=color.new(color.red, 0), size=size.small)
+
+plotshape(i_showBounces and supportBounce    and confirmedTrend == "downtrend" and i_enableShort,
+          title="Short Cover",      style=shape.triangleup,
+          location=location.belowbar, color=color.new(color.blue, 0), size=size.small)
+
+// --- Regime change markers ---
+plotshape(regimeChange and posSize != 0,
+          title="Regime Change", style=shape.xcross,
+          location=location.abovebar, color=color.new(color.white, 0), size=size.normal)
+
+// --- Trend background ---
+trendColor = confirmedTrend == "uptrend"   ? color.new(color.green, 92) :
+             confirmedTrend == "downtrend"  ? color.new(color.red, 92)   :
+             color.new(color.gray, 95)
+bgcolor(i_showTrend ? trendColor : na, title="Trend Background")
+
+// --- Bar midpoint line ---
+// Draws a continuous line through the exact midpoint of every bar (high+low)/2.
+// Useful as a visual reference for price equilibrium within each bar.
+plot(i_showMidpoint ? (high + low) / 2 : na,
+     title     = "Bar Midpoint",
+     color     = color.new(color.gray, 50),
+     linewidth = 1,
+     style     = plot.style_line)
+
+// --- Info table ---
+var table infoTable = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80))
+if barstate.islastconfirmedhistory or barstate.isrealtime
+    table.cell(infoTable, 0, 0, "Trend",       text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 0, confirmedTrend, text_color=confirmedTrend == "uptrend" ? color.green : confirmedTrend == "downtrend" ? color.red : color.gray, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Support",      text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 1, support.valid ? str.tostring(support.slope, "#.####") : "none", text_color=color.green, text_size=size.small)
+    table.cell(infoTable, 0, 2, "Resistance",   text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 2, resistance.valid ? str.tostring(resistance.slope, "#.####") : "none", text_color=color.red, text_size=size.small)
+    table.cell(infoTable, 0, 3, "Vol Ratio",    text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, volSma > 0 ? str.tostring(volume / volSma, "#.##") : "n/a", text_color=color.yellow, text_size=size.small)
+    table.cell(infoTable, 0, 4, "Trade Size",   text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 4, str.tostring(tradePct * 100, "#.#") + "%", text_color=color.yellow, text_size=size.small)

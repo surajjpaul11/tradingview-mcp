@@ -1,0 +1,458 @@
+{
+  "symbol": "BTC-USD",
+  "strategy": "curved_channel",
+  "strategy_label": "Curved Channel v2 (deg=2, touch=3, breakout=1.5%)",
+  "parameters": {
+    "pivot_left": 5,
+    "pivot_right": 5,
+    "max_pivots": 20,
+    "degree": 2,
+    "min_touch": 3,
+    "tolerance_pct": 1.0,
+    "enable_short": true,
+    "breakout_pct": 1.5,
+    "breakout_add_pct": 100,
+    "atr_trail_mult": 2.0,
+    "atr_period": 14,
+    "short_sma_period": 0,
+    "short_min_hold": 5,
+    "fallback_sma_period": 0,
+    "fallback_wait_bars": 10,
+    "short_entry_pct": 1.5,
+    "vol_confirm_mult": 1.2,
+    "vol_confirm_period": 20,
+    "ch_trail_activate_pct": 2.0,
+    "ch_trail_atr_mult": 1.5,
+    "short_size_base": 25,
+    "short_size_scale": 12.5,
+    "short_size_max": 75,
+    "time_exit_bars": 20,
+    "rsi_div_lookback": 0,
+    "rsi_period": 14,
+    "ride_expired_winners": true,
+    "early_poly_lookback": 12,
+    "early_poly_degree": 2,
+    "early_vol_gate": 0.8,
+    "early_entry_size": 25,
+    "reversal_atr_mult": 2.0,
+    "reversal_vol_mult": 2.0,
+    "reversal_lookback": 3,
+    "reversal_entry_size": 25,
+    "reversal_short_enabled": false,
+    "diverg_slope_lookback": 5,
+    "diverg_baseline_lookback": 20,
+    "diverg_slope_mult": 8.0,
+    "diverg_entry_size": 25,
+    "diverg_short_enabled": false,
+    "early_enabled": true,
+    "reversal_enabled": true,
+    "diverg_enabled": false,
+    "waterfall_enabled": true,
+    "waterfall_drop_pct": 8.0,
+    "waterfall_lookback": 5,
+    "waterfall_vol_mult": 1.5,
+    "waterfall_confirm_bars": 3,
+    "waterfall_entry_size": 50,
+    "waterfall_short_enabled": false
+  },
+  "period": "2y",
+  "interval": "1d",
+  "candles_analyzed": 730,
+  "date_from": "2024-04-08",
+  "date_to": "2026-04-08",
+  "initial_capital": 10000.0,
+  "commission_pct": 0.1,
+  "slippage_pct": 0.05,
+  "total_trades": 15,
+  "winning_trades": 9,
+  "losing_trades": 6,
+  "long_trades": 10,
+  "short_trades": 5,
+  "channel_break_exits": 0,
+  "channel_expired_exits": 0,
+  "channel_flip_exits": 0,
+  "breakout_up_exits": 3,
+  "breakout_down_exits": 0,
+  "atr_trailing_exits": 12,
+  "channel_trail_stop_exits": 0,
+  "pyramid_upsize_exits": 0,
+  "time_exit_exits": 0,
+  "fallback_sma_exits": 0,
+  "end_of_data_exits": 0,
+  "win_rate_pct": 60.0,
+  "final_capital": 16510.98,
+  "total_return_pct": 65.11,
+  "avg_gain_pct": 7.65,
+  "avg_loss_pct": -2.41,
+  "max_drawdown_pct": -10.07,
+  "profit_factor": 4.75,
+  "sharpe_ratio": 8.08,
+  "expectancy_pct": 3.62,
+  "buy_and_hold_return_pct": 0.01,
+  "vs_buy_and_hold_pct": 65.1,
+  "trade_log": [
+    {
+      "entry_date": "2024-04-24",
+      "entry_price": 64276.8984,
+      "exit_date": "2024-05-01",
+      "exit_price": 58254.0117,
+      "side": "long",
+      "size_pct": 25,
+      "entry_reason": "early_momentum",
+      "entry_versions": [
+        "v49"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -9.67,
+      "portfolio_return_pct": -2.417,
+      "gross_return_pct": -9.37,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2024-07-12",
+      "entry_price": 57899.4648,
+      "exit_date": "2024-07-31",
+      "exit_price": 64619.25,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "breakout_long",
+      "entry_versions": [
+        "v2"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 11.306,
+      "portfolio_return_pct": 11.306,
+      "gross_return_pct": 11.606,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2024-10-09",
+      "entry_price": 60582.1016,
+      "exit_date": "2024-10-11",
+      "exit_price": 62445.0898,
+      "side": "short",
+      "size_pct": 25,
+      "entry_reason": "breakout_short",
+      "entry_versions": [
+        "v2",
+        "v3"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2",
+        "v23"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -3.375,
+      "portfolio_return_pct": -0.844,
+      "gross_return_pct": -3.075,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2024-11-06",
+      "entry_price": 75639.0781,
+      "exit_date": "2024-11-11",
+      "exit_price": 88701.4844,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "reversal_to_channel",
+      "entry_versions": [
+        "v50",
+        "v1",
+        "v8",
+        "v21",
+        "v25",
+        "v48"
+      ],
+      "exit_reason": "breakout_up",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 16.969,
+      "portfolio_return_pct": 16.969,
+      "gross_return_pct": 17.269,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2024-11-11",
+      "entry_price": 88701.4844,
+      "exit_date": "2024-11-26",
+      "exit_price": 91985.3203,
+      "side": "long",
+      "size_pct": 200,
+      "entry_reason": "breakout_reentry",
+      "entry_versions": [
+        "v2"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 3.402,
+      "portfolio_return_pct": 6.804,
+      "gross_return_pct": 3.702,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-01-10",
+      "entry_price": 94701.4531,
+      "exit_date": "2025-02-01",
+      "exit_price": 100655.9062,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "channel_long",
+      "entry_versions": [
+        "v1",
+        "v8",
+        "v21",
+        "v25",
+        "v48"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 5.988,
+      "portfolio_return_pct": 5.988,
+      "gross_return_pct": 6.288,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-02-19",
+      "entry_price": 96635.6094,
+      "exit_date": "2025-02-28",
+      "exit_price": 84373.0078,
+      "side": "short",
+      "size_pct": 25,
+      "entry_reason": "breakout_short",
+      "entry_versions": [
+        "v2",
+        "v3"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2",
+        "v23"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 12.39,
+      "portfolio_return_pct": 3.098,
+      "gross_return_pct": 12.69,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-03-29",
+      "entry_price": 82597.5859,
+      "exit_date": "2025-04-09",
+      "exit_price": 82573.9531,
+      "side": "short",
+      "size_pct": 25,
+      "entry_reason": "breakout_short",
+      "entry_versions": [
+        "v2",
+        "v3"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2",
+        "v23"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -0.271,
+      "portfolio_return_pct": -0.068,
+      "gross_return_pct": 0.029,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-06-13",
+      "entry_price": 106090.9688,
+      "exit_date": "2025-06-29",
+      "exit_price": 108385.5703,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "channel_long",
+      "entry_versions": [
+        "v1",
+        "v8",
+        "v21",
+        "v25",
+        "v48"
+      ],
+      "exit_reason": "breakout_up",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 1.863,
+      "portfolio_return_pct": 1.863,
+      "gross_return_pct": 2.163,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-06-29",
+      "entry_price": 108385.5703,
+      "exit_date": "2025-07-20",
+      "exit_price": 117300.7891,
+      "side": "long",
+      "size_pct": 200,
+      "entry_reason": "breakout_reentry",
+      "entry_versions": [
+        "v2"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 7.925,
+      "portfolio_return_pct": 15.85,
+      "gross_return_pct": 8.225,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-09-30",
+      "entry_price": 114056.0859,
+      "exit_date": "2025-10-10",
+      "exit_price": 113214.3672,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "breakout_long",
+      "entry_versions": [
+        "v2"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -1.038,
+      "portfolio_return_pct": -1.038,
+      "gross_return_pct": -0.738,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2025-11-17",
+      "entry_price": 92093.875,
+      "exit_date": "2025-11-24",
+      "exit_price": 88270.5625,
+      "side": "short",
+      "size_pct": 25,
+      "entry_reason": "breakout_short",
+      "entry_versions": [
+        "v2",
+        "v3"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2",
+        "v23"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 3.852,
+      "portfolio_return_pct": 0.963,
+      "gross_return_pct": 4.152,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-01-12",
+      "entry_price": 91192.9922,
+      "exit_date": "2026-01-14",
+      "exit_price": 96929.3281,
+      "side": "long",
+      "size_pct": 100,
+      "entry_reason": "channel_long",
+      "entry_versions": [
+        "v1",
+        "v8",
+        "v21",
+        "v25",
+        "v48"
+      ],
+      "exit_reason": "breakout_up",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": 5.99,
+      "portfolio_return_pct": 5.99,
+      "gross_return_pct": 6.29,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-01-14",
+      "entry_price": 96929.3281,
+      "exit_date": "2026-01-19",
+      "exit_price": 92553.5938,
+      "side": "long",
+      "size_pct": 200,
+      "entry_reason": "breakout_reentry",
+      "entry_versions": [
+        "v2"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -4.814,
+      "portfolio_return_pct": -9.628,
+      "gross_return_pct": -4.514,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-03-22",
+      "entry_price": 67845.2109,
+      "exit_date": "2026-04-05",
+      "exit_price": 68981.8984,
+      "side": "short",
+      "size_pct": 25,
+      "entry_reason": "breakout_short",
+      "entry_versions": [
+        "v2",
+        "v3"
+      ],
+      "exit_reason": "atr_trailing_stop",
+      "exit_versions": [
+        "v2",
+        "v23"
+      ],
+      "strategy": "curved_channel",
+      "return_pct": -1.975,
+      "portfolio_return_pct": -0.494,
+      "gross_return_pct": -1.675,
+      "cost_pct": -0.3
+    }
+  ],
+  "data_source": "Yahoo Finance",
+  "disclaimer": "Past performance does not guarantee future results. For educational use only.",
+  "timestamp": "2026-04-08T06:12:38.291680+00:00",
+  "bnh_markers": [
+    {
+      "time": "2024-04-08",
+      "position": "belowBar",
+      "color": "#FFD700",
+      "shape": "arrowUp",
+      "text": "B&H BUY $71,631.36",
+      "size": 3
+    },
+    {
+      "time": "2026-04-08",
+      "position": "aboveBar",
+      "color": "#FFD700",
+      "shape": "arrowDown",
+      "text": "B&H $71,638.57 (+0.01%)",
+      "size": 3
+    }
+  ]
+}

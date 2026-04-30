@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curves Strategy Visualization</title>
+    <style>
+        body {
+            background-color: #131722;
+            color: #d1d4dc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 24px; color: #fff; }
+        p { margin: 0; font-size: 14px; color: #8a93a6; }
+        .canvas-container {
+            position: relative;
+            background: #1e222d;
+            border-radius: 8px;
+            border: 1px solid #2a2e39;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        .legend {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 900px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Curves Strategy Concept Map</h1>
+        <p>Quadratic Regression Channels, 1.5% Error Margin, and 2-Candle Confirmation</p>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="chartCanvas" width="900" height="500"></canvas>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background: rgba(38, 166, 154, 0.1);"></div> Uptrend Area</div>
+        <div class="legend-item"><div class="legend-color" style="background: rgba(239, 83, 80, 0.1);"></div> Downtrend Area</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ef5350;"></div> Resistance Curve (Red)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #26a69a;"></div> Support Curve (Green)</div>
+        <div class="legend-item"><div class="legend-color" style="background: rgba(255, 255, 255, 0.3); border: 1px dotted #ccc;"></div> 1.5% Margin limits</div>
+        <div class="legend-item"><div class="legend-color" style="background: #fff; border-radius: 50%;"></div> The "4+ Points"</div>
+        <div class="legend-item"><div class="legend-color" style="background: transparent; border-top: 10px solid #26a69a; border-left: 5px solid transparent; border-right: 5px solid transparent;"></div> Buys (Support Bounce)</div>
+        <div class="legend-item"><div class="legend-color" style="background: transparent; border-bottom: 10px solid #ef5350; border-left: 5px solid transparent; border-right: 5px solid transparent;"></div> Sells (Resistance Bounce)</div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('chartCanvas');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Constants
+    const CANDLE_W = 6;
+    const SPACING = 12;
+    const TOTAL_CANDLES = Math.floor(width / SPACING);
+    
+    // Generate mock price trajectory (Parabola curving up then down)
+    const prices = [];
+    const highs = [];
+    const lows = [];
+    let currentTrend = 1; // 1 up, -1 down
+    
+    for (let i = 0; i < TOTAL_CANDLES; i++) {
+        // Base parabola shape: negative quadratic (curves up then curves down)
+        let x = (i / TOTAL_CANDLES) * 2 - 1;
+        // Invert Y axes for canvas (Canvas Y=0 is top. We want high prices to have lower Y values)
+        let basePrice = 250 + (x * x * 150) - (x * 50); 
+        
+        // Add noise & sine waves for swing points
+        let wave = Math.sin(i * 0.4) * 30; // Swings
+        let noise = (Math.random() - 0.5) * 15;
+        
+        let cOpen = i === 0 ? basePrice : prices[i-1].close;
+        let cClose = basePrice + wave + noise;
+        // Math.min/max are swapped because lower Y is higher price visually
+        let cHigh = Math.min(cOpen, cClose) - Math.random() * 15;
+        let cLow = Math.max(cOpen, cClose) + Math.random() * 15;
+        
+        prices.push({
+            x: i * SPACING + 10,
+            open: cOpen,
+            close: cClose,
+            high: cHigh,
+            low: cLow,
+            dir: cClose > cOpen ? 1 : -1
+        });
+    }
+
+    // Function to calculate exact Quadratic Regression (y = a + bx + cx^2)
+    function fitQuadratic(points) {
+        let n = points.length;
+        let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0;
+        let sy = 0, sxy = 0, sx2y = 0;
+        for (let p of points) {
+            sx += p.x; sx2 += p.x*p.x; sx3 += Math.pow(p.x,3); sx4 += Math.pow(p.x,4);
+            sy += p.y; sxy += p.x*p.y; sx2y += p.x*p.x*p.y;
+        }
+        
+        // Matrix math simplified for 3x3
+        // [n   sx  sx2] [a]   [sy  ]
+        // [sx  sx2 sx3] [b] = [sxy ]
+        // [sx2 sx3 sx4] [c]   [sx2y]
+        
+        // Precomputed Inverse Determinant method for speed
+        let denom = n*(sx2*sx4 - sx3*sx3) - sx*(sx*sx4 - sx2*sx3) + sx2*(sx*sx3 - sx2*sx2);
+        if(denom === 0) return {a:0, b:0, c:0};
+        
+        let a = (sy*(sx2*sx4 - sx3*sx3) - sxy*(sx*sx4 - sx2*sx3) + sx2y*(sx*sx3 - sx2*sx2)) / denom;
+        let b = (n*(sxy*sx4 - sx2y*sx3) - sy*(sx*sx4 - sx2*sx3) + sx2*(sx*sx2y - sxy*sx2)) / denom;
+        let c = (n*(sx2*sx2y - sxy*sx3) - sx*(sx*sx2y - sxy*sx2) + sy*(sx*sx3 - sx2*sx2)) / denom;
+        
+        return {a, b, c};
+    }
+
+    // Find local peaks and troughs (Canvas Y: smaller is visually higher)
+    let pHighs = [];
+    let pLows = [];
+    for (let i = 2; i < TOTAL_CANDLES - 2; i++) {
+        if (prices[i].high < prices[i-1].high && prices[i].high < prices[i-2].high &&
+            prices[i].high < prices[i+1].high && prices[i].high < prices[i+2].high) {
+            pHighs.push({x: i, y: prices[i].high, px: prices[i].x});
+        }
+        if (prices[i].low > prices[i-1].low && prices[i].low > prices[i-2].low &&
+            prices[i].low > prices[i+1].low && prices[i].low > prices[i+2].low) {
+            pLows.push({x: i, y: prices[i].low, px: prices[i].x});
+        }
+    }
+
+    // Fit curves
+    let eqSupport = fitQuadratic(pLows);
+    let eqResistance = fitQuadratic(pHighs);
+
+    // Render loop
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+
+        // 1. Draw Backgrounds based on Polynomial slopes
+        // the inflection point of the support curve (derivative = 0)
+        // y = a + bx + cx^2 -> y' = b + 2cx.  0 = b + 2cx -> x = -b/(2c)
+        let inflectionX = Math.floor(-eqSupport.b / (2 * eqSupport.c));
+        let pInflectionX = (inflectionX * SPACING) + 10;
+        
+        ctx.fillStyle = 'rgba(38, 166, 154, 0.08)'; // Green bg
+        ctx.fillRect(0, 0, pInflectionX, height);
+        ctx.fillStyle = 'rgba(239, 83, 80, 0.08)'; // Red bg
+        ctx.fillRect(pInflectionX, 0, width - pInflectionX, height);
+
+        // 2. Draw Curves
+        const marginPct = 0.035; // Exaggerated 1.5% for visual clarity
+        
+        function drawCurve(eq, color, isResistance) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            for(let i=0; i<TOTAL_CANDLES; i++) {
+                let y = eq.a + eq.b * i + eq.c * (i*i);
+                let px = i * SPACING + 10;
+                if(i===0) ctx.moveTo(px, y);
+                else ctx.lineTo(px, y);
+            }
+            ctx.stroke();
+
+            // Draw Tolerance Margins
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            for(let i=0; i<TOTAL_CANDLES; i++) {
+                let center = eq.a + eq.b * i + eq.c * (i*i);
+                // Simple pixel offset for visual margin (instead of raw percentage due to canvas coords)
+                let y = isResistance ? center - 15 : center + 15;
+                
+                let px = i * SPACING + 10;
+                if(i===0) ctx.moveTo(px, y);
+                else ctx.lineTo(px, y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        drawCurve(eqResistance, '#ef5350', true); // Red
+        drawCurve(eqSupport, '#26a69a', false); // Green
+
+        // 3. Mark the 4+ touch points
+        ctx.fillStyle = '#fff';
+        pHighs.forEach(p => {
+            let cx = p.x * SPACING + 10;
+            let cy = eqResistance.a + eqResistance.b * p.x + eqResistance.c * (p.x*p.x);
+            ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+        });
+        pLows.forEach(p => {
+            let cx = p.x * SPACING + 10;
+            let cy = eqSupport.a + eqSupport.b * p.x + eqSupport.c * (p.x*p.x);
+            ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+        });
+
+        // 4. Draw Candlesticks
+        prices.forEach(p => {
+            let isUp = p.close >= p.open;
+            ctx.strokeStyle = isUp ? '#26a69a' : '#ef5350';
+            ctx.fillStyle = isUp ? '#26a69a' : '#ef5350';
+            
+            // Wick
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.high);
+            ctx.lineTo(p.x, p.low);
+            ctx.stroke();
+            
+            // Body
+            let bodyY = Math.min(p.open, p.close);
+            let bodyH = Math.max(p.open, p.close) - bodyY;
+            if (bodyH < 1) bodyH = 1; // min body size
+            ctx.fillRect(p.x - CANDLE_W/2, bodyY, CANDLE_W, bodyH);
+        });
+
+        // 5. Draw Buy/Sell Arrows based on Logic
+        let lastBuyIdx = -10;
+        let lastSellIdx = -10;
+
+        prices.forEach((p, i) => {
+            if (i < 2) return;
+            
+            let cTrend = i < inflectionX ? 'uptrend' : 'downtrend';
+            let supY = eqSupport.a + eqSupport.b * i + eqSupport.c * (i*i);
+            let resY = eqResistance.a + eqResistance.b * i + eqResistance.c * (i*i);
+            
+            // Touch detection (Canvas Y: higher pixel = lower price)
+            let marginPixels = 15;
+            
+            let twoGreen = prices[i].close < prices[i].open && prices[i-1].close < prices[i-1].open; // Canvas: close < open means it went UP
+            let twoRed = prices[i].close > prices[i].open && prices[i-1].close > prices[i-1].open;   // Canvas: close > open means it went DOWN
+            
+            let touchedSupportRecently = prices[i-2].low > (eqSupport.a + eqSupport.b*(i-2) + eqSupport.c*Math.pow(i-2,2)) - marginPixels;
+            let touchedResRecently = prices[i-2].high < (eqResistance.a + eqResistance.b*(i-2) + eqResistance.c*Math.pow(i-2,2)) + marginPixels;
+
+            // Buy Arrow
+            if (cTrend === 'uptrend' && touchedSupportRecently && twoGreen && (i - lastBuyIdx > 3)) {
+                lastBuyIdx = i;
+                ctx.fillStyle = '#26a69a';
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.low + 30);
+                ctx.lineTo(p.x - 8, p.low + 45);
+                ctx.lineTo(p.x + 8, p.low + 45);
+                ctx.fill();
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.fillText('BUY', p.x - 10, p.low + 60);
+            }
+
+            // Sell Arrow
+            if (cTrend === 'downtrend' && touchedResRecently && twoRed && (i - lastSellIdx > 3)) {
+                lastSellIdx = i;
+                ctx.fillStyle = '#ef5350';
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.high - 30);
+                ctx.lineTo(p.x - 8, p.high - 45);
+                ctx.lineTo(p.x + 8, p.high - 45);
+                ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.fillText('SELL', p.x - 12, p.high - 55);
+            }
+        });
+    }
+
+    draw();
+
+</script>
+</body>
+</html>

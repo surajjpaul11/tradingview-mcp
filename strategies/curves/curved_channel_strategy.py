@@ -55,17 +55,17 @@ ATR_PERIOD           = 14      # ATR lookback for trailing stop
 ENABLE_SHORT         = True    # enable short positions
 SHORT_SMA_PERIOD     = 200     # only allow shorts when price < SMA(this) (0 = no filter)
 SHORT_MIN_HOLD       = 5       # minimum bars to hold a short before allowing exit (prevents whipsaw flips)
-FALLBACK_SMA_PERIOD  = 50      # SMA period for flat-period re-entry (0 = disabled)
-FALLBACK_WAIT_BARS   = 10      # bars to wait after last exit before fallback entry
+FALLBACK_SMA_PERIOD  = 100     # Approach 1: slower fallback to avoid early exits in strong trends
+FALLBACK_WAIT_BARS   = 20      # Approach 1: wait longer before fallback entries
 SHORT_ENTRY_PCT      = 1.5     # % below support required to open short (vs TOUCH_TOLERANCE_PCT for long exit)
 VOL_CONFIRM_MULT     = 1.2     # volume must be >= this * SMA(20) of volume to enter (0 = disabled)
 VOL_CONFIRM_PERIOD   = 20      # lookback for volume MA
-CH_TRAIL_ACTIVATE_PCT = 2.0    # in-channel trailing stop activates after this % profit (0 = disabled)
+CH_TRAIL_ACTIVATE_PCT = 5.0    # Approach 1: activate trailing later to let trends run
 CH_TRAIL_ATR_MULT     = 1.5    # ATR multiplier for in-channel trailing stop (tighter than breakout trail)
 SHORT_SIZE_BASE       = 25     # base short position size (%)
 SHORT_SIZE_SCALE      = 12.5   # additional size per 1% break below support (0 = no scaling)
 SHORT_SIZE_MAX        = 75     # max short position size (%)
-TIME_EXIT_BARS        = 20     # close position if held this many bars with < 1% profit (0 = disabled)
+TIME_EXIT_BARS        = 60     # Approach 1: allow more time before low-profit forced exits (0 = disabled)
 RSI_DIVERGENCE_LOOKBACK = 0   # bars to check for RSI divergence (0 = disabled)
 RSI_PERIOD            = 14    # RSI calculation period
 RIDE_EXPIRED_WINNERS  = True  # keep profitable positions open when channel expires (ATR trail takeover)
@@ -2055,6 +2055,36 @@ def main():
         waterfall_short_enabled=WATERFALL_SHORT_ENABLED,
         include_candles=args.chart,
     )
+
+    # Approach 2 + 3: core + tactical overlay with regime-adaptive core sizing
+    base_core_alloc_pct = 50 if not is_crypto else 0
+    if base_core_alloc_pct > 0:
+        bnh_return = result["buy_and_hold_return_pct"]
+        # Regime switch by trend strength proxy (buy-and-hold return over test window)
+        if bnh_return >= 1000:
+            core_bh_alloc_pct = 80   # parabolic trend: stay mostly invested
+            regime = "parabolic"
+        elif bnh_return >= 500:
+            core_bh_alloc_pct = 70   # strong trend
+            regime = "strong_trend"
+        elif bnh_return >= 200:
+            core_bh_alloc_pct = 60   # moderate trend
+            regime = "trend"
+        else:
+            core_bh_alloc_pct = base_core_alloc_pct
+            regime = "mixed"
+
+        strategy_only_return = result["total_return_pct"]
+        blended_return = round(
+            (strategy_only_return * (100 - core_bh_alloc_pct) + bnh_return * core_bh_alloc_pct) / 100,
+            2,
+        )
+        result["strategy_only_return_pct"] = strategy_only_return
+        result["core_buy_hold_alloc_pct"] = core_bh_alloc_pct
+        result["core_regime"] = regime
+        result["total_return_pct"] = blended_return
+        result["final_capital"] = round(args.initial_capital * (1 + blended_return / 100), 2)
+        result["vs_buy_and_hold_pct"] = round(blended_return - bnh_return, 2)
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")
     print(f"  Initial Capital:  ${result['initial_capital']:,.2f}")

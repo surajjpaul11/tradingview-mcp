@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Curved Channel Backtest Index</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f1115; color:#e6e6e6; margin:0; padding:24px; }
+    h1 { margin:0 0 8px 0; }
+    .sub { color:#aab; margin-bottom:20px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+    .card { background:#171a21; border:1px solid #2a2f3a; border-radius:12px; padding:16px; }
+    .period { color:#9aa4b2; margin-top:0; }
+    ul { padding-left:18px; line-height:1.6; }
+    .links a { display:inline-block; margin-right:12px; color:#7cc7ff; text-decoration:none; }
+    .links a:hover { text-decoration:underline; }
+    .neg { color:#ff7b7b; } .pos { color:#7ee787; }
+    .top-links a { color:#7cc7ff; margin-right:14px; }
+  </style>
+</head>
+<body>
+  <h1>Curved Channel Backtest Index</h1>
+  <p class="sub">Symbols: SNDK, PLTR, WDC (period: 2y where available)</p>
+  <p class="top-links">
+    <a href="curved_channel_backtest_report_SNDK_PLTR_WDC.md">Open markdown summary</a>
+    <a href="curved_channel_improvement_plan.html">Open improvement plan (HTML)</a>
+  </p>
+  <div class="grid">
+    <div class="card">
+  <h2>SNDK</h2>
+  <p class="period">2025-02-13 → 2026-05-08</p>
+  <ul>
+    <li>Strategy Return: <strong>+832.15%</strong></li>
+    <li>Buy & Hold: <strong>+4239.83%</strong></li>
+    <li>Delta vs B&H: <strong class="neg">-3407.68%</strong></li>
+    <li>Trades: 7 | Win rate: 71.4%</li>
+    <li>Sharpe: 12.64 | Max DD: -2.46%</li>
+  </ul>
+  <div class="links">
+    <a href="curved_channel_chart_SNDK_2y.html">Open HTML chart</a>
+    <a href="curved_channel_backtest_SNDK_2y.json">View JSON</a>
+  </div>
+</div><div class="card">
+  <h2>PLTR</h2>
+  <p class="period">2024-05-09 → 2026-05-08</p>
+  <ul>
+    <li>Strategy Return: <strong>+63.59%</strong></li>
+    <li>Buy & Hold: <strong>+551.84%</strong></li>
+    <li>Delta vs B&H: <strong class="neg">-488.25%</strong></li>
+    <li>Trades: 12 | Win rate: 58.3%</li>
+    <li>Sharpe: 6.11 | Max DD: -24.09%</li>
+  </ul>
+  <div class="links">
+    <a href="curved_channel_chart_PLTR_2y.html">Open HTML chart</a>
+    <a href="curved_channel_backtest_PLTR_2y.json">View JSON</a>
+  </div>
+</div><div class="card">
+  <h2>WDC</h2>
+  <p class="period">2024-05-09 → 2026-05-08</p>
+  <ul>
+    <li>Strategy Return: <strong>+241.33%</strong></li>
+    <li>Buy & Hold: <strong>+780.90%</strong></li>
+    <li>Delta vs B&H: <strong class="neg">-539.57%</strong></li>
+    <li>Trades: 13 | Win rate: 53.8%</li>
+    <li>Sharpe: 6.67 | Max DD: -22.58%</li>
+  </ul>
+  <div class="links">
+    <a href="curved_channel_chart_WDC_2y.html">Open HTML chart</a>
+    <a href="curved_channel_backtest_WDC_2y.json">View JSON</a>
+  </div>
+</div>
+  </div>
+</body>
+</html>

@@ -59,6 +59,7 @@
       "bars_held": 9,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -5.9,
       "return_pct": -6.18
     },
@@ -75,6 +76,7 @@
       "bars_held": 4,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -2.68,
       "return_pct": -2.97
     },
@@ -91,6 +93,7 @@
       "bars_held": 3,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 5.75,
       "return_pct": 5.44
     },
@@ -107,6 +110,7 @@
       "bars_held": 18,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 2.84,
       "return_pct": 2.53
     },
@@ -123,6 +127,7 @@
       "bars_held": 12,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -5.92,
       "return_pct": -6.21
     },
@@ -139,6 +144,7 @@
       "bars_held": 9,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 10.1,
       "return_pct": 9.77
     },
@@ -155,6 +161,7 @@
       "bars_held": 50,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 9.68,
       "return_pct": 9.35
     },
@@ -171,6 +178,7 @@
       "bars_held": 19,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -5.06,
       "return_pct": -5.35
     },
@@ -187,6 +195,7 @@
       "bars_held": 3,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -3.49,
       "return_pct": -3.78
     },
@@ -203,6 +212,7 @@
       "bars_held": 7,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 8.58,
       "return_pct": 8.26
     },
@@ -219,6 +229,7 @@
       "bars_held": 30,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 4.53,
       "return_pct": 4.22
     },
@@ -235,6 +246,7 @@
       "bars_held": 16,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -3.86,
       "return_pct": -4.14
     },
@@ -251,6 +263,7 @@
       "bars_held": 11,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 13.51,
       "return_pct": 13.16
     },
@@ -267,6 +280,7 @@
       "bars_held": 6,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -5.93,
       "return_pct": -6.21
     },
@@ -283,6 +297,7 @@
       "bars_held": 13,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 14.56,
       "return_pct": 14.22
     },
@@ -299,6 +314,7 @@
       "bars_held": 34,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 3.72,
       "return_pct": 3.41
     },
@@ -315,6 +331,7 @@
       "bars_held": 6,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 6.67,
       "return_pct": 6.35
     },
@@ -331,6 +348,7 @@
       "bars_held": 4,
       "tier": "tactical_3m",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -7.27,
       "return_pct": -7.54
     },
@@ -347,6 +365,7 @@
       "bars_held": 16,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": -11.1,
       "return_pct": -11.37
     },
@@ -363,10 +382,11 @@
       "bars_held": 7,
       "tier": "confluence_grade_a",
       "size_pct": 1.0,
+      "strategy": "enhanced_channel",
       "gross_return_pct": 10.98,
       "return_pct": 10.65
     }
   ],
   "data_source": "Yahoo Finance",
-  "timestamp": "2026-09-19T17:38:05.762405+00:00"
+  "timestamp": "2026-09-19T19:44:24.507658+00:00"
 }

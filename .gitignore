@@ -1,3 +1,10 @@
+# vs code
+.vscode/
+
+# strategy screenshots
+*.png
+
+
 .venv/
 __pycache__/
 *.pyc
@@ -30,6 +37,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# screenshots
+screenshots/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -214,5 +224,8 @@ __marimo__/
 # Local development and testing files
 test_nyse.py
 scripts/fetch_nyse_tickers.py
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/restore_loops.py
+loops.state.json
 data/

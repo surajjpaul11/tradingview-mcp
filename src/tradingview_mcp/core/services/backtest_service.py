@@ -556,7 +556,12 @@ def _get_dynamic_runner(file_name: str, func_name: str):
     def runner(candles, **kwargs):
         base_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
         strategy_path = base_dir / "strategies" / file_name
-        
+
+        # Also check subdirectory named after strategy (e.g. strategies/enhanced_lines/enhanced_lines_strategy.py)
+        if not strategy_path.exists():
+            stem = file_name.replace("_strategy.py", "")
+            strategy_path = base_dir / "strategies" / stem / file_name
+
         if not strategy_path.exists():
             raise FileNotFoundError(f"Strategy file not found: {strategy_path}")
             

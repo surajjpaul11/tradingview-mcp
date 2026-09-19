@@ -1,0 +1,25 @@
+{
+  "_comment": "Ticker -> best-performing strategy, sourced from strategies/stocks_by_strategy.md (2026-04-13 run). Update when that file is regenerated.",
+  "_generated_from": "strategies/stocks_by_strategy.md",
+  "_last_updated": "2026-04-16",
+  "map": {
+    "AAPL":    "buy_and_protect",
+    "AMD":     "hyperbolic_runner",
+    "AMZN":    "smart_hold",
+    "BE":      "hyperbolic_runner",
+    "BTC-USD": "curved_channel",
+    "GOOGL":   "smart_hold",
+    "META":    "straight_line",
+    "MSFT":    "smart_hold",
+    "NVDA":    "smart_hold",
+    "PLTR":    "hyperbolic_runner",
+    "QQQ":     "smart_hold",
+    "SMCI":    "curved_channel",
+    "SMR":     "smart_hold_rc",
+    "SNDK":    "hyperbolic_runner",
+    "SPY":     "smart_hold",
+    "TSLA":    "smart_hold",
+    "WDC":     "smart_hold",
+    "WULF":    "buy_and_protect"
+  }
+}

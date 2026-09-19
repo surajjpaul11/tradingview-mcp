@@ -1,19 +1,83 @@
 import sqlite3
 import os
+import uuid
 from pathlib import Path
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import yfinance as yf
 
-# Import the existing DB queries so we don't rewrite code
-from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path
+# Import existing DB queries and backtesting service
+from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection, init_db
+from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
+from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
 # Mount static directory directly
 static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+def _ensure_seeded():
+    """Ensure database has historical backtest trades loaded."""
+    init_db()
+    db_path = _get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM trades WHERE mode = 'backtest'").fetchone()[0]
+    except Exception:
+        count = 0
+    finally:
+        conn.close()
+    if count == 0:
+        seed_backtest_data()
+
+def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):
+    """Persist newly generated backtest trades into trades.db."""
+    conn = _get_connection()
+    for t in trade_log:
+        trade_id = str(uuid.uuid4())
+        side_raw = (t.get("side") or "long").lower()
+        side = "buy" if side_raw in ("long", "buy") else "sell"
+        entry_price = float(t.get("entry_price", 0))
+        exit_price = float(t.get("exit_price", entry_price))
+        entry_date = str(t.get("entry_date", ""))
+        exit_date = str(t.get("exit_date", entry_date))
+        
+        created_at = _format_iso_datetime(entry_date, "09:30:00")
+        closed_at = _format_iso_datetime(exit_date, "16:00:00")
+        
+        capital_usd = 1000.0
+        quantity = round(capital_usd / entry_price, 4) if entry_price > 0 else 1.0
+        return_pct = float(t.get("return_pct", 0.0))
+        pnl_usd = round((exit_price - entry_price) * quantity if side == "buy" else (entry_price - exit_price) * quantity, 2)
+        
+        try:
+            conn.execute(
+                """INSERT INTO trades
+                   (trade_id, symbol, side, strategy, broker, quantity, entry_price,
+                    capital_usd, mode, order_id, status, interval, notes, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'backtest', ?, ?, ?, 'backtest', 'AUTO_BACKTEST',
+                           'closed', '1d', ?, ?, ?)""",
+                (trade_id, symbol.upper(), side, strategy.lower(), quantity, entry_price,
+                 capital_usd, f"Auto-backtest {strategy}", created_at, closed_at)
+            )
+            conn.execute(
+                """INSERT INTO trade_exits
+                   (trade_id, exit_price, exit_reason, pnl_usd, pnl_pct, holding_seconds, fees_usd, closed_at)
+                   VALUES (?, ?, ?, ?, ?, 86400, 3.0, ?)""",
+                (trade_id, exit_price, str(t.get("exit_reason", "signal_exit")), pnl_usd, return_pct, closed_at)
+            )
+        except Exception as e:
+            print(f"Error saving auto-backtest trade: {e}")
+            
+    conn.commit()
+    conn.close()
+
+@app.on_event("startup")
+async def startup_event():
+    _ensure_seeded()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
@@ -23,21 +87,50 @@ async def read_root():
 
 @app.get("/api/filters")
 async def get_filters():
-    """Returns available symbols and strategies dynamically from DB."""
+    """Returns available symbols and strategies dynamically from DB and strategy registry."""
+    _ensure_seeded()
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    symbols = [r["symbol"] for r in conn.execute("SELECT DISTINCT symbol FROM trades").fetchall()]
-    strategies = [r["strategy"] for r in conn.execute("SELECT DISTINCT strategy FROM trades").fetchall()]
+    db_symbols = [
+        r["symbol"]
+        for r in conn.execute(
+            "SELECT DISTINCT symbol FROM trades WHERE symbol NOT IN ('PORTFOLIO', 'TOTAL') AND symbol NOT LIKE '%PORTFOLIO%'"
+        ).fetchall()
+    ]
+    db_strategies = [r["strategy"] for r in conn.execute("SELECT DISTINCT strategy FROM trades").fetchall()]
     conn.close()
-    return {"symbols": symbols, "strategies": strategies}
+    
+    # Merge with registry strategies
+    all_strategies = sorted(list(set(db_strategies + list(_STRATEGY_MAP.keys()))))
+    
+    # Priority sort symbols: common first
+    priority = ["AAPL", "SPY", "QQQ", "BTC-USD", "NVDA", "DIA", "GDX", "VXX"]
+    symbols = sorted(db_symbols, key=lambda s: (priority.index(s) if s in priority else 99, s))
+    
+    return {"symbols": symbols, "strategies": all_strategies}
 
 @app.get("/api/trades")
 async def api_trades(symbol: str, strategy: str = None):
-    """Fetch the trade markers to overlay on the chart."""
+    """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
     trades = get_trade_history(symbol=symbol, strategy=strategy, limit=5000)
+    if not trades:
+        # Try alternate symbol formats (e.g. BTC_USD vs BTC-USD)
+        alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
+        trades = get_trade_history(symbol=alt_sym, strategy=strategy, limit=5000)
+    
+    # If no trades found for a specific strategy, run a backtest on the fly!
+    if not trades and strategy and strategy in _STRATEGY_MAP:
+        try:
+            res = run_backtest(symbol=symbol, strategy=strategy, period="2y", include_trade_log=True)
+            if res and "trade_log" in res and res["trade_log"]:
+                _save_backtest_trades(symbol, strategy, res["trade_log"])
+                trades = get_trade_history(symbol=symbol, strategy=strategy, limit=5000)
+        except Exception as e:
+            print(f"On-the-fly backtest error for {symbol} {strategy}: {e}")
+            
     return {"trades": trades}
 
 @app.get("/api/stats")
@@ -46,31 +139,121 @@ async def api_stats(symbol: str, strategy: str = None):
     if strategy == "all" or not strategy:
         strategy = None
     stats = get_pnl_summary(symbol=symbol, strategy=strategy)
+    if not stats or stats.get("total_trades", 0) == 0:
+        alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
+        alt_stats = get_pnl_summary(symbol=alt_sym, strategy=strategy)
+        if alt_stats and alt_stats.get("total_trades", 0) > 0:
+            stats = alt_stats
     return stats
 
 @app.get("/api/candles")
-async def api_candles(symbol: str, timeframe: str = "1d"):
-    """Fetch OHLCV data directly via yfinance since the lightweight chart needs long historical bounds."""
-    # Yahoo Finance translation (BTC/USDT -> BTC-USD)
-    yf_symbol = symbol.replace("/USDT", "-USD").replace("/USD", "-USD")
-    
-    ticker = yf.Ticker(yf_symbol)
-    df = ticker.history(period="1y", interval=timeframe)
+async def api_candles(symbol: str, timeframe: str = "1d", period: str = "5y"):
+    """Fetch OHLCV data directly via yfinance covering the backtest lookback."""
+    clean_sym = symbol.strip().upper()
+    if clean_sym in ("PORTFOLIO", "TOTAL"):
+        clean_sym = "SPY"
+        
+    yf_symbol = (
+        clean_sym.replace("/USDT", "-USD")
+        .replace("/USD", "-USD")
+        .replace("_USDT", "-USD")
+        .replace("_USD", "-USD")
+        .replace("/", "-")
+        .replace("_", "-")
+    )
     
     candles = []
-    # yfinance indices are datetime aware. Lightweight charts uses string "yyyy-mm-dd" or unix timestamp
-    for date, row in df.iterrows():
-        candles.append({
-            "time": int(date.timestamp()),  # Unix timestamp for more precision 
-            "open": float(row["Open"]),
-            "high": float(row["High"]),
-            "low": float(row["Low"]),
-            "close": float(row["Close"]),
-            "volume": float(row["Volume"])
-        })
+    try:
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period=period, interval=timeframe)
+        if df is not None and not df.empty:
+            import math
+            for date, row in df.iterrows():
+                o = float(row["Open"])
+                h = float(row["High"])
+                l = float(row["Low"])
+                c = float(row["Close"])
+                v = float(row.get("Volume", 0.0))
+                if any(math.isnan(x) for x in (o, h, l, c)):
+                    continue
+                candles.append({
+                    "time": int(date.timestamp()),
+                    "open": o,
+                    "high": h,
+                    "low": l,
+                    "close": c,
+                    "volume": v
+                })
+    except Exception as e:
+        print(f"Candle fetch error for {symbol} ({yf_symbol}): {e}")
+        
     return {"candles": candles}
+
+@app.get("/api/trendlines")
+async def api_trendlines(symbol: str):
+    """
+    Run the enhanced_lines strategy on OHLCV data and return trendline segments
+    (support/resistance channels) for chart overlay.
+    """
+    import sys
+    from pathlib import Path as PurePath
+
+    clean_sym = symbol.strip().upper()
+    yf_symbol = (
+        clean_sym.replace("/USDT", "-USD")
+        .replace("/USD", "-USD")
+        .replace("_USDT", "-USD")
+        .replace("_USD", "-USD")
+        .replace("/", "-")
+        .replace("_", "-")
+    )
+
+    try:
+        # Fetch OHLCV candles (1h for 2y — matches how the strategy was designed)
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period="2y", interval="1h")
+        if df is None or df.empty:
+            return {"trendlines": [], "error": "No candle data available"}
+
+        import math
+        candles = []
+        for date, row in df.iterrows():
+            o = float(row["Open"])
+            h = float(row["High"])
+            l = float(row["Low"])
+            c = float(row["Close"])
+            v = float(row.get("Volume", 0.0))
+            if any(math.isnan(x) for x in (o, h, l, c)):
+                continue
+            candles.append({
+                "date": date.strftime("%Y-%m-%d %H:%M"),
+                "open": round(o, 4),
+                "high": round(h, 4),
+                "low": round(l, 4),
+                "close": round(c, 4),
+                "volume": v or 0,
+            })
+
+        if not candles:
+            return {"trendlines": []}
+
+        # Dynamically import enhanced_lines strategy
+        base_dir = Path(__file__).resolve().parents[3]
+        strategy_dir = base_dir / "strategies" / "enhanced_lines"
+        if str(strategy_dir) not in sys.path:
+            sys.path.insert(0, str(strategy_dir))
+
+        from enhanced_lines_strategy import run_enhanced_lines_with_trendlines
+        result = run_enhanced_lines_with_trendlines(candles)
+
+        return {"trendlines": result.get("trendlines", [])}
+
+    except Exception as e:
+        print(f"Trendlines error for {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"trendlines": [], "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
-    # Allow running with `uv run python src/tradingview_mcp/ui/server.py`
     uvicorn.run("tradingview_mcp.ui.server:app", host="127.0.0.1", port=8000, reload=True)

@@ -1,0 +1,61 @@
+{
+  "symbol": "MSFT",
+  "strategy": "synthetic_long",
+  "strategy_label": "Synthetic Long (VIX entry>=28, call delta=0.85, put OTM=25%)",
+  "period": "5y",
+  "interval": "1d",
+  "candles_analyzed": 1256,
+  "date_from": "2021-04-13",
+  "date_to": "2026-04-13",
+  "initial_capital": 10000.0,
+  "final_capital": 12322.45,
+  "total_return_pct": 23.22,
+  "buy_and_hold_return_pct": 45.62,
+  "vs_buy_and_hold_pct": -22.4,
+  "total_trades": 1,
+  "call_trades": 1,
+  "put_trades": 0,
+  "winning_trades": 1,
+  "losing_trades": 0,
+  "win_rate_pct": 100.0,
+  "avg_gain_usd": 2322.45,
+  "avg_loss_usd": 0.0,
+  "total_pnl_usd": 2322.45,
+  "profit_factor": Infinity,
+  "max_drawdown_pct": 0.0,
+  "trade_log": [
+    {
+      "entry_date": "2021-11-26",
+      "exit_date": "2026-04-13",
+      "entry_price": 329.68,
+      "exit_price": 376.42,
+      "side": "long",
+      "leg": "call",
+      "strike": 276.94,
+      "entry_premium": 76.25,
+      "exit_premium": 99.49,
+      "contracts": 1,
+      "return_pct": 30.47,
+      "pnl_usd": 2322.45,
+      "exit_reason": "end_of_data",
+      "entry_reason": "deep_itm_call",
+      "vix_at_entry": 28.6,
+      "vix_at_exit": 20.0,
+      "days_held": 1096,
+      "strategy": "synthetic_long"
+    }
+  ],
+  "signal_log": [
+    {
+      "bar": 159,
+      "date": "2021-11-26",
+      "signal": "buy_call",
+      "vix": 28.6,
+      "strike": 276.94,
+      "premium": 76.25,
+      "contracts": 1
+    }
+  ],
+  "data_source": "Yahoo Finance + Black-Scholes estimates",
+  "timestamp": "2026-04-13T14:36:04.241140+00:00"
+}

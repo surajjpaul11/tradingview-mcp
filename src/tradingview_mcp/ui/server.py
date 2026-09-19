@@ -9,9 +9,9 @@ from fastapi.responses import HTMLResponse
 import yfinance as yf
 
 # Import existing DB queries and backtesting service
-from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection
+from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection, init_db
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
-from tradingview_mcp.core.services.seed_backtests import seed_backtest_data
+from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
@@ -21,10 +21,15 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 def _ensure_seeded():
     """Ensure database has historical backtest trades loaded."""
+    init_db()
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
-    count = conn.execute("SELECT COUNT(*) FROM trades WHERE mode = 'backtest'").fetchone()[0]
-    conn.close()
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM trades WHERE mode = 'backtest'").fetchone()[0]
+    except Exception:
+        count = 0
+    finally:
+        conn.close()
     if count == 0:
         seed_backtest_data()
 
@@ -40,8 +45,8 @@ def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):
         entry_date = str(t.get("entry_date", ""))
         exit_date = str(t.get("exit_date", entry_date))
         
-        created_at = f"{entry_date}T09:30:00+00:00" if "T" not in entry_date else entry_date
-        closed_at = f"{exit_date}T16:00:00+00:00" if "T" not in exit_date else exit_date
+        created_at = _format_iso_datetime(entry_date, "09:30:00")
+        closed_at = _format_iso_datetime(exit_date, "16:00:00")
         
         capital_usd = 1000.0
         quantity = round(capital_usd / entry_price, 4) if entry_price > 0 else 1.0
@@ -87,7 +92,12 @@ async def get_filters():
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    db_symbols = [r["symbol"] for r in conn.execute("SELECT DISTINCT symbol FROM trades").fetchall()]
+    db_symbols = [
+        r["symbol"]
+        for r in conn.execute(
+            "SELECT DISTINCT symbol FROM trades WHERE symbol NOT IN ('PORTFOLIO', 'TOTAL') AND symbol NOT LIKE '%PORTFOLIO%'"
+        ).fetchall()
+    ]
     db_strategies = [r["strategy"] for r in conn.execute("SELECT DISTINCT strategy FROM trades").fetchall()]
     conn.close()
     
@@ -106,6 +116,10 @@ async def api_trades(symbol: str, strategy: str = None):
     if strategy == "all" or not strategy:
         strategy = None
     trades = get_trade_history(symbol=symbol, strategy=strategy, limit=5000)
+    if not trades:
+        # Try alternate symbol formats (e.g. BTC_USD vs BTC-USD)
+        alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
+        trades = get_trade_history(symbol=alt_sym, strategy=strategy, limit=5000)
     
     # If no trades found for a specific strategy, run a backtest on the fly!
     if not trades and strategy and strategy in _STRATEGY_MAP:
@@ -125,27 +139,54 @@ async def api_stats(symbol: str, strategy: str = None):
     if strategy == "all" or not strategy:
         strategy = None
     stats = get_pnl_summary(symbol=symbol, strategy=strategy)
+    if not stats or stats.get("total_trades", 0) == 0:
+        alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
+        alt_stats = get_pnl_summary(symbol=alt_sym, strategy=strategy)
+        if alt_stats and alt_stats.get("total_trades", 0) > 0:
+            stats = alt_stats
     return stats
 
 @app.get("/api/candles")
 async def api_candles(symbol: str, timeframe: str = "1d", period: str = "5y"):
     """Fetch OHLCV data directly via yfinance covering the backtest lookback."""
-    yf_symbol = symbol.replace("/USDT", "-USD").replace("/USD", "-USD")
-    
-    ticker = yf.Ticker(yf_symbol)
-    # Fetch 5 years to ensure full historical backtest window and 5Y range are charted
-    df = ticker.history(period=period, interval=timeframe)
+    clean_sym = symbol.strip().upper()
+    if clean_sym in ("PORTFOLIO", "TOTAL"):
+        clean_sym = "SPY"
+        
+    yf_symbol = (
+        clean_sym.replace("/USDT", "-USD")
+        .replace("/USD", "-USD")
+        .replace("_USDT", "-USD")
+        .replace("_USD", "-USD")
+        .replace("/", "-")
+        .replace("_", "-")
+    )
     
     candles = []
-    for date, row in df.iterrows():
-        candles.append({
-            "time": int(date.timestamp()),
-            "open": float(row["Open"]),
-            "high": float(row["High"]),
-            "low": float(row["Low"]),
-            "close": float(row["Close"]),
-            "volume": float(row["Volume"])
-        })
+    try:
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period=period, interval=timeframe)
+        if df is not None and not df.empty:
+            import math
+            for date, row in df.iterrows():
+                o = float(row["Open"])
+                h = float(row["High"])
+                l = float(row["Low"])
+                c = float(row["Close"])
+                v = float(row.get("Volume", 0.0))
+                if any(math.isnan(x) for x in (o, h, l, c)):
+                    continue
+                candles.append({
+                    "time": int(date.timestamp()),
+                    "open": o,
+                    "high": h,
+                    "low": l,
+                    "close": c,
+                    "volume": v
+                })
+    except Exception as e:
+        print(f"Candle fetch error for {symbol} ({yf_symbol}): {e}")
+        
     return {"candles": candles}
 
 if __name__ == "__main__":

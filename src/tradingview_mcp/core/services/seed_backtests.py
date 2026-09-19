@@ -5,6 +5,29 @@ from pathlib import Path
 from datetime import datetime, timezone
 from tradingview_mcp.core.services.trade_db import _get_connection, _get_db_path, init_db
 
+def _format_iso_datetime(date_str: str, default_time: str = "09:30:00") -> str:
+    """Format any date string to standard ISO-8601 with timezone."""
+    if not date_str:
+        return datetime.now(timezone.utc).isoformat()
+    s = str(date_str).strip()
+    if " " in s and "T" in s:
+        s = s.split("T")[0].replace(" ", "T")
+        if s.count(":") == 1:
+            s += ":00"
+        return f"{s}+00:00"
+    if "T" in s:
+        if "+" in s or s.endswith("Z"):
+            return s
+        return f"{s}+00:00"
+    if " " in s:
+        parts = s.split()
+        date_part = parts[0]
+        time_part = parts[1]
+        if time_part.count(":") == 1:
+            time_part = f"{time_part}:00"
+        return f"{date_part}T{time_part}+00:00"
+    return f"{s}T{default_time}+00:00"
+
 def seed_backtest_data(db_path: str = None) -> int:
     """Import historical trades from all backtest JSON files into trades.db."""
     init_db(db_path)
@@ -54,12 +77,8 @@ def seed_backtest_data(db_path: str = None) -> int:
                 entry_date_str = str(t.get("entry_date", ""))
                 exit_date_str = str(t.get("exit_date", entry_date_str))
                 
-                try:
-                    created_at = f"{entry_date_str}T09:30:00+00:00" if "T" not in entry_date_str else entry_date_str
-                    closed_at = f"{exit_date_str}T16:00:00+00:00" if "T" not in exit_date_str else exit_date_str
-                except Exception:
-                    created_at = datetime.now(timezone.utc).isoformat()
-                    closed_at = created_at
+                created_at = _format_iso_datetime(entry_date_str, "09:30:00")
+                closed_at = _format_iso_datetime(exit_date_str, "16:00:00")
                 
                 # Capital & quantity
                 capital_usd = 1000.0

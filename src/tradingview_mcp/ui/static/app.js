@@ -73,12 +73,13 @@ function initChart() {
         console.error('[TV] Could not create candlestick series with loaded chart library.');
     }
 
-    new ResizeObserver(() => {
+    new ResizeObserver(entries => {
         if (chart && container) {
-            chart.applyOptions({
-                width: container.clientWidth,
-                height: container.clientHeight
-            });
+            const width = container.clientWidth || (entries[0] && entries[0].contentRect.width) || 800;
+            const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
+            if (width > 50 && height > 50) {
+                chart.applyOptions({ width, height });
+            }
         }
     }).observe(container);
 }
@@ -223,7 +224,22 @@ function setLoading(active) {
 
 function toChartTime(isoString) {
     if (!isoString) return Math.floor(Date.now() / 1000);
-    const ts = new Date(isoString).getTime();
+    let str = String(isoString).trim();
+    // Handle double-timestamp corrupted strings like "2024-05-01 14:30T09:30:00+00:00"
+    if (str.includes(' ') && str.includes('T')) {
+        str = str.split('T')[0].replace(' ', 'T');
+        if (str.split(':').length === 2) str += ':00';
+    } else {
+        str = str.replace(' ', 'T');
+    }
+    let ts = new Date(str).getTime();
+    if (isNaN(ts)) {
+        const match = str.match(/\d{4}-\d{2}-\d{2}/);
+        if (match) {
+            ts = new Date(match[0] + 'T12:00:00Z').getTime();
+        }
+    }
+    if (isNaN(ts)) return Math.floor(Date.now() / 1000);
     return Math.floor(ts / 1000);
 }
 
@@ -258,19 +274,20 @@ async function updateDashboard() {
             fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}`)
         ]);
 
-        const candlesData = await candlesRes.json();
-        const tradesData = await tradesRes.json();
-        const statsData = await statsRes.json();
+        const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
+        const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
+        const statsData = statsRes.ok ? await statsRes.json() : {};
 
         // -- Candles --
         const rawCandles = candlesData.candles || [];
         const sorted = rawCandles
+            .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
             .sort((a, b) => a.time - b.time)
             .filter((c, i, arr) => i === 0 || c.time !== arr[i - 1].time); // deduplicate
 
         currentCandles = sorted;
 
-        if (candlestickSeries && sorted.length > 0) {
+        if (candlestickSeries) {
             candlestickSeries.setData(sorted);
         }
 
@@ -278,10 +295,13 @@ async function updateDashboard() {
         if (candlestickSeries && tradesData.trades && sorted.length > 0) {
             try {
                 const markers = [];
+                const showStrategy = strategy === 'all';
+
                 tradesData.trades.forEach(trade => {
                     const entryTime = toChartTime(trade.created_at);
                     const snappedEntry = findNearestCandleTime(entryTime, sorted);
                     const isLong = (trade.side || '').toLowerCase() === 'buy';
+                    const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
 
                     // 1. Entry Marker
                     markers.push({
@@ -289,7 +309,7 @@ async function updateDashboard() {
                         position: isLong ? 'belowBar' : 'aboveBar',
                         color: isLong ? '#10B981' : '#F59E0B',
                         shape: isLong ? 'arrowUp' : 'arrowDown',
-                        text: `${trade.strategy} ${isLong ? 'BUY' : 'SHORT'} @ $${Number(trade.entry_price || 0).toFixed(2)}`
+                        text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
                     });
 
                     // 2. Exit Marker (if trade has an exit recorded)
@@ -299,22 +319,35 @@ async function updateDashboard() {
                         const isWin = (trade.pnl_usd || 0) >= 0;
                         const pnlPct = Number(trade.pnl_pct || 0);
                         const pnlSign = pnlPct >= 0 ? '+' : '';
-                        const reason = trade.exit_reason ? ` [${trade.exit_reason}]` : '';
 
                         markers.push({
                             time: snappedExit,
                             position: isLong ? 'aboveBar' : 'belowBar',
                             color: isWin ? '#10B981' : '#EF4444',
                             shape: isLong ? 'arrowDown' : 'arrowUp',
-                            text: `${trade.strategy} ${isLong ? 'SELL' : 'COVER'} @ $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)${reason}`
+                            text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
                         });
                     }
                 });
 
-                markers.sort((a, b) => a.time - b.time);
+                // Consolidate markers sharing exact same candle time & position to avoid vertical stacking
+                const consolidatedMap = new Map();
+                markers.forEach(m => {
+                    const key = `${m.time}_${m.position}`;
+                    if (!consolidatedMap.has(key)) {
+                        consolidatedMap.set(key, { ...m, count: 1 });
+                    } else {
+                        const existing = consolidatedMap.get(key);
+                        existing.count += 1;
+                        const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
+                        existing.text = `${existing.count}x ${action}`;
+                    }
+                });
+
+                const finalMarkers = Array.from(consolidatedMap.values()).sort((a, b) => a.time - b.time);
 
                 if (typeof candlestickSeries.setMarkers === 'function') {
-                    candlestickSeries.setMarkers(markers);
+                    candlestickSeries.setMarkers(finalMarkers);
                 }
             } catch (markerErr) {
                 console.warn('[TV] Marker setting warning:', markerErr);

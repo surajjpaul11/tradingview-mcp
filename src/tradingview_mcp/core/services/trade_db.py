@@ -402,9 +402,13 @@ def get_pnl_summary(
             """, params).fetchall()
             strategies = [dict(r) for r in strat_rows]
 
+        total_pnl = round(row["total_pnl_usd"], 2)
+        total_pnl_pct = round((total_pnl / 10000.0) * 100, 2) if total > 0 else 0.0
+
         return {
             "total_trades": total,
-            "total_pnl_usd": round(row["total_pnl_usd"], 2),
+            "total_pnl_usd": total_pnl,
+            "total_pnl_pct": total_pnl_pct,
             "avg_pnl_pct": round(row["avg_pnl_pct"], 2),
             "win_rate_pct": round(wins / total * 100, 1) if total > 0 else 0,
             "winning_trades": wins,

@@ -7,6 +7,7 @@ const tickerSelect = document.getElementById('ticker-select');
 const strategySelect = document.getElementById('strategy-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
+const pnlPctVal = document.getElementById('pnl-pct-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 
@@ -594,6 +595,16 @@ async function updateDashboard() {
         const pnlSign = pnl >= 0 ? '+' : '-';
         pnlVal.textContent = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
         pnlVal.className = 'stat-value' + (pnl > 0 ? ' profit' : pnl < 0 ? ' loss' : '');
+
+        const pnlPct = statsData.total_pnl_pct != null
+            ? statsData.total_pnl_pct
+            : (statsData.total_pnl_usd ? (statsData.total_pnl_usd / 100) : 0);
+        const pnlPctSign = pnlPct >= 0 ? '+' : '';
+        if (pnlPctVal) {
+            pnlPctVal.textContent = `${pnlPctSign}${Number(pnlPct).toFixed(2)}%`;
+            pnlPctVal.className = 'stat-value' + (pnlPct > 0 ? ' profit' : pnlPct < 0 ? ' loss' : '');
+        }
+
         winrateVal.textContent = `${statsData.win_rate_pct || 0}%`;
         totalTradesVal.textContent = (tradesData.trades ? tradesData.trades.length : statsData.total_trades) || 0;
 

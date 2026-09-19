@@ -31,7 +31,7 @@ from tradingview_mcp.core.services.indicators_calc import (
 _UA       = "tradingview-mcp/0.7.0 backtest-bot"
 _YF_BASE  = "https://query1.finance.yahoo.com/v8/finance/chart"
 
-_VALID_PERIODS   = {"5d", "1mo", "3mo", "6mo", "1y", "2y"}
+_VALID_PERIODS   = {"5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"}
 _VALID_INTERVALS = {"1d", "1h", "30m"}
 
 # Annualization factor for Sharpe ratio
@@ -51,6 +51,7 @@ _STRATEGY_LABELS = {
     "buy_and_protect": "Buy and Protect (Regime Filtered Trend Following)",
     "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
     "ema21":        "EMA 21 Price Crossover (Long + Short)",
+    "enhanced_channel": "Enhanced Channel (MTF Regression Channel Bounce)",
 }
 
 
@@ -593,6 +594,7 @@ _STRATEGY_MAP = {
     "buy_and_protect": _get_dynamic_runner("buy_and_protect_strategy.py", "run_buy_and_protect"),
     "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
     "ema21":        _run_ema21,
+    "enhanced_channel": _get_dynamic_runner("enhanced_channel_strategy.py", "run_enhanced_channel_trades"),
 }
 
 

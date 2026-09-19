@@ -1,0 +1,149 @@
+//@version=6
+strategy("Enhanced Channel Strategy", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1, slippage=1)
+
+// ==============================================================================
+// INPUTS
+// ==============================================================================
+grp_ch = "Channel Parameters"
+tactical_len     = input.int(63, "Tactical Lookback (3-Month)", minval=10, group=grp_ch, tooltip="Lookback period in bars for tactical swings (~63 daily bars)")
+intermediate_len = input.int(252, "Intermediate Lookback (1-Year)", minval=30, group=grp_ch, tooltip="Lookback period in bars for cyclical trend (~252 daily bars)")
+macro_len        = input.int(1260, "Macro Lookback (5-Year)", minval=60, group=grp_ch, tooltip="Lookback period in bars for secular regime (~1260 daily bars)")
+channel_mult     = input.float(2.0, "Channel Width Multiplier (StdErr)", minval=0.5, step=0.1, group=grp_ch)
+leeway_pct       = input.float(5.0, "Boundary Leeway (%)", minval=1.0, maxval=20.0, step=0.5, group=grp_ch, tooltip="Percentage of channel height defining the edge bounce zone")
+stopgap_pct      = input.float(5.0, "Stopgap Margin (%)", minval=1.0, maxval=20.0, step=0.5, group=grp_ch, tooltip="Margin below lower channel line before emergency stop loss triggers")
+
+grp_filt = "Regime & Filters"
+use_htf_filter   = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt, tooltip="Prevents 3M long entries when 1Y trend is declining sharply near the top of the 1Y range")
+use_confluence   = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
+
+grp_vis = "Visual Overlays"
+show_tactical    = input.bool(true, "Show Tactical Channel (3M)", group=grp_vis)
+show_intermediate = input.bool(true, "Show Intermediate Midline (1Y)", group=grp_vis)
+show_macro       = input.bool(false, "Show Macro Midline (5Y)", group=grp_vis)
+
+
+// ==============================================================================
+// CHANNEL CALCULATION HELPER (LINEAR REGRESSION CHANNEL)
+// ==============================================================================
+f_linreg_channel(src, len, mult) =>
+    mid = ta.linreg(src, len, 0)
+    // Calculate regression slope to deduce intercept
+    slope = (ta.linreg(src, len, 0) - ta.linreg(src, len, 1))
+    // Standard error calculation over lookback window
+    float sum_sq_err = 0.0
+    for i = 0 to len - 1
+        expected = mid - slope * i
+        err = src[i] - expected
+        sum_sq_err += err * err
+    std_err = math.sqrt(sum_sq_err / math.max(1, len - 2))
+    width = mult * std_err
+    upper = mid + width
+    lower = mid - width
+    [mid, upper, lower, slope]
+
+// Compute 3-Month Tactical Channel
+[mid_3m, up_3m, low_3m, slope_3m] = f_linreg_channel(close, tactical_len, channel_mult)
+
+// Compute 1-Year Intermediate Channel
+[mid_1y, up_1y, low_1y, slope_1y] = f_linreg_channel(close, intermediate_len, channel_mult)
+
+// Compute 5-Year Macro Channel
+[mid_5y, up_5y, low_5y, slope_5y] = f_linreg_channel(close, macro_len, channel_mult)
+
+
+// ==============================================================================
+// LEEWAY & STOPGAP ZONES
+// ==============================================================================
+ch_height_3m   = up_3m - low_3m
+leeway_margin  = ch_height_3m * (leeway_pct / 100.0)
+stopgap_margin = ch_height_3m * (stopgap_pct / 100.0)
+
+bottom_leeway_ceiling = low_3m + leeway_margin
+stopgap_floor         = low_3m - stopgap_margin
+top_leeway_floor      = up_3m - leeway_margin
+
+// 1-Year Range Position Percentile
+pos_1y_pct = (up_1y > low_1y) ? (close - low_1y) / (up_1y - low_1y) : 0.5
+
+
+// ==============================================================================
+// STRATEGY STATE & LOGIC
+// ==============================================================================
+var float active_stop_level = na
+var bool  target_reached    = false
+
+// 1. Entry Logic:
+// Touch or dip into bottom leeway zone without breaching stopgap floor
+touched_bottom   = low <= bottom_leeway_ceiling and low >= stopgap_floor
+// Confirmed bounce: bullish candle closing higher than prior bar and above lower line
+bounce_confirmed = (close > open) and (close > close[1]) and (close > low_3m)
+
+// HTF Filter
+htf_allowed = true
+if use_htf_filter
+    if slope_1y < -0.05 and pos_1y_pct > 0.60
+        htf_allowed := false
+
+is_confluence = (pos_1y_pct <= 0.30)
+long_entry_condition = touched_bottom and bounce_confirmed and htf_allowed and (strategy.position_size == 0)
+
+// 2. Position Management & Exit Logic
+if strategy.position_size > 0
+    // Ratchet stopgap upward as channel advances (never decrease stop loss)
+    if na(active_stop_level) or stopgap_floor > active_stop_level
+        active_stop_level := stopgap_floor
+
+    // Track if upper zone was reached
+    if high >= top_leeway_floor or close >= top_leeway_floor
+        target_reached := true
+
+    // Stopgap Exit: Price breaks below stopgap line
+    if close < active_stop_level or low < active_stop_level
+        strategy.close("Long", comment="Stopgap SL")
+        active_stop_level := na
+        target_reached    := false
+
+    // Channel Top Rejection Exit: Touched top zone and turned downward
+    downward_rejection = (close < open) and (close < close[1])
+    if target_reached and downward_rejection
+        strategy.close("Long", comment="Channel Top TP")
+        active_stop_level := na
+        target_reached    := false
+
+// Execute Entry
+if long_entry_condition
+    string comment_text = is_confluence and use_confluence ? "Confluence Buy" : "Tactical Buy"
+    strategy.entry("Long", strategy.long, comment=comment_text)
+    active_stop_level := stopgap_floor
+    target_reached    := false
+
+
+// ==============================================================================
+// VISUALIZATIONS & PLOTS
+// ==============================================================================
+// Tactical 3M Channel
+p_up   = plot(show_tactical ? up_3m : na, "3M Channel Upper", color=color.new(#2196F3, 0), linewidth=2)
+p_mid  = plot(show_tactical ? mid_3m : na, "3M Channel Midline", color=color.new(#90CAF9, 20), linewidth=1, style=plot.style_line)
+p_low  = plot(show_tactical ? low_3m : na, "3M Channel Lower", color=color.new(#2196F3, 0), linewidth=2)
+
+// Leeway bands
+p_top_lee = plot(show_tactical ? top_leeway_floor : na, "3M Top Leeway", color=color.new(#FF5252, 60), style=plot.style_stepline)
+p_bot_lee = plot(show_tactical ? bottom_leeway_ceiling : na, "3M Bottom Leeway", color=color.new(#4CAF50, 60), style=plot.style_stepline)
+p_stopgap = plot(show_tactical ? stopgap_floor : na, "3M Stopgap Level", color=color.new(#E91E63, 50), style=plot.style_circles)
+
+// Fill Channel & Leeway Zones
+fill(p_up, p_top_lee, color=color.new(color.red, 90), title="Top Leeway Zone")
+fill(p_low, p_bot_lee, color=color.new(color.green, 90), title="Bottom Leeway Zone")
+fill(p_mid, p_low, color=color.new(color.blue, 96), title="Lower Channel Fill")
+fill(p_up, p_mid, color=color.new(color.blue, 96), title="Upper Channel Fill")
+
+// Intermediate 1Y & Macro 5Y Midlines
+plot(show_intermediate ? mid_1y : na, "1Y Intermediate Midline", color=color.new(#FF9800, 20), linewidth=2)
+plot(show_macro ? mid_5y : na, "5Y Macro Midline", color=color.new(#9C27B0, 30), linewidth=2)
+
+// Active Stop Loss Plot
+plot(strategy.position_size > 0 ? active_stop_level : na, "Active Ratchet Stop", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
+
+// Visual Entry & Exit Shapes
+plotshape(long_entry_condition and not is_confluence, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plotshape(long_entry_condition and is_confluence, title="Confluence Grade A Buy", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, size=size.normal, text="GRADE A")

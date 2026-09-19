@@ -1,0 +1,650 @@
+"""
+Enhanced Channel Strategy — Standalone Python Implementation
+=============================================================
+
+Multi-Timeframe (MTF) Channel Strategy combining:
+  - Tactical Channel (3-Month / ~63 bars): Generates short-term tactical buy & sell signals.
+  - Intermediate Channel (1-Year / ~252 bars): Trend filter & cyclical swing boundaries.
+  - Macro Channel (5-Year / ~1260 bars): Secular regime & accumulation/distribution filter.
+
+Strategy Rules:
+  1. Channel Boundaries:
+     - Built using rolling Linear Regression with Standard Error envelopes (Raff style).
+     - Upper Channel = LinReg + (mult * StdError)
+     - Lower Channel = LinReg - (mult * StdError)
+     - Midline       = LinReg Centerline
+  2. Leeway Zones (5% default):
+     - Bottom Leeway Zone: [Lower Channel, Lower Channel + (5% * Channel Height)]
+     - Top Leeway Zone:    [Upper Channel - (5% * Channel Height), Upper Channel]
+  3. Tactical Buy Entry:
+     - Price enters the Bottom Leeway Zone (within 5% of channel lower boundary).
+     - Upward bounce is confirmed (bullish rebound candle: close > open and close > prev_close).
+     - HTF Filter (optional): 1-Year slope is positive or price is in lower half of 1-Year channel.
+  4. Tactical Sell Exit (Take Profit):
+     - Price enters the Top Leeway Zone (within 5% of channel upper boundary).
+     - Downward rejection is confirmed (bearish reversal candle: close < open or close < prev_close).
+  5. Stopgap Risk Management:
+     - If price breaks below the channel bottom by more than the leeway tolerance
+       (close < Lower Channel - leeway), immediately close trade to protect capital.
+
+Usage:
+  python strategies/enhanced_channel/enhanced_channel_strategy.py --symbol SPY --period 5y --chart
+  python strategies/enhanced_channel/enhanced_channel_strategy.py --symbol AAPL --period 2y --chart
+  python strategies/enhanced_channel/enhanced_channel_strategy.py --symbol BTC-USD --period 2y
+
+Requires: pure stdlib (no external packages required) + Yahoo Finance API
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import statistics
+import sys
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
+
+
+# ==============================================================================
+# DEFAULT STRATEGY PARAMETERS
+# ==============================================================================
+
+TACTICAL_LOOKBACK    = 63     # ~3 months of daily trading bars
+INTERMEDIATE_LOOKBACK = 252    # ~1 year of daily trading bars
+MACRO_LOOKBACK       = 1260   # ~5 years of daily trading bars
+CHANNEL_MULT         = 2.0    # standard error multiplier for upper/lower bounds
+LEEWAY_PCT           = 0.05   # 5% leeway band at channel edges
+STOPGAP_PCT          = 0.05   # 5% buffer below lower line before stop loss fires
+HTF_FILTER           = True   # use 1Y trend / regime filter
+CONFLUENCE_BOOST     = True   # scale conviction when 3M and 1Y channels align
+LONG_ONLY            = True   # long-only trades
+INTERVAL             = "1d"   # daily candles recommended for multi-month/year channels
+PERIOD               = "5y"   # lookback period for data fetch
+INITIAL_CAPITAL      = 10_000.0
+COMMISSION_PCT       = 0.1    # 0.1% per trade
+SLIPPAGE_PCT         = 0.05   # 0.05% per trade
+
+
+# ==============================================================================
+# DATA FETCHING
+# ==============================================================================
+
+def fetch_ohlcv(symbol: str, period: str = "5y", interval: str = "1d") -> List[Dict[str, Any]]:
+    """Fetch OHLCV candles from Yahoo Finance."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval={interval}&range={period}"
+    req = urllib.request.Request(url, headers={"User-Agent": "enhanced-channel-strategy/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    result = data["chart"]["result"][0]
+    timestamps = result["timestamp"]
+    q = result["indicators"]["quote"][0]
+    fmt = "%Y-%m-%d %H:%M" if interval in ("1h", "30m", "15m", "5m") else "%Y-%m-%d"
+
+    candles: List[Dict[str, Any]] = []
+    for i, ts in enumerate(timestamps):
+        o = q["open"][i]
+        h = q["high"][i]
+        l = q["low"][i]
+        c = q["close"][i]
+        v = q["volume"][i]
+        if None in (o, h, l, c):
+            continue
+        candles.append({
+            "date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime(fmt),
+            "open": round(o, 4),
+            "high": round(h, 4),
+            "low": round(l, 4),
+            "close": round(c, 4),
+            "volume": v or 0,
+        })
+    return candles
+
+
+# ==============================================================================
+# LINEAR REGRESSION CHANNEL CALCULATOR
+# ==============================================================================
+
+def calc_linear_regression_channel(
+    prices: List[float],
+    lookback: int,
+    mult: float = 2.0
+) -> Tuple[List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
+    """
+    Calculate rolling linear regression channel (Midline, Upper, Lower, Slope).
+    No lookahead: at index i, uses prices[i - lookback + 1 : i + 1].
+
+    Returns:
+      midlines: [None, ..., float]
+      uppers:   [None, ..., float]
+      lowers:   [None, ..., float]
+      slopes:   [None, ..., float]
+    """
+    n = len(prices)
+    midlines: List[Optional[float]] = [None] * n
+    uppers: List[Optional[float]] = [None] * n
+    lowers: List[Optional[float]] = [None] * n
+    slopes: List[Optional[float]] = [None] * n
+
+    if n < 5:
+        return midlines, uppers, lowers, slopes
+
+    # Precompute x terms for window length L
+    # We allow lookback to adapt if fewer bars exist, but require at least 15 bars
+    for i in range(n):
+        curr_len = lookback if (i + 1) >= lookback else (i + 1)
+        if curr_len < 10:
+            continue
+
+        window = prices[i - curr_len + 1 : i + 1]
+        L = curr_len
+        mean_x = (L - 1) / 2.0
+        mean_y = sum(window) / L
+
+        s_xx = (L * (L * L - 1)) / 12.0
+        s_xy = sum((j - mean_x) * (window[j] - mean_y) for j in range(L))
+
+        slope = s_xy / s_xx if s_xx != 0 else 0.0
+        intercept = mean_y - slope * mean_x
+
+        # Current bar value at x = L - 1
+        curr_mid = intercept + slope * (L - 1)
+
+        # Standard error of the regression
+        residuals_sq = sum(
+            (window[j] - (intercept + slope * j)) ** 2 for j in range(L)
+        )
+        std_err = math.sqrt(residuals_sq / max(1, L - 2)) if L > 2 else 0.0
+
+        half_width = mult * std_err
+        midlines[i] = round(curr_mid, 4)
+        uppers[i] = round(curr_mid + half_width, 4)
+        lowers[i] = round(curr_mid - half_width, 4)
+        slopes[i] = round(slope, 6)
+
+    return midlines, uppers, lowers, slopes
+
+
+# ==============================================================================
+# STRATEGY CORE & BACKTEST ENGINE
+# ==============================================================================
+
+def run_enhanced_channel(
+    candles: List[Dict[str, Any]],
+    params: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Executes the Enhanced Channel Strategy over historical candles.
+    """
+    n = len(candles)
+    if n < 20:
+        raise ValueError(f"Insufficient candle count ({n}) for channel backtesting.")
+
+    closes = [c["close"] for c in candles]
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+    opens = [c["open"] for c in candles]
+
+    tactical_lb = params.get("tactical_lookback", TACTICAL_LOOKBACK)
+    intermediate_lb = params.get("intermediate_lookback", INTERMEDIATE_LOOKBACK)
+    macro_lb = params.get("macro_lookback", MACRO_LOOKBACK)
+    mult = params.get("channel_mult", CHANNEL_MULT)
+    leeway_pct = params.get("leeway_pct", LEEWAY_PCT)
+    stopgap_pct = params.get("stopgap_pct", STOPGAP_PCT)
+    htf_filter = params.get("htf_filter", HTF_FILTER)
+    confluence_boost = params.get("confluence_boost", CONFLUENCE_BOOST)
+    long_only = params.get("long_only", LONG_ONLY)
+    confirm_bars = params.get("confirm_bars", 1)
+
+    # 1. Calculate Channels
+    mid_3m, up_3m, low_3m, slope_3m = calc_linear_regression_channel(closes, tactical_lb, mult)
+    mid_1y, up_1y, low_1y, slope_1y = calc_linear_regression_channel(closes, intermediate_lb, mult)
+    mid_5y, up_5y, low_5y, slope_5y = calc_linear_regression_channel(closes, macro_lb, mult)
+
+    trades: List[Dict[str, Any]] = []
+    position: Optional[Dict[str, Any]] = None
+
+    # Overlays for visualization
+    tactical_upper_overlay = []
+    tactical_mid_overlay = []
+    tactical_lower_overlay = []
+    intermediate_mid_overlay = []
+    macro_mid_overlay = []
+
+    # Warm-up requirement
+    min_warmup = min(tactical_lb, n // 3)
+
+    for i in range(min_warmup, n):
+        date = candles[i]["date"]
+        o, h, l, c = opens[i], highs[i], lows[i], closes[i]
+        prev_c = closes[i - 1]
+
+        u3 = up_3m[i]
+        m3 = mid_3m[i]
+        d3 = low_3m[i]
+
+        if u3 is not None:
+            tactical_upper_overlay.append({"time": date, "value": u3})
+            tactical_mid_overlay.append({"time": date, "value": m3})
+            tactical_lower_overlay.append({"time": date, "value": d3})
+
+        if mid_1y[i] is not None:
+            intermediate_mid_overlay.append({"time": date, "value": mid_1y[i]})
+        if mid_5y[i] is not None:
+            macro_mid_overlay.append({"time": date, "value": mid_5y[i]})
+
+        if d3 is None or u3 is None or u3 <= d3:
+            continue
+
+        ch_height = u3 - d3
+        bottom_leeway = d3 + leeway_pct * ch_height
+        stopgap_level = d3 - stopgap_pct * ch_height
+        top_leeway = u3 - leeway_pct * ch_height
+
+        # Higher Timeframe Metrics
+        pos_1y_pct = 0.5
+        if up_1y[i] is not None and low_1y[i] is not None and up_1y[i] > low_1y[i]:
+            pos_1y_pct = (c - low_1y[i]) / (up_1y[i] - low_1y[i])
+
+        s_1y = slope_1y[i] or 0.0
+
+        # -------------------------------------------------------------
+        # 1. MANAGE ACTIVE POSITION
+        # -------------------------------------------------------------
+        if position is not None:
+            # Ratchet stopgap level upward if channel rises (never let stop loss lower)
+            if stopgap_level > position["stop_level"]:
+                position["stop_level"] = stopgap_level
+
+            # Check Stopgap: Price dropped below the ratcheted stopgap level
+            if c < position["stop_level"] or l < position["stop_level"]:
+                exit_price = min(c, position["stop_level"])
+                exit_type = "stopgap_exit" if exit_price <= position["entry_price"] else "trailing_channel_exit"
+                trades.append({
+                    "side": position["side"],
+                    "entry_date": position["entry_date"],
+                    "entry_price": position["entry_price"],
+                    "entry_bar": position["entry_bar"],
+                    "entry_reason": position["entry_reason"],
+                    "exit_date": date,
+                    "exit_price": round(exit_price, 4),
+                    "exit_bar": i,
+                    "exit_reason": exit_type,
+                    "bars_held": i - position["entry_bar"],
+                    "tier": position["tier"],
+                })
+                position = None
+                continue
+
+            # Track whether price has reached the upper channel zone during this trade
+            if h >= top_leeway or c >= top_leeway:
+                position["target_reached"] = True
+
+            # Check Channel Top Rejection (Take Profit):
+            # Price is in or has touched the top zone, and now prints a downward reversal bounce
+            downward_rejection = (c < o) and (c < prev_c)
+            if position.get("target_reached", False) and downward_rejection:
+                trades.append({
+                    "side": position["side"],
+                    "entry_date": position["entry_date"],
+                    "entry_price": position["entry_price"],
+                    "entry_bar": position["entry_bar"],
+                    "entry_reason": position["entry_reason"],
+                    "exit_date": date,
+                    "exit_price": round(c, 4),
+                    "exit_bar": i,
+                    "exit_reason": "channel_top_exit",
+                    "bars_held": i - position["entry_bar"],
+                    "tier": position["tier"],
+                })
+                position = None
+                continue
+
+        # -------------------------------------------------------------
+        # 2. EVALUATE ENTRY CONDITIONS (IF FLAT)
+        # -------------------------------------------------------------
+        if position is None:
+            # Condition A: Price entered the bottom leeway zone within the last 3 bars
+            recent_touch = False
+            for look_idx in range(max(0, i - 2), i + 1):
+                if low_3m[look_idx] is not None and up_3m[look_idx] is not None:
+                    ch_h = up_3m[look_idx] - low_3m[look_idx]
+                    bot_lee = low_3m[look_idx] + leeway_pct * ch_h
+                    stp_lvl = low_3m[look_idx] - stopgap_pct * ch_h
+                    if lows[look_idx] <= bot_lee and lows[look_idx] >= stp_lvl:
+                        recent_touch = True
+                        break
+
+            # Condition B: Bullish bounce confirmation
+            bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
+            if confirm_bars >= 2 and i >= 2:
+                bounce_confirmed = bounce_confirmed and (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
+
+            if recent_touch and bounce_confirmed:
+                # HTF Filter check: Avoid buying 3M bounces if 1Y is pointing sharply down and near 1Y top
+                allowed = True
+                if htf_filter:
+                    if s_1y < -0.05 and pos_1y_pct > 0.60:
+                        allowed = False
+
+                if allowed:
+                    tier = "tactical_3m"
+                    entry_reason = "bottom_bounce"
+                    if confluence_boost and pos_1y_pct <= 0.30:
+                        tier = "confluence_grade_a"
+                        entry_reason = "confluence_bounce"
+
+                    position = {
+                        "side": "long",
+                        "entry_date": date,
+                        "entry_price": round(c, 4),
+                        "entry_bar": i,
+                        "entry_reason": entry_reason,
+                        "tier": tier,
+                        "stop_level": stopgap_level,
+                        "target_reached": False,
+                    }
+
+    # Close open position on last bar
+    if position is not None:
+        last_c = candles[-1]["close"]
+        trades.append({
+            "side": position["side"],
+            "entry_date": position["entry_date"],
+            "entry_price": position["entry_price"],
+            "entry_bar": position["entry_bar"],
+            "entry_reason": position["entry_reason"],
+            "exit_date": candles[-1]["date"],
+            "exit_price": round(last_c, 4),
+            "exit_bar": n - 1,
+            "exit_reason": "end_of_data",
+            "bars_held": n - 1 - position["entry_bar"],
+            "tier": position["tier"],
+        })
+
+    return {
+        "raw_trades": trades,
+        "overlays": [
+            {"label": "Tactical Upper (3M)", "color": "#2196F3", "type": "line", "points": tactical_upper_overlay},
+            {"label": "Tactical Mid (3M)", "color": "#90CAF9", "type": "line", "points": tactical_mid_overlay},
+            {"label": "Tactical Lower (3M)", "color": "#2196F3", "type": "line", "points": tactical_lower_overlay},
+            {"label": "Intermediate Mid (1Y)", "color": "#FF9800", "type": "line", "points": intermediate_mid_overlay},
+            {"label": "Macro Mid (5Y)", "color": "#9C27B0", "type": "line", "points": macro_mid_overlay},
+        ]
+    }
+
+
+# ==============================================================================
+# PERFORMANCE METRICS & COST MODELING
+# ==============================================================================
+
+def apply_costs(
+    raw_trades: List[Dict[str, Any]],
+    commission_pct: float,
+    slippage_pct: float
+) -> List[Dict[str, Any]]:
+    """Deducts trading friction (commission + slippage) from trade execution."""
+    cost_factor = 1.0 - (commission_pct + slippage_pct) / 100.0
+    processed: List[Dict[str, Any]] = []
+
+    for t in raw_trades:
+        en = t["entry_price"]
+        ex = t["exit_price"]
+        gross_ret = (ex - en) / en if en > 0 else 0.0
+        # Net return after round-trip slippage and commissions
+        net_ret = (1.0 + gross_ret) * (cost_factor ** 2) - 1.0
+
+        t_copy = dict(t)
+        t_copy["gross_return_pct"] = round(gross_ret * 100.0, 2)
+        t_copy["return_pct"] = round(net_ret * 100.0, 2)
+        processed.append(t_copy)
+
+    return processed
+
+
+def calc_metrics(
+    trades: List[Dict[str, Any]],
+    initial_capital: float
+) -> Dict[str, Any]:
+    """Calculates quantitative performance metrics for the strategy."""
+    total_trades = len(trades)
+    if total_trades == 0:
+        return {
+            "initial_capital": initial_capital,
+            "final_capital": initial_capital,
+            "total_return_pct": 0.0,
+            "total_trades": 0,
+            "long_trades": 0,
+            "short_trades": 0,
+            "win_rate_pct": 0.0,
+            "avg_gain_pct": 0.0,
+            "avg_loss_pct": 0.0,
+            "profit_factor": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown_pct": 0.0,
+            "channel_top_exits": 0,
+            "stopgap_exits": 0,
+            "end_of_data_exits": 0,
+        }
+
+    wins = [t["return_pct"] for t in trades if t["return_pct"] > 0]
+    losses = [t["return_pct"] for t in trades if t["return_pct"] <= 0]
+
+    win_rate = round(len(wins) / total_trades * 100.0, 2)
+    avg_gain = round(statistics.mean(wins), 2) if wins else 0.0
+    avg_loss = round(statistics.mean(losses), 2) if losses else 0.0
+
+    sum_gain = sum(wins)
+    sum_loss = abs(sum(losses))
+    profit_factor = round(sum_gain / sum_loss, 2) if sum_loss > 0 else (999.0 if sum_gain > 0 else 0.0)
+
+    # Equity curve and drawdown calculation
+    cap = initial_capital
+    peak = initial_capital
+    max_dd = 0.0
+    daily_returns: List[float] = []
+
+    for t in trades:
+        ret = t["return_pct"] / 100.0
+        cap *= (1.0 + ret)
+        if cap > peak:
+            peak = cap
+        dd = (peak - cap) / peak * 100.0
+        if dd > max_dd:
+            max_dd = dd
+        daily_returns.append(ret)
+
+    final_capital = round(cap, 2)
+    total_return_pct = round((final_capital - initial_capital) / initial_capital * 100.0, 2)
+
+    # Annualized Sharpe approximation
+    sharpe = 0.0
+    if len(daily_returns) > 1:
+        avg_r = statistics.mean(daily_returns)
+        std_r = statistics.stdev(daily_returns)
+        if std_r > 1e-8:
+            # Assumes ~10-15 trades per year on daily
+            sharpe = round((avg_r / std_r) * math.sqrt(min(252, max(4, total_trades))), 2)
+
+    exit_counts = {
+        "channel_top_exit": sum(1 for t in trades if t["exit_reason"] == "channel_top_exit"),
+        "trailing_channel_exit": sum(1 for t in trades if t["exit_reason"] == "trailing_channel_exit"),
+        "stopgap_exit": sum(1 for t in trades if t["exit_reason"] == "stopgap_exit"),
+        "end_of_data": sum(1 for t in trades if t["exit_reason"] == "end_of_data"),
+    }
+
+    return {
+        "initial_capital": initial_capital,
+        "final_capital": final_capital,
+        "total_return_pct": total_return_pct,
+        "total_trades": total_trades,
+        "long_trades": total_trades,
+        "short_trades": 0,
+        "win_rate_pct": win_rate,
+        "avg_gain_pct": avg_gain,
+        "avg_loss_pct": avg_loss,
+        "profit_factor": profit_factor,
+        "sharpe_ratio": sharpe,
+        "max_drawdown_pct": round(max_dd, 2),
+        "channel_top_exits": exit_counts["channel_top_exit"],
+        "trailing_channel_exits": exit_counts["trailing_channel_exit"],
+        "stopgap_exits": exit_counts["stopgap_exit"],
+        "end_of_data_exits": exit_counts["end_of_data"],
+    }
+
+
+def run_backtest(
+    symbol: str = "SPY",
+    period: str = PERIOD,
+    interval: str = INTERVAL,
+    initial_capital: float = INITIAL_CAPITAL,
+    commission_pct: float = COMMISSION_PCT,
+    slippage_pct: float = SLIPPAGE_PCT,
+    tactical_lookback: int = TACTICAL_LOOKBACK,
+    intermediate_lookback: int = INTERMEDIATE_LOOKBACK,
+    macro_lookback: int = MACRO_LOOKBACK,
+    channel_mult: float = CHANNEL_MULT,
+    leeway_pct: float = LEEWAY_PCT,
+    stopgap_pct: float = STOPGAP_PCT,
+    htf_filter: bool = HTF_FILTER,
+    confluence_boost: bool = CONFLUENCE_BOOST,
+    long_only: bool = LONG_ONLY,
+    confirm_bars: int = 1,
+) -> Dict[str, Any]:
+    """Complete backtest runner."""
+    candles = fetch_ohlcv(symbol, period, interval)
+    params = {
+        "symbol": symbol,
+        "period": period,
+        "interval": interval,
+        "tactical_lookback": tactical_lookback,
+        "intermediate_lookback": intermediate_lookback,
+        "macro_lookback": macro_lookback,
+        "channel_mult": channel_mult,
+        "leeway_pct": leeway_pct,
+        "stopgap_pct": stopgap_pct,
+        "htf_filter": htf_filter,
+        "confluence_boost": confluence_boost,
+        "long_only": long_only,
+        "confirm_bars": confirm_bars,
+    }
+
+    strat_output = run_enhanced_channel(candles, params)
+    trades = apply_costs(strat_output["raw_trades"], commission_pct, slippage_pct)
+    metrics = calc_metrics(trades, initial_capital)
+
+    bnh = round((candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100.0, 2)
+
+    return {
+        "symbol": symbol.upper(),
+        "strategy": "enhanced_channel",
+        "strategy_label": f"Enhanced Channel (3M Tactical + 1Y Intermediate + 5Y Macro)",
+        "parameters": params,
+        "period": period,
+        "interval": interval,
+        "candles_analyzed": len(candles),
+        "date_from": candles[0]["date"],
+        "date_to": candles[-1]["date"],
+        "buy_and_hold_return_pct": bnh,
+        "vs_buy_and_hold_pct": round(metrics["total_return_pct"] - bnh, 2),
+        **metrics,
+        "trade_log": trades,
+        "overlays": strat_output["overlays"],
+        "candles": candles,
+        "data_source": "Yahoo Finance",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ==============================================================================
+# CLI ENTRY POINT
+# ==============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(description="Enhanced Channel Strategy Backtester")
+    parser.add_argument("--symbol", default="SPY", help="Yahoo Finance symbol (default: SPY)")
+    parser.add_argument("--period", default=PERIOD, help="Lookback period: 1y, 2y, 5y, max (default: 5y)")
+    parser.add_argument("--interval", default=INTERVAL, choices=["1d", "1h"], help="Candle size (default: 1d)")
+    parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
+    parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
+    parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
+    parser.add_argument("--macro-lb", type=int, default=MACRO_LOOKBACK, help="Macro lookback bars (default: 1260 = 5y)")
+    parser.add_argument("--channel-mult", type=float, default=CHANNEL_MULT, help="Std error multiplier (default: 2.0)")
+    parser.add_argument("--leeway", type=float, default=LEEWAY_PCT, help="Leeway tolerance fraction (default: 0.05 = 5%%)")
+    parser.add_argument("--stopgap", type=float, default=STOPGAP_PCT, help="Stopgap margin below lower channel (default: 0.05 = 5%%)")
+    parser.add_argument("--confirm-bars", type=int, default=1, choices=[1, 2], help="Bounce confirmation bars required (1 or 2)")
+    parser.add_argument("--no-htf-filter", action="store_true", help="Disable higher timeframe 1Y trend filter")
+    parser.add_argument("--no-confluence", action="store_true", help="Disable confluence detection")
+    parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
+    args = parser.parse_args()
+
+    print(f"\n{'='*65}")
+    print(f"  Enhanced Channel Strategy — {args.symbol.upper()}")
+    print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
+    print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
+    print(f"{'='*65}\n")
+
+    result = run_backtest(
+        symbol=args.symbol,
+        period=args.period,
+        interval=args.interval,
+        initial_capital=args.initial_capital,
+        tactical_lookback=args.tactical_lb,
+        intermediate_lookback=args.intermediate_lb,
+        macro_lookback=args.macro_lb,
+        channel_mult=args.channel_mult,
+        leeway_pct=args.leeway,
+        stopgap_pct=args.stopgap,
+        htf_filter=not args.no_htf_filter,
+        confluence_boost=not args.no_confluence,
+    )
+
+    print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")
+    print(f"  Initial Capital:  ${result['initial_capital']:,.2f}")
+    print(f"  Final Capital:    ${result['final_capital']:,.2f}")
+    print(f"  Total Return:     {result['total_return_pct']:+.2f}%")
+    print(f"  Buy & Hold:       {result['buy_and_hold_return_pct']:+.2f}%")
+    print(f"  vs B&H:           {result['vs_buy_and_hold_pct']:+.2f}%")
+    print(f"  Total Trades:     {result['total_trades']}")
+    print(f"  Win Rate:         {result['win_rate_pct']}%")
+    print(f"  Avg Gain:         {result['avg_gain_pct']:+.2f}%")
+    print(f"  Avg Loss:         {result['avg_loss_pct']:+.2f}%")
+    print(f"  Profit Factor:    {result['profit_factor']}")
+    print(f"  Sharpe Ratio:     {result['sharpe_ratio']}")
+    print(f"  Max Drawdown:     {result['max_drawdown_pct']}%")
+    print(f"  Exits:            Take Profit: {result['channel_top_exits']} | Trailing SL: {result.get('trailing_channel_exits', 0)} | Stopgap SL: {result['stopgap_exits']} | EOD: {result['end_of_data_exits']}")
+
+    print(f"\n  Trade Log:")
+    for t in result["trade_log"]:
+        side = t["side"].upper()
+        tier_label = t.get("tier", "tactical")
+        print(f"    {side:5s} {t['entry_date']} -> {t['exit_date']}  "
+              f"${t['entry_price']:>9,.2f} -> ${t['exit_price']:>9,.2f}  "
+              f"{t['return_pct']:+7.2f}%  [{t['exit_reason']}] ({tier_label})")
+
+    print(f"\n{'='*65}\n")
+
+    script_dir = Path(__file__).resolve().parent
+    safe_sym = args.symbol.replace("-", "_")
+    json_out = {k: v for k, v in result.items() if k not in ("overlays", "candles")}
+    fname = script_dir / f"enhanced_channel_backtest_{safe_sym}_{args.period}.json"
+    with open(fname, "w") as f:
+        json.dump(json_out, f, indent=2)
+    print(f"  Results saved to: {fname}\n")
+
+    if args.chart:
+        try:
+            repo_root = script_dir.parent.parent
+            sys.path.insert(0, str(repo_root))
+            from strategies.visualize import generate_chart_html
+            chart_path = script_dir / f"enhanced_channel_chart_{safe_sym}_{args.period}.html"
+            generate_chart_html(result=result, candles=result["candles"], output_path=chart_path)
+            print(f"  Chart saved to: {chart_path}\n")
+        except Exception as e:
+            print(f"  Could not generate HTML chart: {e}\n")
+
+
+if __name__ == "__main__":
+    main()

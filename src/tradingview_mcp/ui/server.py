@@ -238,7 +238,7 @@ async def api_trendlines(symbol: str):
             return {"trendlines": []}
 
         # Dynamically import enhanced_lines strategy
-        base_dir = PurePath(__file__).resolve().parent.parent.parent.parent.parent
+        base_dir = Path(__file__).resolve().parents[3]
         strategy_dir = base_dir / "strategies" / "enhanced_lines"
         if str(strategy_dir) not in sys.path:
             sys.path.insert(0, str(strategy_dir))

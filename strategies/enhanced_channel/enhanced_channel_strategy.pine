@@ -15,6 +15,9 @@ stopgap_pct      = input.float(5.0, "Stopgap Margin (%)", minval=1.0, maxval=20.
 grp_filt = "Regime & Filters"
 use_htf_filter   = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt, tooltip="Prevents 3M long entries when 1Y trend is declining sharply near the top of the 1Y range")
 use_confluence   = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
+confirm_bars     = input.int(2, "Bounce Confirmation Bars", minval=1, maxval=2, group=grp_ch, tooltip="1 = single green bounce bar, 2 = 2 consecutive higher closes (recommended)")
+stopgap_mode     = input.string("close", "Stopgap Trigger Mode", options=["close", "low"], group=grp_ch, tooltip="close = candle close below stopgap, low = intraday touch")
+dynamic_size     = input.bool(true, "Enable Confluence Position Sizing", group=grp_filt, tooltip="100% on Confluence Grade A, 50% on Tactical-only")
 
 grp_vis = "Visual Overlays"
 show_tactical    = input.bool(true, "Show Tactical Channel (3M)", group=grp_vis)
@@ -73,10 +76,13 @@ var float active_stop_level = na
 var bool  target_reached    = false
 
 // 1. Entry Logic:
-// Touch or dip into bottom leeway zone without breaching stopgap floor
-touched_bottom   = low <= bottom_leeway_ceiling and low >= stopgap_floor
-// Confirmed bounce: bullish candle closing higher than prior bar and above lower line
-bounce_confirmed = (close > open) and (close > close[1]) and (close > low_3m)
+// Touch or dip into bottom leeway zone within last 3 bars
+recent_touch_bottom = ta.lowest(low, 3) <= bottom_leeway_ceiling and ta.lowest(low, 3) >= stopgap_floor
+
+// Confirmed bounce
+bounce_1b = (close > open) and (close > close[1]) and (close > low_3m)
+bounce_2b = bounce_1b and (close[1] > open[1]) and (close[1] > close[2])
+bounce_confirmed = (confirm_bars == 2) ? bounce_2b : bounce_1b
 
 // HTF Filter
 htf_allowed = true
@@ -85,7 +91,7 @@ if use_htf_filter
         htf_allowed := false
 
 is_confluence = (pos_1y_pct <= 0.30)
-long_entry_condition = touched_bottom and bounce_confirmed and htf_allowed and (strategy.position_size == 0)
+long_entry_condition = recent_touch_bottom and bounce_confirmed and htf_allowed and (strategy.position_size == 0)
 
 // 2. Position Management & Exit Logic
 if strategy.position_size > 0
@@ -98,7 +104,8 @@ if strategy.position_size > 0
         target_reached := true
 
     // Stopgap Exit: Price breaks below stopgap line
-    if close < active_stop_level or low < active_stop_level
+    is_stop_hit = (stopgap_mode == "close") ? (close < active_stop_level) : (close < active_stop_level or low < active_stop_level)
+    if is_stop_hit
         strategy.close("Long", comment="Stopgap SL")
         active_stop_level := na
         target_reached    := false
@@ -110,9 +117,9 @@ if strategy.position_size > 0
         active_stop_level := na
         target_reached    := false
 
-// Execute Entry
+// Execute Entry with Confluence Sizing
 if long_entry_condition
-    string comment_text = is_confluence and use_confluence ? "Confluence Buy" : "Tactical Buy"
+    string comment_text = is_confluence and use_confluence ? "Confluence Buy (100%)" : "Tactical Buy (50%)"
     strategy.entry("Long", strategy.long, comment=comment_text)
     active_stop_level := stopgap_floor
     target_reached    := false

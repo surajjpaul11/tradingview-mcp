@@ -307,6 +307,7 @@ def run_enhanced_channel(
     channel_type = params.get("channel_type", "linreg")
     bounce_type = params.get("bounce_type", "1bar")
     stopgap_type = params.get("stopgap_type", "low")
+    dynamic_sizing = params.get("dynamic_sizing", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -404,6 +405,7 @@ def run_enhanced_channel(
                         "exit_reason": exit_type,
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
+                        "size_pct": position.get("size_pct", 1.0),
                     })
                     position = None
                     continue
@@ -427,6 +429,7 @@ def run_enhanced_channel(
                         "exit_reason": "channel_top_exit",
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
+                        "size_pct": position.get("size_pct", 1.0),
                     })
                     position = None
                     continue
@@ -454,6 +457,7 @@ def run_enhanced_channel(
                         "exit_reason": exit_type,
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
+                        "size_pct": position.get("size_pct", 1.0),
                     })
                     position = None
                     continue
@@ -477,6 +481,7 @@ def run_enhanced_channel(
                         "exit_reason": "channel_bottom_exit",
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
+                        "size_pct": position.get("size_pct", 1.0),
                     })
                     position = None
                     continue
@@ -517,9 +522,11 @@ def run_enhanced_channel(
                 if allowed:
                     tier = "tactical_3m"
                     entry_reason = "bottom_bounce"
+                    size_pct = 0.5 if dynamic_sizing else 1.0
                     if confluence_boost and pos_1y_pct <= 0.30:
                         tier = "confluence_grade_a"
                         entry_reason = "confluence_bounce"
+                        size_pct = 1.0
 
                     position = {
                         "side": "long",
@@ -528,6 +535,7 @@ def run_enhanced_channel(
                         "entry_bar": i,
                         "entry_reason": entry_reason,
                         "tier": tier,
+                        "size_pct": size_pct,
                         "stop_level": stopgap_level,
                         "target_reached": False,
                     }
@@ -593,6 +601,7 @@ def run_enhanced_channel(
             "exit_reason": "end_of_data",
             "bars_held": n - 1 - position["entry_bar"],
             "tier": position["tier"],
+            "size_pct": position.get("size_pct", 1.0),
         })
 
     return {
@@ -685,13 +694,15 @@ def calc_metrics(
 
     for t in trades:
         ret = t["return_pct"] / 100.0
-        cap *= (1.0 + ret)
+        sz = t.get("size_pct", 1.0)
+        pnl = cap * sz * ret
+        cap += pnl
         if cap > peak:
             peak = cap
         dd = (peak - cap) / peak * 100.0
         if dd > max_dd:
             max_dd = dd
-        daily_returns.append(ret)
+        daily_returns.append(sz * ret)
 
     final_capital = round(cap, 2)
     total_return_pct = round((final_capital - initial_capital) / initial_capital * 100.0, 2)

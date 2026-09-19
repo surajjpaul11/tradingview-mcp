@@ -306,7 +306,9 @@ def run_enhanced_channel(
     long_only = params.get("long_only", LONG_ONLY)
     channel_type = params.get("channel_type", "linreg")
     bounce_type = params.get("bounce_type", "1bar")
+    stopgap_type = params.get("stopgap_type", "low")
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
+    atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
     # 1. Calculate Channels based on selected geometry
     if channel_type == "donchian":
@@ -359,7 +361,13 @@ def run_enhanced_channel(
 
         ch_height = u3 - d3
         bottom_leeway = d3 + leeway_pct * ch_height
-        stopgap_level = d3 - stopgap_pct * ch_height
+
+        if stopgap_type == "atr" and i < len(atr_vals_stop) and atr_vals_stop[i] is not None:
+            stopgap_margin = 1.5 * atr_vals_stop[i]
+        else:
+            stopgap_margin = stopgap_pct * ch_height
+
+        stopgap_level = d3 - stopgap_margin
         top_leeway = u3 - leeway_pct * ch_height
 
         # Higher Timeframe Metrics
@@ -378,8 +386,9 @@ def run_enhanced_channel(
                 position["stop_level"] = stopgap_level
 
             # Check Stopgap: Price dropped below the ratcheted stopgap level
-            if c < position["stop_level"] or l < position["stop_level"]:
-                exit_price = min(c, position["stop_level"])
+            is_stop_hit = (c < position["stop_level"]) if stopgap_type == "close" else (c < position["stop_level"] or l < position["stop_level"])
+            if is_stop_hit:
+                exit_price = c if stopgap_type == "close" else min(c, position["stop_level"])
                 exit_type = "stopgap_exit" if exit_price <= position["entry_price"] else "trailing_channel_exit"
                 trades.append({
                     "side": position["side"],
@@ -641,6 +650,7 @@ def run_backtest(
     confirm_bars: int = 1,
     channel_type: str = "linreg",
     bounce_type: str = "1bar",
+    stopgap_type: str = "low",
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -660,6 +670,7 @@ def run_backtest(
         "confirm_bars": confirm_bars,
         "channel_type": channel_type,
         "bounce_type": bounce_type,
+        "stopgap_type": stopgap_type,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -700,6 +711,7 @@ def main():
     parser.add_argument("--interval", default=INTERVAL, choices=["1d", "1h"], help="Candle size (default: 1d)")
     parser.add_argument("--channel-type", default="linreg", choices=["linreg", "donchian", "keltner"], help="Channel geometry: linreg, donchian, keltner")
     parser.add_argument("--bounce-type", default="1bar", choices=["1bar", "2bar", "rsi"], help="Bounce confirmation: 1bar, 2bar, rsi")
+    parser.add_argument("--stopgap-type", default="low", choices=["low", "close", "atr"], help="Stopgap trigger: low, close, atr")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
     parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
     parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
@@ -715,7 +727,7 @@ def main():
 
     print(f"\n{'='*65}")
     print(f"  Enhanced Channel Strategy — {args.symbol.upper()}")
-    print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}")
+    print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}  |  Stopgap: {args.stopgap_type.upper()}")
     print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
     print(f"{'='*65}\n")
@@ -736,6 +748,7 @@ def main():
         confirm_bars=args.confirm_bars,
         channel_type=args.channel_type,
         bounce_type=args.bounce_type,
+        stopgap_type=args.stopgap_type,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

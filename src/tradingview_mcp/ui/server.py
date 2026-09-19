@@ -127,10 +127,52 @@ async def get_filters():
     return {"symbols": symbols, "strategies": all_strategies}
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None):
+async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
+
+    # If enhanced_channel with a specific multiplier is requested, recalculate on the fly!
+    if strategy == "enhanced_channel" and channel_mult is not None and channel_mult > 0:
+        try:
+            base_dir = Path(__file__).resolve().parents[3]
+            strategy_dir = base_dir / "strategies" / "enhanced_channel"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from enhanced_channel_strategy import run_backtest as run_ec_backtest
+
+            clean_sym = symbol.strip().upper()
+            if clean_sym in ("PORTFOLIO", "TOTAL"):
+                clean_sym = "SPY"
+            res = run_ec_backtest(symbol=clean_sym, period="5y", channel_mult=channel_mult)
+            trades = []
+            for t in res.get("trade_log", []):
+                entry_d = t.get("entry_date", "")
+                exit_d = t.get("exit_date", "")
+                created_at = _format_iso_datetime(entry_d, "09:30:00")
+                closed_at = _format_iso_datetime(exit_d, "16:00:00") if exit_d else None
+                entry_p = float(t.get("entry_price", 0))
+                exit_p = float(t.get("exit_price", entry_p)) if exit_d else None
+                ret_pct = float(t.get("return_pct", 0.0))
+                pnl_u = round((exit_p - entry_p) * (1000.0 / entry_p), 2) if (exit_p and entry_p > 0) else 0.0
+                trades.append({
+                    "trade_id": str(uuid.uuid4()),
+                    "symbol": clean_sym,
+                    "side": t.get("side", "long").lower(),
+                    "strategy": "enhanced_channel",
+                    "status": "closed" if exit_d else "open",
+                    "entry_price": entry_p,
+                    "exit_price": exit_p,
+                    "exit_reason": t.get("exit_reason", ""),
+                    "pnl_usd": pnl_u,
+                    "pnl_pct": ret_pct,
+                    "created_at": created_at,
+                    "closed_at": closed_at,
+                })
+            return {"trades": trades}
+        except Exception as e:
+            print(f"On-the-fly enhanced_channel trades error: {e}")
+
     trades = get_trade_history(symbol=symbol, strategy=strategy, limit=5000)
     if not trades:
         # Try alternate symbol formats (e.g. BTC_USD vs BTC-USD)
@@ -150,10 +192,41 @@ async def api_trades(symbol: str, strategy: str = None):
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str, strategy: str = None):
+async def api_stats(symbol: str, strategy: str = None, channel_mult: float = None):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
+
+    # If enhanced_channel with a specific multiplier is requested, recalculate stats on the fly!
+    if strategy == "enhanced_channel" and channel_mult is not None and channel_mult > 0:
+        try:
+            base_dir = Path(__file__).resolve().parents[3]
+            strategy_dir = base_dir / "strategies" / "enhanced_channel"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from enhanced_channel_strategy import run_backtest as run_ec_backtest
+
+            clean_sym = symbol.strip().upper()
+            if clean_sym in ("PORTFOLIO", "TOTAL"):
+                clean_sym = "SPY"
+            res = run_ec_backtest(symbol=clean_sym, period="5y", channel_mult=channel_mult)
+            tot_trades = res.get("total_trades", 0)
+            tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
+            wr = res.get("win_rate_pct", 0.0)
+            return {
+                "total_trades": tot_trades,
+                "total_pnl_usd": tot_pnl_usd,
+                "total_pnl_pct": res.get("total_return_pct", 0.0),
+                "buy_and_hold_pct": res.get("buy_and_hold_return_pct", 0.0),
+                "win_rate_pct": wr,
+                "winning_trades": int(tot_trades * (wr / 100.0)),
+                "losing_trades": tot_trades - int(tot_trades * (wr / 100.0)),
+                "filters": {"strategy": "enhanced_channel", "symbol": clean_sym, "channel_mult": channel_mult},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            print(f"On-the-fly enhanced_channel stats error: {e}")
+
     stats = get_pnl_summary(symbol=symbol, strategy=strategy)
     if not stats or stats.get("total_trades", 0) == 0:
         alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
@@ -271,7 +344,7 @@ async def api_trendlines(symbol: str):
         return {"trendlines": [], "error": str(e)}
 
 @app.get("/api/channels")
-async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y"):
+async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", channel_mult: float = 2.0):
     """
     Run the enhanced_channel strategy on OHLCV data and return channel overlays
     (Tactical Upper, Tactical Lower, Tactical Mid, Intermediate Mid, Macro Mid)
@@ -301,7 +374,7 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y"):
         if not candles:
             return {"overlays": [], "error": "No candle data available"}
 
-        result = run_enhanced_channel(candles)
+        result = run_enhanced_channel(candles, params={"channel_mult": channel_mult})
         raw_overlays = result.get("overlays", [])
 
         # Format points as unix timestamps for Lightweight Charts

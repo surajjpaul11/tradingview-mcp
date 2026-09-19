@@ -5,12 +5,25 @@
 // ----- Core DOM References -----
 const tickerSelect = document.getElementById('ticker-select');
 const strategySelect = document.getElementById('strategy-select');
+const channelMultGroup = document.getElementById('channel-mult-group');
+const channelMultSelect = document.getElementById('channel-mult-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
 const bnhVal = document.getElementById('bnh-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
+
+function getSelectedChannelMult() {
+    if (!channelMultSelect) return 2.0;
+    return parseFloat(channelMultSelect.value) || 2.0;
+}
+
+function syncChannelMultVisibility(strategy) {
+    if (!channelMultGroup) return;
+    const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
+    channelMultGroup.style.display = (currentStrat === 'enhanced_channel') ? 'flex' : 'none';
+}
 
 // ----- Chart Globals (Regular Tab) -----
 let chart = null;
@@ -353,9 +366,17 @@ async function loadFilters() {
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = () => {
+            syncChannelMultVisibility(strategySelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
+        if (channelMultSelect) {
+            channelMultSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        syncChannelMultVisibility(strategySelect.value);
 
         // Trigger initial data load
         if (data.symbols && data.symbols.length > 0) {
@@ -623,7 +644,7 @@ function updateChannelLegend(containerId, isVisible) {
     `;
 }
 
-async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList) {
+async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y') {
     // Remove previous channel series
     existingSeriesList.forEach(s => {
         try { chartInstance.removeSeries(s); } catch (_) {}
@@ -631,7 +652,8 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
     existingSeriesList.length = 0;
 
     try {
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}`);
+        const mult = getSelectedChannelMult();
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&channel_mult=${mult}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data.overlays || data.overlays.length === 0) return;
@@ -698,10 +720,11 @@ async function updateDashboard() {
     setLoading(true, 'loading');
 
     try {
+        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}` : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}`)
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
@@ -812,9 +835,10 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
+        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}` : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}`)
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
@@ -838,7 +862,7 @@ async function updateAdvDashboard() {
                     advCandlestickSeries.setMarkers(finalMarkers);
                 }
             } catch (markerErr) {
-                console.warn('[TV-ADV] Marker setting warning:', markerErr);
+                console.warn('[TV] Marker setting warning (adv):', markerErr);
             }
         } else {
             advCandlestickSeries.setMarkers([]);
@@ -854,7 +878,7 @@ async function updateAdvDashboard() {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true);
-            await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries);
+            await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries, config.interval, config.period);
         } else {
             updateChannelLegend('adv-channel-legend', false);
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });

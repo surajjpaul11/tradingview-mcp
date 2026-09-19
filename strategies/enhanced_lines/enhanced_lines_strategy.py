@@ -670,6 +670,125 @@ def run_enhanced_lines(
 
 
 # ==============================================================================
+# TRENDLINE EXPORT (for UI charting)
+# ==============================================================================
+
+def run_enhanced_lines_with_trendlines(
+    candles: list[dict],
+    pivot_lookback: int = PIVOT_LOOKBACK,
+    min_touches: int = MIN_TOUCHES,
+    tolerance: float = TOLERANCE,
+) -> dict:
+    """
+    Run the enhanced_lines strategy and additionally capture all trendline
+    segments (support/resistance channels) for overlay on the chart.
+
+    Returns:
+        {
+            "trades": [... same as run_enhanced_lines() ...],
+            "trendlines": [
+                {
+                    "type": "support" | "resistance",
+                    "trend": "uptrend" | "downtrend",
+                    "start_date": "2024-06-01",
+                    "start_price": 210.50,
+                    "end_date": "2024-08-14",
+                    "end_price": 225.30,
+                    "slope_per_bar": 0.15
+                },
+                ...
+            ]
+        }
+    """
+    # Run the full strategy to get trades
+    trades = run_enhanced_lines(candles, pivot_lookback=pivot_lookback,
+                                 min_touches=min_touches, tolerance=tolerance)
+
+    if not candles:
+        return {"trades": trades, "trendlines": []}
+
+    # --- Replay the channel detection to capture trendline segments ---
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+
+    swing_highs, swing_lows = find_swings(highs, lows, pivot_lookback)
+
+    confirmed_highs: list[tuple[int, float]] = []
+    confirmed_lows: list[tuple[int, float]] = []
+    sh_ptr = sl_ptr = 0
+
+    prev_sh_ptr: int = 0
+    prev_sl_ptr: int = 0
+    cached_channel: Optional[dict] = None
+
+    # Track unique trendlines by their anchor pair to avoid duplicates
+    seen_lines: set = set()
+    trendlines: list[dict] = []
+
+    for i in range(len(candles)):
+        # Confirm new swing points
+        while sh_ptr < len(swing_highs) and swing_highs[sh_ptr][2] <= i:
+            confirmed_highs.append(swing_highs[sh_ptr][:2])
+            sh_ptr += 1
+        while sl_ptr < len(swing_lows) and swing_lows[sl_ptr][2] <= i:
+            confirmed_lows.append(swing_lows[sl_ptr][:2])
+            sl_ptr += 1
+
+        # Build channel
+        if sh_ptr != prev_sh_ptr or sl_ptr != prev_sl_ptr or cached_channel is None:
+            cached_channel = build_channel(confirmed_highs, confirmed_lows,
+                                           min_touches, tolerance)
+            prev_sh_ptr = sh_ptr
+            prev_sl_ptr = sl_ptr
+
+            # Extract trendlines from the new channel
+            channel = cached_channel
+            for line_type, line_key in [
+                ("support", "higher_lows"),
+                ("resistance", "higher_highs"),
+                ("support", "lower_lows"),
+                ("resistance", "lower_highs"),
+            ]:
+                tl = channel.get(line_key)
+                if tl is None:
+                    continue
+
+                a1 = tl["anchor1"]  # (bar_idx, price)
+                a2 = tl["anchor2"]  # (bar_idx, price)
+                line_id = (line_key, a1[0], a2[0])
+
+                if line_id in seen_lines:
+                    continue
+                seen_lines.add(line_id)
+
+                # Determine trend direction from line_key
+                if line_key in ("higher_lows", "higher_highs"):
+                    trend_dir = "uptrend"
+                else:
+                    trend_dir = "downtrend"
+
+                # Project the line forward to the current bar for a nice extension
+                projected_end_price = trendline_value(a1, a2, min(i + 20, len(candles) - 1))
+
+                # Get dates safely
+                start_bar = a1[0]
+                end_bar = min(a2[0] + 20, len(candles) - 1)
+
+                trendlines.append({
+                    "type": line_type,
+                    "trend": trend_dir,
+                    "start_date": candles[start_bar]["date"],
+                    "start_price": round(a1[1], 4),
+                    "end_date": candles[end_bar]["date"],
+                    "end_price": round(projected_end_price, 4),
+                    "slope_per_bar": round(tl["slope_per_bar"], 6),
+                })
+
+    return {"trades": trades, "trendlines": trendlines}
+
+
+
+# ==============================================================================
 # METRICS & REPORTING
 # ==============================================================================
 

@@ -10,14 +10,68 @@ const pnlVal = document.getElementById('pnl-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 
-// ----- Chart Globals -----
+// ----- Chart Globals (Regular Tab) -----
 let chart = null;
 let candlestickSeries = null;
 let currentCandles = [];
 let activeRange = '5y'; // Default: 5-Year view
+let trendlineSeries = []; // LineSeries for trendline overlays
+
+// ----- Chart Globals (Advanced Tab) -----
+let advChart = null;
+let advCandlestickSeries = null;
+let advCurrentCandles = [];
+let advActiveRange = '1y'; // Default: 1-Year daily
+let advTrendlineSeries = [];
+
+// ----- Tab State -----
+let activeTab = 'regular';
 
 // ============================================================
-// STEP 1: Initialize TradingView chart
+// TAB SWITCHING
+// ============================================================
+function initTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            if (tab === activeTab) return;
+            switchTab(tab);
+        });
+    });
+}
+
+function switchTab(tab) {
+    activeTab = tab;
+
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+
+    // Update tab panels
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+        const isActive = panel.id === `panel-${tab}`;
+        panel.classList.toggle('active', isActive);
+    });
+
+    // Initialize advanced chart if first switch
+    if (tab === 'advanced' && !advChart) {
+        initAdvChart();
+        updateAdvDashboard();
+    } else if (tab === 'advanced' && advChart) {
+        // Resize to fit container
+        const container = document.getElementById('adv-chart');
+        if (container && advChart) {
+            advChart.applyOptions({
+                width: container.clientWidth || 800,
+                height: container.clientHeight || 500,
+            });
+        }
+    }
+}
+
+// ============================================================
+// STEP 1: Initialize Regular TradingView chart
 // ============================================================
 function initChart() {
     const container = document.getElementById('tv-chart');
@@ -85,13 +139,74 @@ function initChart() {
 }
 
 // ============================================================
-// STEP 2: Timeframe / Range Selector Handling
+// STEP 1b: Initialize Advanced TradingView chart
+// ============================================================
+function initAdvChart() {
+    const container = document.getElementById('adv-chart');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    advChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth || 800,
+        height: container.clientHeight || 500,
+        layout: {
+            background: { type: 'solid', color: 'transparent' },
+            textColor: '#94A3B8',
+        },
+        grid: {
+            vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+            horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        },
+        timeScale: {
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        crosshair: {
+            mode: 1,
+            vertLine: { color: '#3B82F6', labelBackgroundColor: '#3B82F6' },
+            horzLine: { color: '#3B82F6', labelBackgroundColor: '#3B82F6' }
+        }
+    });
+
+    if (typeof advChart.addCandlestickSeries === 'function') {
+        advCandlestickSeries = advChart.addCandlestickSeries({
+            upColor: '#10B981',
+            downColor: '#EF4444',
+            borderVisible: false,
+            wickUpColor: '#10B981',
+            wickDownColor: '#EF4444'
+        });
+    } else if (typeof advChart.addSeries === 'function' && typeof LightweightCharts.CandlestickSeries !== 'undefined') {
+        advCandlestickSeries = advChart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: '#10B981',
+            downColor: '#EF4444',
+            borderVisible: false,
+            wickUpColor: '#10B981',
+            wickDownColor: '#EF4444'
+        });
+    }
+
+    new ResizeObserver(entries => {
+        if (advChart && container) {
+            const width = container.clientWidth || (entries[0] && entries[0].contentRect.width) || 800;
+            const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
+            if (width > 50 && height > 50) {
+                advChart.applyOptions({ width, height });
+            }
+        }
+    }).observe(container);
+}
+
+// ============================================================
+// STEP 2: Timeframe / Range Selector Handling (Regular Tab)
 // ============================================================
 function applyTimeframeRange(range) {
     activeRange = range;
 
     // Update active button state
-    document.querySelectorAll('.tf-btn').forEach(btn => {
+    document.querySelectorAll('#timeframe-btn-group .tf-btn').forEach(btn => {
         if (btn.dataset.range === range) {
             btn.classList.add('active');
         } else {
@@ -148,11 +263,43 @@ function applyTimeframeRange(range) {
 }
 
 function initTimeframeButtons() {
-    document.querySelectorAll('.tf-btn').forEach(btn => {
+    document.querySelectorAll('#timeframe-btn-group .tf-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const range = e.currentTarget.dataset.range;
             if (range) {
                 applyTimeframeRange(range);
+            }
+        });
+    });
+}
+
+// ============================================================
+// STEP 2b: Advanced Timeframe Handler (fetches new data)
+// ============================================================
+const ADV_RANGE_CONFIG = {
+    '1d':  { interval: '5m',  period: '1d',  label: '1 Day · 5-Min Candles' },
+    '5d':  { interval: '15m', period: '5d',  label: '5 Days · 15-Min Candles' },
+    '1mo': { interval: '1h',  period: '1mo', label: '1 Month · Hourly Candles' },
+    'ytd': { interval: '1d',  period: 'ytd', label: 'Year-to-Date · Daily Candles' },
+    '1y':  { interval: '1d',  period: '1y',  label: '1 Year · Daily Candles' },
+    '5y':  { interval: '1wk', period: '5y',  label: '5 Years · Weekly Candles' },
+};
+
+function initAdvTimeframeButtons() {
+    document.querySelectorAll('.adv-tf-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const range = e.currentTarget.dataset.advRange;
+            if (range) {
+                advActiveRange = range;
+                // Update active state
+                document.querySelectorAll('.adv-tf-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.advRange === range);
+                });
+                // Update hint
+                const hint = document.getElementById('adv-range-hint');
+                if (hint) hint.textContent = ADV_RANGE_CONFIG[range]?.label || range;
+                // Fetch new data
+                updateAdvDashboard();
             }
         });
     });
@@ -198,9 +345,15 @@ async function loadFilters() {
             strategySelect.value = defaultStrategy;
         }
 
-        // Wire up change listeners
-        tickerSelect.onchange = updateDashboard;
-        strategySelect.onchange = updateDashboard;
+        // Wire up change listeners — update both tabs
+        tickerSelect.onchange = () => {
+            updateDashboard();
+            if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+        };
+        strategySelect.onchange = () => {
+            updateDashboard();
+            if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+        };
 
         // Trigger initial data load
         if (data.symbols && data.symbols.length > 0) {
@@ -216,10 +369,11 @@ async function loadFilters() {
 // ============================================================
 // Helpers
 // ============================================================
-function setLoading(active) {
-    if (!loadingOverlay) return;
-    if (active) loadingOverlay.classList.add('active');
-    else loadingOverlay.classList.remove('active');
+function setLoading(active, overlayId = 'loading') {
+    const overlay = document.getElementById(overlayId);
+    if (!overlay) return;
+    if (active) overlay.classList.add('active');
+    else overlay.classList.remove('active');
 }
 
 function toChartTime(isoString) {
@@ -257,15 +411,133 @@ function findNearestCandleTime(tradeTime, candles) {
     return closest;
 }
 
+function buildMarkers(tradesData, sorted, strategy) {
+    const markers = [];
+    const showStrategy = strategy === 'all';
+
+    tradesData.trades.forEach(trade => {
+        const entryTime = toChartTime(trade.created_at);
+        const snappedEntry = findNearestCandleTime(entryTime, sorted);
+        const isLong = (trade.side || '').toLowerCase() === 'buy';
+        const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+
+        // 1. Entry Marker
+        markers.push({
+            time: snappedEntry,
+            position: isLong ? 'belowBar' : 'aboveBar',
+            color: isLong ? '#10B981' : '#F59E0B',
+            shape: isLong ? 'arrowUp' : 'arrowDown',
+            text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
+        });
+
+        // 2. Exit Marker (if trade has an exit recorded)
+        if (trade.status === 'closed' && trade.exit_price != null && trade.closed_at) {
+            const exitTime = toChartTime(trade.closed_at);
+            const snappedExit = findNearestCandleTime(exitTime, sorted);
+            const isWin = (trade.pnl_usd || 0) >= 0;
+            const pnlPct = Number(trade.pnl_pct || 0);
+            const pnlSign = pnlPct >= 0 ? '+' : '';
+
+            markers.push({
+                time: snappedExit,
+                position: isLong ? 'aboveBar' : 'belowBar',
+                color: isWin ? '#10B981' : '#EF4444',
+                shape: isLong ? 'arrowDown' : 'arrowUp',
+                text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
+            });
+        }
+    });
+
+    // Consolidate markers sharing exact same candle time & position
+    const consolidatedMap = new Map();
+    markers.forEach(m => {
+        const key = `${m.time}_${m.position}`;
+        if (!consolidatedMap.has(key)) {
+            consolidatedMap.set(key, { ...m, count: 1 });
+        } else {
+            const existing = consolidatedMap.get(key);
+            existing.count += 1;
+            const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
+            existing.text = `${existing.count}x ${action}`;
+        }
+    });
+
+    return Array.from(consolidatedMap.values()).sort((a, b) => a.time - b.time);
+}
+
 // ============================================================
-// STEP 4: Update chart + stats based on current filter state
+// TRENDLINE OVERLAY
+// ============================================================
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList) {
+    // Remove previous trendline series
+    existingSeriesList.forEach(s => {
+        try { chartInstance.removeSeries(s); } catch (_) {}
+    });
+    existingSeriesList.length = 0;
+
+    try {
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.trendlines || data.trendlines.length === 0) return;
+
+        data.trendlines.forEach(tl => {
+            const startTime = toChartTime(tl.start_date);
+            const endTime = toChartTime(tl.end_date);
+
+            // Only render lines that overlap with visible candle data
+            if (candleData.length === 0) return;
+            const firstCandle = candleData[0].time;
+            const lastCandle = candleData[candleData.length - 1].time;
+            if (endTime < firstCandle || startTime > lastCandle) return;
+
+            const color = tl.type === 'support' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)';
+
+            let lineSeries;
+            if (typeof chartInstance.addLineSeries === 'function') {
+                lineSeries = chartInstance.addLineSeries({
+                    color: color,
+                    lineWidth: 2,
+                    lineStyle: 2, // Dashed
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                });
+            } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
+                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, {
+                    color: color,
+                    lineWidth: 2,
+                    lineStyle: 2,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                });
+            }
+
+            if (lineSeries) {
+                const snappedStart = findNearestCandleTime(startTime, candleData);
+                const snappedEnd = findNearestCandleTime(endTime, candleData);
+                lineSeries.setData([
+                    { time: snappedStart, value: tl.start_price },
+                    { time: snappedEnd, value: tl.end_price },
+                ]);
+                existingSeriesList.push(lineSeries);
+            }
+        });
+    } catch (err) {
+        console.warn('[TV] Trendline fetch error:', err);
+    }
+}
+
+// ============================================================
+// STEP 4: Update Regular chart + stats
 // ============================================================
 async function updateDashboard() {
     const symbol = tickerSelect.value;
     const strategy = strategySelect.value || 'all';
     if (!symbol) return;
 
-    setLoading(true);
+    setLoading(true, 'loading');
 
     try {
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
@@ -291,61 +563,10 @@ async function updateDashboard() {
             candlestickSeries.setData(sorted);
         }
 
-        // -- Trade Markers (Both Buy/Entry and Sell/Exit) --
+        // -- Trade Markers --
         if (candlestickSeries && tradesData.trades && sorted.length > 0) {
             try {
-                const markers = [];
-                const showStrategy = strategy === 'all';
-
-                tradesData.trades.forEach(trade => {
-                    const entryTime = toChartTime(trade.created_at);
-                    const snappedEntry = findNearestCandleTime(entryTime, sorted);
-                    const isLong = (trade.side || '').toLowerCase() === 'buy';
-                    const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
-
-                    // 1. Entry Marker
-                    markers.push({
-                        time: snappedEntry,
-                        position: isLong ? 'belowBar' : 'aboveBar',
-                        color: isLong ? '#10B981' : '#F59E0B',
-                        shape: isLong ? 'arrowUp' : 'arrowDown',
-                        text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
-                    });
-
-                    // 2. Exit Marker (if trade has an exit recorded)
-                    if (trade.status === 'closed' && trade.exit_price != null && trade.closed_at) {
-                        const exitTime = toChartTime(trade.closed_at);
-                        const snappedExit = findNearestCandleTime(exitTime, sorted);
-                        const isWin = (trade.pnl_usd || 0) >= 0;
-                        const pnlPct = Number(trade.pnl_pct || 0);
-                        const pnlSign = pnlPct >= 0 ? '+' : '';
-
-                        markers.push({
-                            time: snappedExit,
-                            position: isLong ? 'aboveBar' : 'belowBar',
-                            color: isWin ? '#10B981' : '#EF4444',
-                            shape: isLong ? 'arrowDown' : 'arrowUp',
-                            text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
-                        });
-                    }
-                });
-
-                // Consolidate markers sharing exact same candle time & position to avoid vertical stacking
-                const consolidatedMap = new Map();
-                markers.forEach(m => {
-                    const key = `${m.time}_${m.position}`;
-                    if (!consolidatedMap.has(key)) {
-                        consolidatedMap.set(key, { ...m, count: 1 });
-                    } else {
-                        const existing = consolidatedMap.get(key);
-                        existing.count += 1;
-                        const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
-                        existing.text = `${existing.count}x ${action}`;
-                    }
-                });
-
-                const finalMarkers = Array.from(consolidatedMap.values()).sort((a, b) => a.time - b.time);
-
+                const finalMarkers = buildMarkers(tradesData, sorted, strategy);
                 if (typeof candlestickSeries.setMarkers === 'function') {
                     candlestickSeries.setMarkers(finalMarkers);
                 }
@@ -354,6 +575,15 @@ async function updateDashboard() {
             }
         } else if (candlestickSeries) {
             candlestickSeries.setMarkers([]);
+        }
+
+        // -- Trendline Overlays (enhanced_lines only) --
+        if (chart && strategy === 'enhanced_lines' && sorted.length > 0) {
+            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries);
+        } else {
+            // Clear trendlines for non-enhanced_lines strategies
+            trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+            trendlineSeries.length = 0;
         }
 
         // Apply active timeframe zoom (preserves user selection across dropdown changes)
@@ -370,7 +600,71 @@ async function updateDashboard() {
     } catch (err) {
         console.error('[TV] updateDashboard failed:', err);
     } finally {
-        setLoading(false);
+        setLoading(false, 'loading');
+    }
+}
+
+// ============================================================
+// STEP 5: Update Advanced chart (multi-resolution)
+// ============================================================
+async function updateAdvDashboard() {
+    const symbol = tickerSelect.value;
+    const strategy = strategySelect.value || 'all';
+    if (!symbol || !advChart || !advCandlestickSeries) return;
+
+    const config = ADV_RANGE_CONFIG[advActiveRange];
+    if (!config) return;
+
+    setLoading(true, 'adv-loading');
+
+    try {
+        const [candlesRes, tradesRes] = await Promise.all([
+            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}`)
+        ]);
+
+        const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
+        const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
+
+        const rawCandles = candlesData.candles || [];
+        const sorted = rawCandles
+            .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
+            .sort((a, b) => a.time - b.time)
+            .filter((c, i, arr) => i === 0 || c.time !== arr[i - 1].time);
+
+        advCurrentCandles = sorted;
+
+        advCandlestickSeries.setData(sorted);
+
+        // -- Trade Markers on Advanced Chart --
+        if (tradesData.trades && sorted.length > 0) {
+            try {
+                const finalMarkers = buildMarkers(tradesData, sorted, strategy);
+                if (typeof advCandlestickSeries.setMarkers === 'function') {
+                    advCandlestickSeries.setMarkers(finalMarkers);
+                }
+            } catch (markerErr) {
+                console.warn('[TV-ADV] Marker setting warning:', markerErr);
+            }
+        } else {
+            advCandlestickSeries.setMarkers([]);
+        }
+
+        // -- Trendline Overlays on Advanced (enhanced_lines only) --
+        if (strategy === 'enhanced_lines' && sorted.length > 0) {
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries);
+        } else {
+            advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
+            advTrendlineSeries.length = 0;
+        }
+
+        // Fit content
+        advChart.timeScale().fitContent();
+
+    } catch (err) {
+        console.error('[TV-ADV] updateAdvDashboard failed:', err);
+    } finally {
+        setLoading(false, 'adv-loading');
     }
 }
 
@@ -393,6 +687,8 @@ async function updateDashboard() {
     } catch (err) {
         console.error('[TV] Chart initialization failed:', err);
     }
+    initTabs();
     initTimeframeButtons();
+    initAdvTimeframeButtons();
     loadFilters();
 })();

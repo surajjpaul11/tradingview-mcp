@@ -189,6 +189,71 @@ async def api_candles(symbol: str, timeframe: str = "1d", period: str = "5y"):
         
     return {"candles": candles}
 
+@app.get("/api/trendlines")
+async def api_trendlines(symbol: str):
+    """
+    Run the enhanced_lines strategy on OHLCV data and return trendline segments
+    (support/resistance channels) for chart overlay.
+    """
+    import sys
+    from pathlib import Path as PurePath
+
+    clean_sym = symbol.strip().upper()
+    yf_symbol = (
+        clean_sym.replace("/USDT", "-USD")
+        .replace("/USD", "-USD")
+        .replace("_USDT", "-USD")
+        .replace("_USD", "-USD")
+        .replace("/", "-")
+        .replace("_", "-")
+    )
+
+    try:
+        # Fetch OHLCV candles (1h for 2y — matches how the strategy was designed)
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period="2y", interval="1h")
+        if df is None or df.empty:
+            return {"trendlines": [], "error": "No candle data available"}
+
+        import math
+        candles = []
+        for date, row in df.iterrows():
+            o = float(row["Open"])
+            h = float(row["High"])
+            l = float(row["Low"])
+            c = float(row["Close"])
+            v = float(row.get("Volume", 0.0))
+            if any(math.isnan(x) for x in (o, h, l, c)):
+                continue
+            candles.append({
+                "date": date.strftime("%Y-%m-%d %H:%M"),
+                "open": round(o, 4),
+                "high": round(h, 4),
+                "low": round(l, 4),
+                "close": round(c, 4),
+                "volume": v or 0,
+            })
+
+        if not candles:
+            return {"trendlines": []}
+
+        # Dynamically import enhanced_lines strategy
+        base_dir = PurePath(__file__).resolve().parent.parent.parent.parent.parent
+        strategy_dir = base_dir / "strategies" / "enhanced_lines"
+        if str(strategy_dir) not in sys.path:
+            sys.path.insert(0, str(strategy_dir))
+
+        from enhanced_lines_strategy import run_enhanced_lines_with_trendlines
+        result = run_enhanced_lines_with_trendlines(candles)
+
+        return {"trendlines": result.get("trendlines", [])}
+
+    except Exception as e:
+        print(f"Trendlines error for {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"trendlines": [], "error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("tradingview_mcp.ui.server:app", host="127.0.0.1", port=8000, reload=True)

@@ -15,10 +15,11 @@
     "htf_filter": true,
     "confluence_boost": true,
     "long_only": true,
-    "confirm_bars": 1,
+    "confirm_bars": 2,
     "channel_type": "linreg",
     "bounce_type": "2bar",
-    "stopgap_type": "close"
+    "stopgap_type": "close",
+    "dynamic_sizing": false
   },
   "period": "5y",
   "interval": "1d",
@@ -26,10 +27,10 @@
   "date_from": "2021-09-20",
   "date_to": "2026-09-18",
   "buy_and_hold_return_pct": 151.98,
-  "vs_buy_and_hold_pct": -127.39,
+  "vs_buy_and_hold_pct": -120.05,
   "initial_capital": 10000.0,
-  "final_capital": 12459.14,
-  "total_return_pct": 24.59,
+  "final_capital": 13192.8,
+  "total_return_pct": 31.93,
   "total_trades": 20,
   "long_trades": 20,
   "short_trades": 0,
@@ -37,8 +38,8 @@
   "avg_gain_pct": 7.94,
   "avg_loss_pct": -5.97,
   "profit_factor": 1.63,
-  "sharpe_ratio": 0.88,
-  "max_drawdown_pct": 14.71,
+  "sharpe_ratio": 0.96,
+  "max_drawdown_pct": 18.05,
   "channel_top_exits": 8,
   "channel_bottom_exits": 0,
   "trailing_channel_exits": 3,
@@ -57,7 +58,7 @@
       "exit_reason": "stopgap_exit",
       "bars_held": 9,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": -5.9,
       "return_pct": -6.18
     },
@@ -105,7 +106,7 @@
       "exit_reason": "channel_top_exit",
       "bars_held": 18,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": 2.84,
       "return_pct": 2.53
     },
@@ -153,7 +154,7 @@
       "exit_reason": "trailing_channel_exit",
       "bars_held": 50,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": 9.68,
       "return_pct": 9.35
     },
@@ -169,7 +170,7 @@
       "exit_reason": "stopgap_exit",
       "bars_held": 19,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": -5.06,
       "return_pct": -5.35
     },
@@ -217,7 +218,7 @@
       "exit_reason": "trailing_channel_exit",
       "bars_held": 30,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": 4.53,
       "return_pct": 4.22
     },
@@ -281,7 +282,7 @@
       "exit_reason": "channel_top_exit",
       "bars_held": 13,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": 14.56,
       "return_pct": 14.22
     },
@@ -297,7 +298,7 @@
       "exit_reason": "trailing_channel_exit",
       "bars_held": 34,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": 3.72,
       "return_pct": 3.41
     },
@@ -329,7 +330,7 @@
       "exit_reason": "stopgap_exit",
       "bars_held": 4,
       "tier": "tactical_3m",
-      "size_pct": 0.5,
+      "size_pct": 1.0,
       "gross_return_pct": -7.27,
       "return_pct": -7.54
     },
@@ -367,5 +368,5 @@
     }
   ],
   "data_source": "Yahoo Finance",
-  "timestamp": "2026-09-19T16:44:19.036801+00:00"
+  "timestamp": "2026-09-19T17:38:05.762405+00:00"
 }

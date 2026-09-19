@@ -764,10 +764,11 @@ def run_backtest(
     htf_filter: bool = HTF_FILTER,
     confluence_boost: bool = CONFLUENCE_BOOST,
     long_only: bool = LONG_ONLY,
-    confirm_bars: int = 1,
+    confirm_bars: int = 2,
     channel_type: str = "linreg",
-    bounce_type: str = "1bar",
-    stopgap_type: str = "low",
+    bounce_type: str = "2bar",
+    stopgap_type: str = "close",
+    dynamic_sizing: bool = False,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -788,6 +789,7 @@ def run_backtest(
         "channel_type": channel_type,
         "bounce_type": bounce_type,
         "stopgap_type": stopgap_type,
+        "dynamic_sizing": dynamic_sizing,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -826,9 +828,10 @@ def main():
     parser.add_argument("--symbol", default="SPY", help="Yahoo Finance symbol (default: SPY)")
     parser.add_argument("--period", default=PERIOD, help="Lookback period: 1y, 2y, 5y, max (default: 5y)")
     parser.add_argument("--interval", default=INTERVAL, choices=["1d", "1h"], help="Candle size (default: 1d)")
-    parser.add_argument("--channel-type", default="linreg", choices=["linreg", "donchian", "keltner"], help="Channel geometry: linreg, donchian, keltner")
-    parser.add_argument("--bounce-type", default="1bar", choices=["1bar", "2bar", "rsi"], help="Bounce confirmation: 1bar, 2bar, rsi")
-    parser.add_argument("--stopgap-type", default="low", choices=["low", "close", "atr"], help="Stopgap trigger: low, close, atr")
+    parser.add_argument("--channel-type", default="linreg", choices=["linreg", "donchian", "keltner"], help="Channel geometry (default: linreg)")
+    parser.add_argument("--bounce-type", default="2bar", choices=["1bar", "2bar", "rsi"], help="Bounce confirmation (default: 2bar)")
+    parser.add_argument("--stopgap-type", default="close", choices=["low", "close", "atr"], help="Stopgap trigger (default: close)")
+    parser.add_argument("--dynamic-sizing", action="store_true", help="Enable multi-tier sizing (50%% tactical, 100%% confluence) for lowest drawdown")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
     parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
     parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
@@ -836,7 +839,7 @@ def main():
     parser.add_argument("--channel-mult", type=float, default=CHANNEL_MULT, help="Std error multiplier (default: 2.0)")
     parser.add_argument("--leeway", type=float, default=LEEWAY_PCT, help="Leeway tolerance fraction (default: 0.05 = 5%%)")
     parser.add_argument("--stopgap", type=float, default=STOPGAP_PCT, help="Stopgap margin below lower channel (default: 0.05 = 5%%)")
-    parser.add_argument("--confirm-bars", type=int, default=1, choices=[1, 2], help="Bounce confirmation bars required (1 or 2)")
+    parser.add_argument("--confirm-bars", type=int, default=2, choices=[1, 2], help="Bounce confirmation bars required (default: 2)")
     parser.add_argument("--allow-short", action="store_true", help="Enable short trades on channel top rejection")
     parser.add_argument("--no-htf-filter", action="store_true", help="Disable higher timeframe 1Y trend filter")
     parser.add_argument("--no-confluence", action="store_true", help="Disable confluence detection")
@@ -869,6 +872,7 @@ def main():
         channel_type=args.channel_type,
         bounce_type=args.bounce_type,
         stopgap_type=args.stopgap_type,
+        dynamic_sizing=args.dynamic_sizing,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

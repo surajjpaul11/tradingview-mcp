@@ -1,5 +1,10 @@
 # TradingView MCP — Project Context
 
+## On First Prompt of Session
+
+Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
+
+
 ## What This Is
 
 A fork of [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp) — a Python FastMCP server providing TradingView market analysis tools to AI assistants. We are extending it with backtesting, and eventually paper trading and live trade execution.
@@ -214,6 +219,11 @@ Add more strategies following the paired `.py` + `.pine` convention:
 
 ```bash
 # Install
+
+## On First Prompt of Session
+
+Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
+
 uv sync
 
 # Start MCP server (stdio)
@@ -247,3 +257,13 @@ python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
 ## Inspiration
 
 Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. Our fork goes further by adding execution capability.
+## Docker Container (Skills)
+
+This project runs inside a Docker container. Ports **8000–8004** are mapped to the host.
+
+Use these skills for details (loaded on-demand to save tokens):
+- `/docker-networking` — Server binding rules, port allocation
+- `/container-restart` — Pre-restart checklist to preserve work
+- `/session-resume` — Startup protocol for restoring state
+
+**Key rules:** Always bind to `0.0.0.0`. Only use ports 8000–8004. Commit and push before restarts.

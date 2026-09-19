@@ -1,0 +1,14 @@
+[
+  {
+    "id": "alpaca-status",
+    "interval": "15m",
+    "prompt": "Check Alpaca for the status of any open orders and positions. Report fills, rejections, or anomalies since the last check.",
+    "enabled": true
+  },
+  {
+    "id": "git-uncommitted",
+    "interval": "30m",
+    "prompt": "Run git status and report any uncommitted changes.",
+    "enabled": false
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "symbol": "GOOGL",
+  "strategy": "rsi_volume_watch",
+  "strategy_label": "RSI Volume Watch (RSI cross 50, vol>1.3x, ATR trail 3.0x)",
+  "period": "2y",
+  "interval": "1d",
+  "candles_analyzed": 500,
+  "date_from": "2024-04-15",
+  "date_to": "2026-04-13",
+  "initial_capital": 10000.0,
+  "final_capital": 10083.71,
+  "total_return_pct": 0.84,
+  "buy_and_hold_return_pct": 106.75,
+  "vs_buy_and_hold_pct": -105.92,
+  "total_trades": 1,
+  "winning_trades": 1,
+  "losing_trades": 0,
+  "win_rate_pct": 100.0,
+  "avg_gain_pct": 0.84,
+  "avg_loss_pct": 0.0,
+  "profit_factor": Infinity,
+  "sharpe_ratio": 0.0,
+  "max_drawdown_pct": 0.0,
+  "time_in_market_pct": 7.0,
+  "signal_counts": {
+    "rsi_vol_bullish": 1
+  },
+  "trade_log": [
+    {
+      "entry_date": "2025-12-19",
+      "entry_price": 307.16,
+      "exit_date": "2026-02-11",
+      "exit_price": 310.96,
+      "side": "long",
+      "entry_reason": "rsi_vol_bullish",
+      "return_pct": 0.84,
+      "gross_return_pct": 1.24,
+      "exit_reason": "rsi_momentum_fade",
+      "days_held": 35,
+      "rsi_at_entry": 53.4,
+      "rsi_at_exit": 35.7,
+      "vol_ratio_at_entry": 1.4,
+      "strategy": "rsi_volume_watch"
+    }
+  ],
+  "data_source": "Yahoo Finance",
+  "timestamp": "2026-04-13T19:21:05.457492+00:00"
+}

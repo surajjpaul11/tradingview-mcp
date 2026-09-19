@@ -1,0 +1,42 @@
+{
+  "symbol": "SNDK",
+  "strategy": "smart_hold_rc",
+  "strategy_label": "Smart Hold Adaptive (reversal_channel re-entry, ATR%=6.8%, thresh=6.0%)",
+  "reentry_mode": "reversal_channel",
+  "median_atr_pct": 6.8,
+  "period": "2y",
+  "interval": "1d",
+  "candles_analyzed": 291,
+  "date_from": "2025-02-13",
+  "date_to": "2026-04-13",
+  "initial_capital": 10000.0,
+  "final_capital": 264543.33,
+  "total_return_pct": 2545.43,
+  "buy_and_hold_return_pct": 2545.83,
+  "vs_buy_and_hold_pct": -0.4,
+  "total_trades": 1,
+  "winning_trades": 1,
+  "losing_trades": 0,
+  "win_rate_pct": 100.0,
+  "avg_gain_pct": 2545.43,
+  "avg_loss_pct": 0.0,
+  "profit_factor": Infinity,
+  "sharpe_ratio": 0.0,
+  "max_drawdown_pct": 0.0,
+  "trade_log": [
+    {
+      "entry_date": "2025-02-13",
+      "exit_date": "2026-04-13",
+      "entry_price": 36.0,
+      "exit_price": 952.5,
+      "side": "long",
+      "entry_reason": "initial_entry",
+      "return_pct": 2545.43,
+      "exit_reason": "end_of_data",
+      "days_held": 290,
+      "strategy": "smart_hold_rc"
+    }
+  ],
+  "data_source": "Yahoo Finance",
+  "timestamp": "2026-04-14T01:16:20.805227+00:00"
+}

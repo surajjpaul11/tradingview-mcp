@@ -167,6 +167,89 @@ def calc_linear_regression_channel(
     return midlines, uppers, lowers, slopes
 
 
+def calc_ema(values: List[float], period: int) -> List[Optional[float]]:
+    """Calculates Exponential Moving Average."""
+    out: List[Optional[float]] = [None] * len(values)
+    if len(values) < period:
+        return out
+    out[period - 1] = sum(values[:period]) / period
+    k = 2.0 / (period + 1)
+    for i in range(period, len(values)):
+        out[i] = values[i] * k + out[i - 1] * (1.0 - k)
+    return out
+
+
+def calc_atr(highs: List[float], lows: List[float], closes: List[float], period: int) -> List[Optional[float]]:
+    """Calculates Average True Range."""
+    n = len(closes)
+    trs = [highs[0] - lows[0]]
+    for i in range(1, n):
+        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+        trs.append(tr)
+    return calc_ema(trs, period)
+
+
+def calc_donchian_channel(
+    highs: List[float],
+    lows: List[float],
+    lookback: int
+) -> Tuple[List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
+    """Calculates Rolling Donchian Range Channel."""
+    n = len(highs)
+    midlines: List[Optional[float]] = [None] * n
+    uppers: List[Optional[float]] = [None] * n
+    lowers: List[Optional[float]] = [None] * n
+    slopes: List[Optional[float]] = [None] * n
+
+    for i in range(n):
+        curr_len = lookback if (i + 1) >= lookback else (i + 1)
+        if curr_len < 5:
+            continue
+        window_highs = highs[i - curr_len + 1 : i + 1]
+        window_lows = lows[i - curr_len + 1 : i + 1]
+        u = max(window_highs)
+        d = min(window_lows)
+        m = (u + d) / 2.0
+        uppers[i] = round(u, 4)
+        lowers[i] = round(d, 4)
+        midlines[i] = round(m, 4)
+        prev_m = midlines[i - 1] if i > 0 and midlines[i - 1] is not None else m
+        slopes[i] = round(m - prev_m, 6)
+
+    return midlines, uppers, lowers, slopes
+
+
+def calc_keltner_channel(
+    closes: List[float],
+    highs: List[float],
+    lows: List[float],
+    lookback: int,
+    mult: float = 2.0
+) -> Tuple[List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
+    """Calculates Adaptive Keltner (EMA + ATR) Channel."""
+    n = len(closes)
+    ema_vals = calc_ema(closes, min(lookback, max(5, n // 4)))
+    atr_vals = calc_atr(highs, lows, closes, min(lookback, max(5, n // 4)))
+
+    midlines: List[Optional[float]] = [None] * n
+    uppers: List[Optional[float]] = [None] * n
+    lowers: List[Optional[float]] = [None] * n
+    slopes: List[Optional[float]] = [None] * n
+
+    for i in range(n):
+        e = ema_vals[i]
+        a = atr_vals[i]
+        if e is None or a is None:
+            continue
+        midlines[i] = round(e, 4)
+        uppers[i] = round(e + mult * a, 4)
+        lowers[i] = round(e - mult * a, 4)
+        prev_e = ema_vals[i - 1] if i > 0 and ema_vals[i - 1] is not None else e
+        slopes[i] = round(e - prev_e, 6)
+
+    return midlines, uppers, lowers, slopes
+
+
 # ==============================================================================
 # STRATEGY CORE & BACKTEST ENGINE
 # ==============================================================================
@@ -197,11 +280,21 @@ def run_enhanced_channel(
     confluence_boost = params.get("confluence_boost", CONFLUENCE_BOOST)
     long_only = params.get("long_only", LONG_ONLY)
     confirm_bars = params.get("confirm_bars", 1)
+    channel_type = params.get("channel_type", "linreg")
 
-    # 1. Calculate Channels
-    mid_3m, up_3m, low_3m, slope_3m = calc_linear_regression_channel(closes, tactical_lb, mult)
-    mid_1y, up_1y, low_1y, slope_1y = calc_linear_regression_channel(closes, intermediate_lb, mult)
-    mid_5y, up_5y, low_5y, slope_5y = calc_linear_regression_channel(closes, macro_lb, mult)
+    # 1. Calculate Channels based on selected geometry
+    if channel_type == "donchian":
+        mid_3m, up_3m, low_3m, slope_3m = calc_donchian_channel(highs, lows, tactical_lb)
+        mid_1y, up_1y, low_1y, slope_1y = calc_donchian_channel(highs, lows, intermediate_lb)
+        mid_5y, up_5y, low_5y, slope_5y = calc_donchian_channel(highs, lows, macro_lb)
+    elif channel_type == "keltner":
+        mid_3m, up_3m, low_3m, slope_3m = calc_keltner_channel(closes, highs, lows, tactical_lb, mult)
+        mid_1y, up_1y, low_1y, slope_1y = calc_keltner_channel(closes, highs, lows, intermediate_lb, mult)
+        mid_5y, up_5y, low_5y, slope_5y = calc_keltner_channel(closes, highs, lows, macro_lb, mult)
+    else:
+        mid_3m, up_3m, low_3m, slope_3m = calc_linear_regression_channel(closes, tactical_lb, mult)
+        mid_1y, up_1y, low_1y, slope_1y = calc_linear_regression_channel(closes, intermediate_lb, mult)
+        mid_5y, up_5y, low_5y, slope_5y = calc_linear_regression_channel(closes, macro_lb, mult)
 
     trades: List[Dict[str, Any]] = []
     position: Optional[Dict[str, Any]] = None
@@ -512,6 +605,7 @@ def run_backtest(
     confluence_boost: bool = CONFLUENCE_BOOST,
     long_only: bool = LONG_ONLY,
     confirm_bars: int = 1,
+    channel_type: str = "linreg",
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -529,6 +623,7 @@ def run_backtest(
         "confluence_boost": confluence_boost,
         "long_only": long_only,
         "confirm_bars": confirm_bars,
+        "channel_type": channel_type,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -540,7 +635,7 @@ def run_backtest(
     return {
         "symbol": symbol.upper(),
         "strategy": "enhanced_channel",
-        "strategy_label": f"Enhanced Channel (3M Tactical + 1Y Intermediate + 5Y Macro)",
+        "strategy_label": f"Enhanced Channel ({channel_type.upper()}: 3M Tactical + 1Y Intermediate + 5Y Macro)",
         "parameters": params,
         "period": period,
         "interval": interval,
@@ -567,6 +662,7 @@ def main():
     parser.add_argument("--symbol", default="SPY", help="Yahoo Finance symbol (default: SPY)")
     parser.add_argument("--period", default=PERIOD, help="Lookback period: 1y, 2y, 5y, max (default: 5y)")
     parser.add_argument("--interval", default=INTERVAL, choices=["1d", "1h"], help="Candle size (default: 1d)")
+    parser.add_argument("--channel-type", default="linreg", choices=["linreg", "donchian", "keltner"], help="Channel geometry: linreg, donchian, keltner")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
     parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
     parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
@@ -599,6 +695,8 @@ def main():
         stopgap_pct=args.stopgap,
         htf_filter=not args.no_htf_filter,
         confluence_boost=not args.no_confluence,
+        confirm_bars=args.confirm_bars,
+        channel_type=args.channel_type,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

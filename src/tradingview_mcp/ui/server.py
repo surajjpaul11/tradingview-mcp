@@ -26,11 +26,26 @@ def _ensure_seeded():
     conn = sqlite3.connect(db_path)
     try:
         count = conn.execute("SELECT COUNT(*) FROM trades WHERE mode = 'backtest'").fetchone()[0]
+        existing_strats = {r[0] for r in conn.execute("SELECT DISTINCT strategy FROM trades WHERE mode = 'backtest'").fetchall()}
     except Exception:
         count = 0
+        existing_strats = set()
     finally:
         conn.close()
-    if count == 0:
+
+    base_dir = Path(__file__).resolve().parents[3]
+    strategies_dir = base_dir / "strategies"
+    json_files = list(strategies_dir.rglob("*backtest*.json"))
+
+    needs_seeding = (count == 0)
+    if not needs_seeding and json_files:
+        for jf in json_files:
+            strat_name = jf.stem.split("_backtest_")[0]
+            if strat_name and strat_name not in existing_strats:
+                needs_seeding = True
+                break
+
+    if needs_seeding:
         seed_backtest_data()
 
 def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):

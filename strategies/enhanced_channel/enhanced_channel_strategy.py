@@ -281,11 +281,14 @@ def calc_rsi(closes: List[float], period: int = 14) -> List[Optional[float]]:
 
 def run_enhanced_channel(
     candles: List[Dict[str, Any]],
-    params: Dict[str, Any]
+    params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Executes the Enhanced Channel Strategy over historical candles.
     """
+    if params is None:
+        params = {}
+
     n = len(candles)
     if n < 20:
         raise ValueError(f"Insufficient candle count ({n}) for channel backtesting.")
@@ -305,9 +308,9 @@ def run_enhanced_channel(
     confluence_boost = params.get("confluence_boost", CONFLUENCE_BOOST)
     long_only = params.get("long_only", LONG_ONLY)
     channel_type = params.get("channel_type", "linreg")
-    bounce_type = params.get("bounce_type", "1bar")
-    stopgap_type = params.get("stopgap_type", "low")
-    dynamic_sizing = params.get("dynamic_sizing", True)
+    bounce_type = params.get("bounce_type", "2bar")
+    stopgap_type = params.get("stopgap_type", "close")
+    dynamic_sizing = params.get("dynamic_sizing", False)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -406,6 +409,7 @@ def run_enhanced_channel(
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
                         "size_pct": position.get("size_pct", 1.0),
+                        "strategy": "enhanced_channel",
                     })
                     position = None
                     continue
@@ -430,6 +434,7 @@ def run_enhanced_channel(
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
                         "size_pct": position.get("size_pct", 1.0),
+                        "strategy": "enhanced_channel",
                     })
                     position = None
                     continue
@@ -458,6 +463,7 @@ def run_enhanced_channel(
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
                         "size_pct": position.get("size_pct", 1.0),
+                        "strategy": "enhanced_channel",
                     })
                     position = None
                     continue
@@ -482,6 +488,7 @@ def run_enhanced_channel(
                         "bars_held": i - position["entry_bar"],
                         "tier": position["tier"],
                         "size_pct": position.get("size_pct", 1.0),
+                        "strategy": "enhanced_channel",
                     })
                     position = None
                     continue
@@ -602,6 +609,7 @@ def run_enhanced_channel(
             "bars_held": n - 1 - position["entry_bar"],
             "tier": position["tier"],
             "size_pct": position.get("size_pct", 1.0),
+            "strategy": "enhanced_channel",
         })
 
     return {
@@ -614,6 +622,12 @@ def run_enhanced_channel(
             {"label": "Macro Mid (5Y)", "color": "#9C27B0", "type": "line", "points": macro_mid_overlay},
         ]
     }
+
+
+def run_enhanced_channel_trades(candles: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
+    """Standard runner for backtest_service and UI integration."""
+    res = run_enhanced_channel(candles, params=kwargs if kwargs else None)
+    return res["raw_trades"]
 
 
 # ==============================================================================

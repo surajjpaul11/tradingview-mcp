@@ -600,6 +600,94 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 }
 
 // ============================================================
+// ENHANCED CHANNEL OVERLAYS & LEGEND
+// ============================================================
+const channelSeries = [];
+const advChannelSeries = [];
+
+function updateChannelLegend(containerId, isVisible) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!isVisible) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+    el.style.display = 'flex';
+    el.innerHTML = `
+        <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Tactical Lower (Buy Zone)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #EF4444;"></span>Tactical Upper (Take Profit)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Tactical Mid (3M)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Intermediate (1Y)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #A855F7;"></span>Macro (5Y)</div>
+    `;
+}
+
+async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList) {
+    // Remove previous channel series
+    existingSeriesList.forEach(s => {
+        try { chartInstance.removeSeries(s); } catch (_) {}
+    });
+    existingSeriesList.length = 0;
+
+    try {
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.overlays || data.overlays.length === 0) return;
+
+        if (candleData.length === 0) return;
+        const firstCandle = candleData[0].time;
+        const lastCandle = candleData[candleData.length - 1].time;
+
+        data.overlays.forEach(ov => {
+            if (!ov.points || ov.points.length === 0) return;
+
+            // Map each point to nearest candle and ensure strictly ascending timestamps
+            const mappedPoints = [];
+            const seenTimes = new Set();
+
+            ov.points.forEach(pt => {
+                if (pt.time >= firstCandle && pt.time <= lastCandle) {
+                    const snapped = findNearestCandleTime(pt.time, candleData);
+                    if (!seenTimes.has(snapped)) {
+                        seenTimes.add(snapped);
+                        mappedPoints.push({ time: snapped, value: pt.value });
+                    }
+                }
+            });
+
+            if (mappedPoints.length < 2) return;
+            mappedPoints.sort((a, b) => a.time - b.time);
+
+            let lineSeries;
+            const seriesOptions = {
+                color: ov.color,
+                lineWidth: ov.lineWidth || 2,
+                lineStyle: ov.lineStyle || 0,
+                crosshairMarkerVisible: false,
+                lastValueVisible: true,
+                priceLineVisible: false,
+                title: ov.label,
+            };
+
+            if (typeof chartInstance.addLineSeries === 'function') {
+                lineSeries = chartInstance.addLineSeries(seriesOptions);
+            } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
+                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
+            }
+
+            if (lineSeries) {
+                lineSeries.setData(mappedPoints);
+                existingSeriesList.push(lineSeries);
+            }
+        });
+    } catch (err) {
+        console.warn('[TV] Channel overlay error:', err);
+    }
+}
+
+// ============================================================
 // STEP 4: Update Regular chart + stats
 // ============================================================
 async function updateDashboard() {
@@ -647,13 +735,23 @@ async function updateDashboard() {
             candlestickSeries.setMarkers([]);
         }
 
-        // -- Trendline Overlays (enhanced_lines only) --
+        // -- Overlays (enhanced_lines trendlines or enhanced_channel regression channels) --
         if (chart && strategy === 'enhanced_lines' && sorted.length > 0) {
+            updateChannelLegend('channel-legend', false);
+            channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+            channelSeries.length = 0;
             await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries);
-        } else {
-            // Clear trendlines for non-enhanced_lines strategies
+        } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
+            updateChannelLegend('channel-legend', true);
+            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries);
+        } else {
+            updateChannelLegend('channel-legend', false);
+            trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+            trendlineSeries.length = 0;
+            channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+            channelSeries.length = 0;
         }
 
         // Apply active timeframe zoom (preserves user selection across dropdown changes)
@@ -746,12 +844,23 @@ async function updateAdvDashboard() {
             advCandlestickSeries.setMarkers([]);
         }
 
-        // -- Trendline Overlays on Advanced (enhanced_lines only) --
+        // -- Overlays on Advanced (enhanced_lines or enhanced_channel) --
         if (strategy === 'enhanced_lines' && sorted.length > 0) {
+            updateChannelLegend('adv-channel-legend', false);
+            advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
+            advChannelSeries.length = 0;
             await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries);
-        } else {
+        } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
+            updateChannelLegend('adv-channel-legend', true);
+            await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries);
+        } else {
+            updateChannelLegend('adv-channel-legend', false);
+            advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
+            advTrendlineSeries.length = 0;
+            advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
+            advChannelSeries.length = 0;
         }
 
         // Fit content

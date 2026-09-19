@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
@@ -268,6 +269,99 @@ async def api_trendlines(symbol: str):
         import traceback
         traceback.print_exc()
         return {"trendlines": [], "error": str(e)}
+
+@app.get("/api/channels")
+async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y"):
+    """
+    Run the enhanced_channel strategy on OHLCV data and return channel overlays
+    (Tactical Upper, Tactical Lower, Tactical Mid, Intermediate Mid, Macro Mid)
+    for chart overlay.
+    """
+    clean_sym = symbol.strip().upper()
+    if clean_sym in ("PORTFOLIO", "TOTAL"):
+        clean_sym = "SPY"
+
+    yf_symbol = (
+        clean_sym.replace("/USDT", "-USD")
+        .replace("/USD", "-USD")
+        .replace("_USDT", "-USD")
+        .replace("_USD", "-USD")
+        .replace("/", "-")
+        .replace("_", "-")
+    )
+
+    try:
+        base_dir = Path(__file__).resolve().parents[3]
+        strategy_dir = base_dir / "strategies" / "enhanced_channel"
+        if str(strategy_dir) not in sys.path:
+            sys.path.insert(0, str(strategy_dir))
+
+        from enhanced_channel_strategy import fetch_ohlcv, run_enhanced_channel
+        candles = fetch_ohlcv(yf_symbol, period=period, interval=timeframe)
+        if not candles:
+            return {"overlays": [], "error": "No candle data available"}
+
+        result = run_enhanced_channel(candles)
+        raw_overlays = result.get("overlays", [])
+
+        # Format points as unix timestamps for Lightweight Charts
+        formatted_overlays = []
+        for ov in raw_overlays:
+            pts = []
+            for p in ov.get("points", []):
+                t_str = p.get("time")
+                if not t_str:
+                    continue
+                try:
+                    dt = datetime.strptime(t_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    pts.append({"time": int(dt.timestamp()), "value": round(float(p["value"]), 2)})
+                except Exception:
+                    continue
+
+            label = ov.get("label", "")
+            color = ov.get("color", "#3b82f6")
+            line_style = 0  # Solid
+            line_width = 2
+            channel_type = "mid"
+
+            if "Upper" in label:
+                color = "rgba(239, 68, 68, 0.85)"  # Red / Resistance / Take Profit
+                line_width = 2
+                channel_type = "upper"
+            elif "Lower" in label:
+                color = "rgba(16, 185, 129, 0.85)"  # Green / Support / Buy Zone
+                line_width = 2
+                channel_type = "lower"
+            elif "Tactical Mid" in label:
+                color = "rgba(59, 130, 246, 0.55)"  # Blue / Tactical regression centerline
+                line_style = 2  # Dashed
+                line_width = 1
+                channel_type = "tactical_mid"
+            elif "Intermediate" in label:
+                color = "rgba(245, 158, 11, 0.6)"  # Amber / 1Y Trend Baseline
+                line_style = 1  # Dotted
+                line_width = 1
+                channel_type = "intermediate_mid"
+            elif "Macro" in label:
+                color = "rgba(168, 85, 247, 0.6)"  # Purple / 5Y Macro Baseline
+                line_style = 1  # Dotted
+                line_width = 1
+                channel_type = "macro_mid"
+
+            formatted_overlays.append({
+                "label": label,
+                "color": color,
+                "lineWidth": line_width,
+                "lineStyle": line_style,
+                "channelType": channel_type,
+                "points": pts,
+            })
+
+        return {"overlays": formatted_overlays}
+
+    except Exception as e:
+        print(f"Channels error for {symbol}: {e}")
+        return {"overlays": [], "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

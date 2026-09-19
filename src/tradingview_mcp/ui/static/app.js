@@ -224,8 +224,21 @@ function setLoading(active) {
 
 function toChartTime(isoString) {
     if (!isoString) return Math.floor(Date.now() / 1000);
-    const cleaned = String(isoString).replace(' ', 'T');
-    const ts = new Date(cleaned).getTime();
+    let str = String(isoString).trim();
+    // Handle double-timestamp corrupted strings like "2024-05-01 14:30T09:30:00+00:00"
+    if (str.includes(' ') && str.includes('T')) {
+        str = str.split('T')[0].replace(' ', 'T');
+        if (str.split(':').length === 2) str += ':00';
+    } else {
+        str = str.replace(' ', 'T');
+    }
+    let ts = new Date(str).getTime();
+    if (isNaN(ts)) {
+        const match = str.match(/\d{4}-\d{2}-\d{2}/);
+        if (match) {
+            ts = new Date(match[0] + 'T12:00:00Z').getTime();
+        }
+    }
     if (isNaN(ts)) return Math.floor(Date.now() / 1000);
     return Math.floor(ts / 1000);
 }

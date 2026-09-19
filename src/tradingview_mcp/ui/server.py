@@ -11,7 +11,7 @@ import yfinance as yf
 # Import existing DB queries and backtesting service
 from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection, init_db
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
-from tradingview_mcp.core.services.seed_backtests import seed_backtest_data
+from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
@@ -45,8 +45,8 @@ def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):
         entry_date = str(t.get("entry_date", ""))
         exit_date = str(t.get("exit_date", entry_date))
         
-        created_at = f"{entry_date}T09:30:00+00:00" if "T" not in entry_date else entry_date
-        closed_at = f"{exit_date}T16:00:00+00:00" if "T" not in exit_date else exit_date
+        created_at = _format_iso_datetime(entry_date, "09:30:00")
+        closed_at = _format_iso_datetime(exit_date, "16:00:00")
         
         capital_usd = 1000.0
         quantity = round(capital_usd / entry_price, 4) if entry_price > 0 else 1.0

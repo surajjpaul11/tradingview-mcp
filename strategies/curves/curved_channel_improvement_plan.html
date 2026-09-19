@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Curved Channel Improvement Plan</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e8edf2;margin:0;padding:24px;line-height:1.5}
+a{color:#8cc8ff} h1,h2{margin:.2rem 0 .6rem} .muted{color:#a9b4c0}
+.card{background:#171c24;border:1px solid #293241;border-radius:12px;padding:16px;margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:14px} th,td{border:1px solid #2a3342;padding:8px;text-align:left} th{background:#121823}
+.neg{color:#ff8b8b} .ok{color:#7ee787} code{background:#111723;padding:2px 6px;border-radius:6px}
+</style></head><body>
+<h1>Curved Channel: Plan to Close Gap vs Buy & Hold</h1>
+<p class="muted">Based on the generated HTML/JSON reports for SNDK, PLTR, WDC.</p>
+<div class="card">
+<h2>Observed Baseline</h2>
+<table><thead><tr><th>Symbol</th><th>Strategy</th><th>Buy&Hold</th><th>Delta</th><th>Trades</th><th>Win%</th><th>Max DD</th><th>Sharpe</th><th>Top Exit Reasons</th></tr></thead><tbody>
+<tr><td>SNDK</td><td>+832.15%</td><td>+4239.83%</td><td class='neg'>-3407.68%</td><td>7</td><td>71.4%</td><td>-2.46%</td><td>12.64</td><td>atr_trailing_stop (3), time_exit (1), channel_trail_stop (1)</td></tr><tr><td>PLTR</td><td>+63.59%</td><td>+551.84%</td><td class='neg'>-488.25%</td><td>12</td><td>58.3%</td><td>-24.09%</td><td>6.11</td><td>fallback_sma_exit (5), atr_trailing_stop (4), channel_expired (1)</td></tr><tr><td>WDC</td><td>+241.33%</td><td>+780.90%</td><td class='neg'>-539.57%</td><td>13</td><td>53.8%</td><td>-22.58%</td><td>6.67</td><td>atr_trailing_stop (4), fallback_sma_exit (3), time_exit (2)</td></tr>
+</tbody></table>
+<p class="muted">Pattern: strategy risk-adjusts well (good Sharpe / controlled drawdowns) but exits too early during strong momentum regimes, leaving large upside uncaptured.</p>
+</div>
+
+<div class="card">
+<h2>Approach 1 — Trend Participation Mode (Hold winners longer)</h2>
+<p><strong>Goal:</strong> Capture more of multi-month uptrends (closer to B&H in momentum names).</p>
+<ul>
+<li>Relax profit-taking and stop-tightening in strong uptrends.</li>
+<li>Increase <code>time_exit_bars</code> from 20 → 40/60 (test grid).</li>
+<li>Delay or soften <code>fallback_sma_exit</code> in strong momentum (e.g., only after 2 closes below SMA50 or use SMA100).</li>
+<li>Raise <code>ch_trail_activate_pct</code> so trailing logic activates later.</li>
+</ul>
+<p><strong>Validation:</strong> Re-run 3 symbols and require: (a) higher total return, (b) <=25% relative drawdown increase, (c) improved median delta vs B&H.</p>
+</div>
+
+<div class="card">
+<h2>Approach 2 — Core + Tactical Overlay (B&H anchor with strategy alpha)</h2>
+<p><strong>Goal:</strong> Force baseline participation so runaway rallies are not missed.</p>
+<ul>
+<li>Keep a permanent core position (e.g., 40–60% always long).</li>
+<li>Run curved-channel entries/exits only on remaining tactical sleeve (40–60%).</li>
+<li>Allow shorts only in tactical sleeve; never short the core.</li>
+<li>Add report metrics for combined portfolio vs pure B&H and pure strategy.</li>
+</ul>
+<p><strong>Why this helps:</strong> If ticker goes near-parabolic (SNDK/PLTR-like), core tracks B&H while tactical sleeve can reduce drawdown and add timing alpha.</p>
+</div>
+
+<div class="card">
+<h2>Approach 3 — Regime-Adaptive Parameter Switching</h2>
+<p><strong>Goal:</strong> Use different behavior in trend vs chop instead of one static rule-set.</p>
+<ul>
+<li>Define regimes using ADX / slope of SMA200 / volatility expansion.</li>
+<li><strong>Trend regime:</strong> wider stops, fewer exits, pyramid winners, no early mean-revert exits.</li>
+<li><strong>Chop regime:</strong> current tighter exits and quicker profit lock.</li>
+<li>Persist regime state for minimum bars to avoid flip-flopping.</li>
+</ul>
+<p><strong>Validation:</strong> Walk-forward test by quarter; compare consistency of delta vs B&H across symbols.</p>
+</div>
+
+<div class="card">
+<h2>Execution Plan (2 weeks)</h2>
+<ol>
+<li><strong>Week 1:</strong> Implement Approach 1 parameter grid + batch runner + HTML summary.</li>
+<li><strong>Week 1 end:</strong> Keep top 3 configs by risk-adjusted return and B&H gap reduction.</li>
+<li><strong>Week 2:</strong> Implement Approach 2 prototype (core+tactical) and Approach 3 regime switch.</li>
+<li><strong>Finalize:</strong> Select one production candidate using out-of-sample period and max drawdown guardrail.</li>
+</ol>
+<p><strong>Success criterion:</strong> improve median <code>vs_buy_and_hold_pct</code> by at least +150 to +300 points on this 3-symbol set without severe DD blow-up.</p>
+</div>
+
+<p><a href="curved_channel_reports_index.html">← Back to report index</a></p>
+</body></html>

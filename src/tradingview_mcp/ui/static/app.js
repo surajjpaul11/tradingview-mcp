@@ -413,40 +413,59 @@ function findNearestCandleTime(tradeTime, candles) {
     return closest;
 }
 
+function isTimeInCandleRange(tradeTime, candles) {
+    if (!candles || candles.length === 0) return false;
+    const minTime = candles[0].time;
+    const maxTime = candles[candles.length - 1].time;
+    const step = candles.length > 1 ? (candles[1].time - candles[0].time) : 86400;
+    const margin = step >= 86400 ? Math.max(step, 86400 * 4) : Math.max(step * 2, 3600);
+    return tradeTime >= (minTime - margin) && tradeTime <= (maxTime + margin);
+}
+
 function buildMarkers(tradesData, sorted, strategy) {
+    if (!sorted || sorted.length === 0 || !tradesData || !Array.isArray(tradesData.trades)) {
+        return [];
+    }
+
     const markers = [];
     const showStrategy = strategy === 'all';
 
     tradesData.trades.forEach(trade => {
         const entryTime = toChartTime(trade.created_at);
-        const snappedEntry = findNearestCandleTime(entryTime, sorted);
-        const isLong = (trade.side || '').toLowerCase() === 'buy';
-        const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+        if (isTimeInCandleRange(entryTime, sorted)) {
+            const snappedEntry = findNearestCandleTime(entryTime, sorted);
+            const isLong = (trade.side || '').toLowerCase() === 'buy';
+            const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
 
-        // 1. Entry Marker
-        markers.push({
-            time: snappedEntry,
-            position: isLong ? 'belowBar' : 'aboveBar',
-            color: isLong ? '#10B981' : '#F59E0B',
-            shape: isLong ? 'arrowUp' : 'arrowDown',
-            text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
-        });
+            // 1. Entry Marker
+            markers.push({
+                time: snappedEntry,
+                position: isLong ? 'belowBar' : 'aboveBar',
+                color: isLong ? '#10B981' : '#F59E0B',
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
+            });
+        }
 
         // 2. Exit Marker (if trade has an exit recorded)
         if (trade.status === 'closed' && trade.exit_price != null && trade.closed_at) {
             const exitTime = toChartTime(trade.closed_at);
-            const snappedExit = findNearestCandleTime(exitTime, sorted);
-            const isWin = (trade.pnl_usd || 0) >= 0;
-            const pnlPct = Number(trade.pnl_pct || 0);
-            const pnlSign = pnlPct >= 0 ? '+' : '';
+            if (isTimeInCandleRange(exitTime, sorted)) {
+                const snappedExit = findNearestCandleTime(exitTime, sorted);
+                const isLong = (trade.side || '').toLowerCase() === 'buy';
+                const isWin = (trade.pnl_usd || 0) >= 0;
+                const pnlPct = Number(trade.pnl_pct || 0);
+                const pnlSign = pnlPct >= 0 ? '+' : '';
+                const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
 
-            markers.push({
-                time: snappedExit,
-                position: isLong ? 'aboveBar' : 'belowBar',
-                color: isWin ? '#10B981' : '#EF4444',
-                shape: isLong ? 'arrowDown' : 'arrowUp',
-                text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
-            });
+                markers.push({
+                    time: snappedExit,
+                    position: isLong ? 'aboveBar' : 'belowBar',
+                    color: isWin ? '#10B981' : '#EF4444',
+                    shape: isLong ? 'arrowDown' : 'arrowUp',
+                    text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
+                });
+            }
         }
     });
 
@@ -464,7 +483,56 @@ function buildMarkers(tradesData, sorted, strategy) {
         }
     });
 
-    return Array.from(consolidatedMap.values()).sort((a, b) => a.time - b.time);
+    const finalMarkers = Array.from(consolidatedMap.values());
+
+    // Buy & Hold Entry and Exit Markers (Silver color: #C0C0C0)
+    const sortedTrades = [...tradesData.trades]
+        .filter(t => t.created_at && t.entry_price != null)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (sortedTrades.length > 0) {
+        const firstTrade = sortedTrades[0];
+        const closedTrades = sortedTrades.filter(t => t.status === 'closed' && t.exit_price != null && t.closed_at);
+        const lastTrade = closedTrades.length > 0 ? closedTrades[closedTrades.length - 1] : sortedTrades[sortedTrades.length - 1];
+
+        const entryPrice = Number(firstTrade.entry_price);
+        const exitPrice = lastTrade.exit_price != null ? Number(lastTrade.exit_price) : Number(lastTrade.entry_price);
+
+        if (entryPrice > 0) {
+            const bnhPct = ((exitPrice - entryPrice) / entryPrice) * 100;
+            const bnhSign = bnhPct >= 0 ? '+' : '';
+
+            // B&H Entry
+            const entryTime = toChartTime(firstTrade.created_at);
+            if (isTimeInCandleRange(entryTime, sorted)) {
+                const snappedEntry = findNearestCandleTime(entryTime, sorted);
+                finalMarkers.push({
+                    time: snappedEntry,
+                    position: 'belowBar',
+                    color: '#C0C0C0',
+                    shape: 'circle',
+                    size: 2,
+                    text: `B&H BUY $${entryPrice.toFixed(2)}`
+                });
+            }
+
+            // B&H Exit
+            const exitTime = toChartTime(lastTrade.closed_at || lastTrade.created_at);
+            if (isTimeInCandleRange(exitTime, sorted)) {
+                const snappedExit = findNearestCandleTime(exitTime, sorted);
+                finalMarkers.push({
+                    time: snappedExit,
+                    position: 'aboveBar',
+                    color: '#C0C0C0',
+                    shape: 'circle',
+                    size: 2,
+                    text: `B&H EXIT $${exitPrice.toFixed(2)} (${bnhSign}${bnhPct.toFixed(1)}%)`
+                });
+            }
+        }
+    }
+
+    return finalMarkers.sort((a, b) => a.time - b.time);
 }
 
 // ============================================================

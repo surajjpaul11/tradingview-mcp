@@ -8,6 +8,7 @@ const strategySelect = document.getElementById('strategy-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
+const bnhVal = document.getElementById('bnh-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 
@@ -603,6 +604,22 @@ async function updateDashboard() {
         if (pnlPctVal) {
             pnlPctVal.textContent = `${pnlPctSign}${Number(pnlPct).toFixed(2)}%`;
             pnlPctVal.className = 'stat-value' + (pnlPct > 0 ? ' profit' : pnlPct < 0 ? ' loss' : '');
+        }
+
+        // -- Buy & Hold Return --
+        let bnh = statsData.buy_and_hold_pct;
+        if ((bnh == null || bnh === 0) && sorted.length >= 2) {
+            bnh = ((sorted[sorted.length - 1].close - sorted[0].close) / sorted[0].close) * 100;
+        }
+        if (bnhVal) {
+            if (bnh != null) {
+                const bnhSign = bnh >= 0 ? '+' : '';
+                bnhVal.textContent = `${bnhSign}${Number(bnh).toFixed(2)}%`;
+                bnhVal.className = 'stat-value' + (bnh > 0 ? ' profit' : bnh < 0 ? ' loss' : '');
+            } else {
+                bnhVal.textContent = '--';
+                bnhVal.className = 'stat-value';
+            }
         }
 
         winrateVal.textContent = `${statsData.win_rate_pct || 0}%`;

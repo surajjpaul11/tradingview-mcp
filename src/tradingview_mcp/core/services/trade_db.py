@@ -405,10 +405,27 @@ def get_pnl_summary(
         total_pnl = round(row["total_pnl_usd"], 2)
         total_pnl_pct = round((total_pnl / 10000.0) * 100, 2) if total > 0 else 0.0
 
+        # Calculate Buy & Hold return across the trade period
+        buy_and_hold_pct = 0.0
+        if total > 0:
+            bnh_rows = conn.execute(f"""
+                SELECT t.entry_price as start_price, te.exit_price as end_price
+                FROM trades t
+                JOIN trade_exits te ON t.trade_id = te.trade_id
+                WHERE {where_clause}
+                ORDER BY t.created_at ASC
+            """, params).fetchall()
+            if bnh_rows:
+                first_p = bnh_rows[0]["start_price"]
+                last_p = bnh_rows[-1]["end_price"] or bnh_rows[-1]["start_price"]
+                if first_p and first_p > 0:
+                    buy_and_hold_pct = round(((last_p - first_p) / first_p) * 100, 2)
+
         return {
             "total_trades": total,
             "total_pnl_usd": total_pnl,
             "total_pnl_pct": total_pnl_pct,
+            "buy_and_hold_pct": buy_and_hold_pct,
             "avg_pnl_pct": round(row["avg_pnl_pct"], 2),
             "win_rate_pct": round(wins / total * 100, 1) if total > 0 else 0,
             "winning_trades": wins,

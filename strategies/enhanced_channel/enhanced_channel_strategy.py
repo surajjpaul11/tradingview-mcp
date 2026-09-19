@@ -381,71 +381,121 @@ def run_enhanced_channel(
         # 1. MANAGE ACTIVE POSITION
         # -------------------------------------------------------------
         if position is not None:
-            # Ratchet stopgap level upward if channel rises (never let stop loss lower)
-            if stopgap_level > position["stop_level"]:
-                position["stop_level"] = stopgap_level
+            side = position["side"]
+            if side == "long":
+                # Ratchet stopgap level upward if channel rises (never let stop loss lower)
+                if stopgap_level > position["stop_level"]:
+                    position["stop_level"] = stopgap_level
 
-            # Check Stopgap: Price dropped below the ratcheted stopgap level
-            is_stop_hit = (c < position["stop_level"]) if stopgap_type == "close" else (c < position["stop_level"] or l < position["stop_level"])
-            if is_stop_hit:
-                exit_price = c if stopgap_type == "close" else min(c, position["stop_level"])
-                exit_type = "stopgap_exit" if exit_price <= position["entry_price"] else "trailing_channel_exit"
-                trades.append({
-                    "side": position["side"],
-                    "entry_date": position["entry_date"],
-                    "entry_price": position["entry_price"],
-                    "entry_bar": position["entry_bar"],
-                    "entry_reason": position["entry_reason"],
-                    "exit_date": date,
-                    "exit_price": round(exit_price, 4),
-                    "exit_bar": i,
-                    "exit_reason": exit_type,
-                    "bars_held": i - position["entry_bar"],
-                    "tier": position["tier"],
-                })
-                position = None
-                continue
+                # Check Stopgap: Price dropped below the ratcheted stopgap level
+                is_stop_hit = (c < position["stop_level"]) if stopgap_type == "close" else (c < position["stop_level"] or l < position["stop_level"])
+                if is_stop_hit:
+                    exit_price = c if stopgap_type == "close" else min(c, position["stop_level"])
+                    exit_type = "stopgap_exit" if exit_price <= position["entry_price"] else "trailing_channel_exit"
+                    trades.append({
+                        "side": "long",
+                        "entry_date": position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "entry_bar": position["entry_bar"],
+                        "entry_reason": position["entry_reason"],
+                        "exit_date": date,
+                        "exit_price": round(exit_price, 4),
+                        "exit_bar": i,
+                        "exit_reason": exit_type,
+                        "bars_held": i - position["entry_bar"],
+                        "tier": position["tier"],
+                    })
+                    position = None
+                    continue
 
-            # Track whether price has reached the upper channel zone during this trade
-            if h >= top_leeway or c >= top_leeway:
-                position["target_reached"] = True
+                # Track whether price has reached the upper channel zone
+                if h >= top_leeway or c >= top_leeway:
+                    position["target_reached"] = True
 
-            # Check Channel Top Rejection (Take Profit):
-            # Price is in or has touched the top zone, and now prints a downward reversal bounce
-            downward_rejection = (c < o) and (c < prev_c)
-            if position.get("target_reached", False) and downward_rejection:
-                trades.append({
-                    "side": position["side"],
-                    "entry_date": position["entry_date"],
-                    "entry_price": position["entry_price"],
-                    "entry_bar": position["entry_bar"],
-                    "entry_reason": position["entry_reason"],
-                    "exit_date": date,
-                    "exit_price": round(c, 4),
-                    "exit_bar": i,
-                    "exit_reason": "channel_top_exit",
-                    "bars_held": i - position["entry_bar"],
-                    "tier": position["tier"],
-                })
-                position = None
-                continue
+                # Check Channel Top Rejection (Take Profit):
+                downward_rejection = (c < o) and (c < prev_c)
+                if position.get("target_reached", False) and downward_rejection:
+                    trades.append({
+                        "side": "long",
+                        "entry_date": position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "entry_bar": position["entry_bar"],
+                        "entry_reason": position["entry_reason"],
+                        "exit_date": date,
+                        "exit_price": round(c, 4),
+                        "exit_bar": i,
+                        "exit_reason": "channel_top_exit",
+                        "bars_held": i - position["entry_bar"],
+                        "tier": position["tier"],
+                    })
+                    position = None
+                    continue
+
+            elif side == "short":
+                # Short stopgap is above upper line
+                short_stop_level = u3 + stopgap_margin
+                # Ratchet stopgap downward if channel falls (never let stop loss increase)
+                if short_stop_level < position["stop_level"]:
+                    position["stop_level"] = short_stop_level
+
+                is_stop_hit = (c > position["stop_level"]) if stopgap_type == "close" else (c > position["stop_level"] or h > position["stop_level"])
+                if is_stop_hit:
+                    exit_price = c if stopgap_type == "close" else max(c, position["stop_level"])
+                    exit_type = "stopgap_exit" if exit_price >= position["entry_price"] else "trailing_channel_exit"
+                    trades.append({
+                        "side": "short",
+                        "entry_date": position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "entry_bar": position["entry_bar"],
+                        "entry_reason": position["entry_reason"],
+                        "exit_date": date,
+                        "exit_price": round(exit_price, 4),
+                        "exit_bar": i,
+                        "exit_reason": exit_type,
+                        "bars_held": i - position["entry_bar"],
+                        "tier": position["tier"],
+                    })
+                    position = None
+                    continue
+
+                # Track if price reached bottom leeway zone
+                if l <= bottom_leeway or c <= bottom_leeway:
+                    position["target_reached"] = True
+
+                # Channel Bottom Rebound (Cover Short for Profit):
+                upward_bounce = (c > o) and (c > prev_c)
+                if position.get("target_reached", False) and upward_bounce:
+                    trades.append({
+                        "side": "short",
+                        "entry_date": position["entry_date"],
+                        "entry_price": position["entry_price"],
+                        "entry_bar": position["entry_bar"],
+                        "entry_reason": position["entry_reason"],
+                        "exit_date": date,
+                        "exit_price": round(c, 4),
+                        "exit_bar": i,
+                        "exit_reason": "channel_bottom_exit",
+                        "bars_held": i - position["entry_bar"],
+                        "tier": position["tier"],
+                    })
+                    position = None
+                    continue
 
         # -------------------------------------------------------------
         # 2. EVALUATE ENTRY CONDITIONS (IF FLAT)
         # -------------------------------------------------------------
         if position is None:
-            # Condition A: Price entered the bottom leeway zone within the last 3 bars
-            recent_touch = False
+            # --- LONG ENTRY EVALUATION ---
+            recent_touch_bottom = False
             for look_idx in range(max(0, i - 2), i + 1):
                 if low_3m[look_idx] is not None and up_3m[look_idx] is not None:
                     ch_h = up_3m[look_idx] - low_3m[look_idx]
                     bot_lee = low_3m[look_idx] + leeway_pct * ch_h
                     stp_lvl = low_3m[look_idx] - stopgap_pct * ch_h
                     if lows[look_idx] <= bot_lee and lows[look_idx] >= stp_lvl:
-                        recent_touch = True
+                        recent_touch_bottom = True
                         break
 
-            # Condition B: Bullish bounce confirmation
             if bounce_type == "rsi":
                 rsi_now = rsi_vals[i] if i < len(rsi_vals) else None
                 rsi_prev = rsi_vals[i - 1] if (i - 1) < len(rsi_vals) else None
@@ -458,8 +508,7 @@ def run_enhanced_channel(
             else:  # "1bar"
                 bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
 
-            if recent_touch and bounce_confirmed:
-                # HTF Filter check: Avoid buying 3M bounces if 1Y is pointing sharply down and near 1Y top
+            if recent_touch_bottom and bounce_confirmed:
                 allowed = True
                 if htf_filter:
                     if s_1y < -0.05 and pos_1y_pct > 0.60:
@@ -482,6 +531,52 @@ def run_enhanced_channel(
                         "stop_level": stopgap_level,
                         "target_reached": False,
                     }
+                    continue
+
+            # --- SHORT ENTRY EVALUATION (IF NOT LONG-ONLY) ---
+            if not long_only:
+                recent_touch_top = False
+                for look_idx in range(max(0, i - 2), i + 1):
+                    if low_3m[look_idx] is not None and up_3m[look_idx] is not None:
+                        ch_h = up_3m[look_idx] - low_3m[look_idx]
+                        top_lee = up_3m[look_idx] - leeway_pct * ch_h
+                        stp_lvl_top = up_3m[look_idx] + stopgap_pct * ch_h
+                        if highs[look_idx] >= top_lee and highs[look_idx] <= stp_lvl_top:
+                            recent_touch_top = True
+                            break
+
+                if bounce_type == "rsi":
+                    rsi_now = rsi_vals[i] if i < len(rsi_vals) else None
+                    rsi_prev = rsi_vals[i - 1] if (i - 1) < len(rsi_vals) else None
+                    rsi_turn_down = (rsi_now is not None and rsi_prev is not None and rsi_now < rsi_prev and rsi_prev >= 55 and c < o)
+                    rejection_confirmed = bool(rsi_turn_down and (c < u3))
+                elif bounce_type == "2bar":
+                    rejection_confirmed = (c < o) and (c < prev_c) and (c < u3)
+                    if i >= 2:
+                        rejection_confirmed = rejection_confirmed and (prev_c < opens[i - 1]) and (prev_c < closes[i - 2])
+                else:
+                    rejection_confirmed = (c < o) and (c < prev_c) and (c < u3)
+
+                if recent_touch_top and rejection_confirmed:
+                    allowed_short = True
+                    if htf_filter:
+                        # Don't short if 1Y is strongly uptrending and price is near 1Y bottom
+                        if s_1y > 0.05 and pos_1y_pct < 0.40:
+                            allowed_short = False
+
+                    if allowed_short:
+                        tier = "tactical_3m_short"
+                        entry_reason = "top_rejection_short"
+                        position = {
+                            "side": "short",
+                            "entry_date": date,
+                            "entry_price": round(c, 4),
+                            "entry_bar": i,
+                            "entry_reason": entry_reason,
+                            "tier": tier,
+                            "stop_level": u3 + stopgap_margin,
+                            "target_reached": False,
+                        }
 
     # Close open position on last bar
     if position is not None:
@@ -528,7 +623,11 @@ def apply_costs(
     for t in raw_trades:
         en = t["entry_price"]
         ex = t["exit_price"]
-        gross_ret = (ex - en) / en if en > 0 else 0.0
+        side = t.get("side", "long")
+        if side == "long":
+            gross_ret = (ex - en) / en if en > 0 else 0.0
+        else:
+            gross_ret = (en - ex) / en if en > 0 else 0.0
         # Net return after round-trip slippage and commissions
         net_ret = (1.0 + gross_ret) * (cost_factor ** 2) - 1.0
 
@@ -561,6 +660,8 @@ def calc_metrics(
             "sharpe_ratio": 0.0,
             "max_drawdown_pct": 0.0,
             "channel_top_exits": 0,
+            "channel_bottom_exits": 0,
+            "trailing_channel_exits": 0,
             "stopgap_exits": 0,
             "end_of_data_exits": 0,
         }
@@ -606,18 +707,22 @@ def calc_metrics(
 
     exit_counts = {
         "channel_top_exit": sum(1 for t in trades if t["exit_reason"] == "channel_top_exit"),
+        "channel_bottom_exit": sum(1 for t in trades if t["exit_reason"] == "channel_bottom_exit"),
         "trailing_channel_exit": sum(1 for t in trades if t["exit_reason"] == "trailing_channel_exit"),
         "stopgap_exit": sum(1 for t in trades if t["exit_reason"] == "stopgap_exit"),
         "end_of_data": sum(1 for t in trades if t["exit_reason"] == "end_of_data"),
     }
+
+    long_trades = sum(1 for t in trades if t.get("side", "long") == "long")
+    short_trades = sum(1 for t in trades if t.get("side", "long") == "short")
 
     return {
         "initial_capital": initial_capital,
         "final_capital": final_capital,
         "total_return_pct": total_return_pct,
         "total_trades": total_trades,
-        "long_trades": total_trades,
-        "short_trades": 0,
+        "long_trades": long_trades,
+        "short_trades": short_trades,
         "win_rate_pct": win_rate,
         "avg_gain_pct": avg_gain,
         "avg_loss_pct": avg_loss,
@@ -625,6 +730,7 @@ def calc_metrics(
         "sharpe_ratio": sharpe,
         "max_drawdown_pct": round(max_dd, 2),
         "channel_top_exits": exit_counts["channel_top_exit"],
+        "channel_bottom_exits": exit_counts["channel_bottom_exit"],
         "trailing_channel_exits": exit_counts["trailing_channel_exit"],
         "stopgap_exits": exit_counts["stopgap_exit"],
         "end_of_data_exits": exit_counts["end_of_data"],
@@ -720,13 +826,15 @@ def main():
     parser.add_argument("--leeway", type=float, default=LEEWAY_PCT, help="Leeway tolerance fraction (default: 0.05 = 5%%)")
     parser.add_argument("--stopgap", type=float, default=STOPGAP_PCT, help="Stopgap margin below lower channel (default: 0.05 = 5%%)")
     parser.add_argument("--confirm-bars", type=int, default=1, choices=[1, 2], help="Bounce confirmation bars required (1 or 2)")
+    parser.add_argument("--allow-short", action="store_true", help="Enable short trades on channel top rejection")
     parser.add_argument("--no-htf-filter", action="store_true", help="Disable higher timeframe 1Y trend filter")
     parser.add_argument("--no-confluence", action="store_true", help="Disable confluence detection")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
     args = parser.parse_args()
 
+    side_label = "LONG + SHORT" if args.allow_short else "LONG-ONLY"
     print(f"\n{'='*65}")
-    print(f"  Enhanced Channel Strategy — {args.symbol.upper()}")
+    print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label})")
     print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}  |  Stopgap: {args.stopgap_type.upper()}")
     print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
@@ -745,6 +853,7 @@ def main():
         stopgap_pct=args.stopgap,
         htf_filter=not args.no_htf_filter,
         confluence_boost=not args.no_confluence,
+        long_only=not args.allow_short,
         confirm_bars=args.confirm_bars,
         channel_type=args.channel_type,
         bounce_type=args.bounce_type,
@@ -757,7 +866,7 @@ def main():
     print(f"  Total Return:     {result['total_return_pct']:+.2f}%")
     print(f"  Buy & Hold:       {result['buy_and_hold_return_pct']:+.2f}%")
     print(f"  vs B&H:           {result['vs_buy_and_hold_pct']:+.2f}%")
-    print(f"  Total Trades:     {result['total_trades']}")
+    print(f"  Total Trades:     {result['total_trades']} (L: {result['long_trades']} | S: {result['short_trades']})")
     print(f"  Win Rate:         {result['win_rate_pct']}%")
     print(f"  Avg Gain:         {result['avg_gain_pct']:+.2f}%")
     print(f"  Avg Loss:         {result['avg_loss_pct']:+.2f}%")

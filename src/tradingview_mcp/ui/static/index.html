@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=3">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -65,10 +65,25 @@
                 <p>Loading market data...</p>
             </div>
         </div>
+
+        <!-- Timeframe / Range Selector Bar Below Graph -->
+        <div class="timeframe-bar glass-panel">
+            <div class="timeframe-info">
+                <span class="timeframe-label">TIMEFRAME / RANGE</span>
+                <span class="timeframe-hint" id="active-range-hint">5-Year History (5Y)</span>
+            </div>
+            <div class="timeframe-buttons" id="timeframe-btn-group">
+                <button class="tf-btn" data-range="1d" id="btn-1d">Daily (1D)</button>
+                <button class="tf-btn" data-range="1m" id="btn-1m">Monthly (1M)</button>
+                <button class="tf-btn" data-range="ytd" id="btn-ytd">Year-to-Date (YTD)</button>
+                <button class="tf-btn" data-range="1y" id="btn-1y">1-Year (1Y)</button>
+                <button class="tf-btn active" data-range="5y" id="btn-5y">5-Year (5Y)</button>
+            </div>
+        </div>
     </div>
 
-    <!-- TradingView Lightweight Charts MUST load before app.js -->
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="/static/app.js"></script>
+    <!-- TradingView Lightweight Charts (pinned to v4.1.3 for stable API support) -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 </html>

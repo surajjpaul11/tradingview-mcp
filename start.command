@@ -61,9 +61,9 @@ except Exception:
     print(0)
 " 2>/dev/null || echo "0")
 
-if [ "$TRADE_COUNT" -eq 0 ]; then
-    echo -e "      ${YELLOW}Seeding database with sample trades...${NC}"
-    uv run python test_strategies.py > /dev/null 2>&1
+if [ "$TRADE_COUNT" -lt 50 ]; then
+    echo -e "      ${YELLOW}Seeding database with full backtest history (690+ trades)...${NC}"
+    uv run python -m tradingview_mcp.core.services.seed_backtests > /dev/null 2>&1
     TRADE_COUNT=$(uv run python -c "
 import sqlite3
 conn = sqlite3.connect('data/trades.db')

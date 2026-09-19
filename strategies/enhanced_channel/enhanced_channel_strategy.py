@@ -250,6 +250,31 @@ def calc_keltner_channel(
     return midlines, uppers, lowers, slopes
 
 
+def calc_rsi(closes: List[float], period: int = 14) -> List[Optional[float]]:
+    """Calculates Relative Strength Index."""
+    n = len(closes)
+    out: List[Optional[float]] = [None] * n
+    if n <= period:
+        return out
+    gains = []
+    losses = []
+    for i in range(1, period + 1):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0.0))
+        losses.append(max(-diff, 0.0))
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+    out[period] = 100.0 if avg_loss == 0 else round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 2)
+    for i in range(period + 1, n):
+        diff = closes[i] - closes[i - 1]
+        g = max(diff, 0.0)
+        l = max(-diff, 0.0)
+        avg_gain = (avg_gain * (period - 1) + g) / period
+        avg_loss = (avg_loss * (period - 1) + l) / period
+        out[i] = 100.0 if avg_loss == 0 else round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 2)
+    return out
+
+
 # ==============================================================================
 # STRATEGY CORE & BACKTEST ENGINE
 # ==============================================================================
@@ -279,8 +304,9 @@ def run_enhanced_channel(
     htf_filter = params.get("htf_filter", HTF_FILTER)
     confluence_boost = params.get("confluence_boost", CONFLUENCE_BOOST)
     long_only = params.get("long_only", LONG_ONLY)
-    confirm_bars = params.get("confirm_bars", 1)
     channel_type = params.get("channel_type", "linreg")
+    bounce_type = params.get("bounce_type", "1bar")
+    rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
 
     # 1. Calculate Channels based on selected geometry
     if channel_type == "donchian":
@@ -411,9 +437,17 @@ def run_enhanced_channel(
                         break
 
             # Condition B: Bullish bounce confirmation
-            bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
-            if confirm_bars >= 2 and i >= 2:
-                bounce_confirmed = bounce_confirmed and (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
+            if bounce_type == "rsi":
+                rsi_now = rsi_vals[i] if i < len(rsi_vals) else None
+                rsi_prev = rsi_vals[i - 1] if (i - 1) < len(rsi_vals) else None
+                rsi_turn = (rsi_now is not None and rsi_prev is not None and rsi_now > rsi_prev and rsi_prev <= 45 and c > o)
+                bounce_confirmed = bool(rsi_turn and (c > d3))
+            elif bounce_type == "2bar":
+                bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
+                if i >= 2:
+                    bounce_confirmed = bounce_confirmed and (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
+            else:  # "1bar"
+                bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
 
             if recent_touch and bounce_confirmed:
                 # HTF Filter check: Avoid buying 3M bounces if 1Y is pointing sharply down and near 1Y top
@@ -606,6 +640,7 @@ def run_backtest(
     long_only: bool = LONG_ONLY,
     confirm_bars: int = 1,
     channel_type: str = "linreg",
+    bounce_type: str = "1bar",
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -624,6 +659,7 @@ def run_backtest(
         "long_only": long_only,
         "confirm_bars": confirm_bars,
         "channel_type": channel_type,
+        "bounce_type": bounce_type,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -663,6 +699,7 @@ def main():
     parser.add_argument("--period", default=PERIOD, help="Lookback period: 1y, 2y, 5y, max (default: 5y)")
     parser.add_argument("--interval", default=INTERVAL, choices=["1d", "1h"], help="Candle size (default: 1d)")
     parser.add_argument("--channel-type", default="linreg", choices=["linreg", "donchian", "keltner"], help="Channel geometry: linreg, donchian, keltner")
+    parser.add_argument("--bounce-type", default="1bar", choices=["1bar", "2bar", "rsi"], help="Bounce confirmation: 1bar, 2bar, rsi")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
     parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
     parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
@@ -678,6 +715,7 @@ def main():
 
     print(f"\n{'='*65}")
     print(f"  Enhanced Channel Strategy — {args.symbol.upper()}")
+    print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}")
     print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
     print(f"{'='*65}\n")
@@ -697,6 +735,7 @@ def main():
         confluence_boost=not args.no_confluence,
         confirm_bars=args.confirm_bars,
         channel_type=args.channel_type,
+        bounce_type=args.bounce_type,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

@@ -514,9 +514,13 @@ def run_enhanced_channel(
                 rsi_turn = (rsi_now is not None and rsi_prev is not None and rsi_now > rsi_prev and rsi_prev <= 45 and c > o)
                 bounce_confirmed = bool(rsi_turn and (c > d3))
             elif bounce_type == "2bar":
-                bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
+                b_conf = (c > o) and (c > prev_c) and (c > d3)
                 if i >= 2:
-                    bounce_confirmed = bounce_confirmed and (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
+                    classic_2bar = (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
+                    bullish_engulfing = (c > highs[i - 1]) and ((c - o) > 0.015 * c)
+                    bounce_confirmed = b_conf and (classic_2bar or bullish_engulfing)
+                else:
+                    bounce_confirmed = b_conf
             else:  # "1bar"
                 bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
 
@@ -566,9 +570,13 @@ def run_enhanced_channel(
                     rsi_turn_down = (rsi_now is not None and rsi_prev is not None and rsi_now < rsi_prev and rsi_prev >= 55 and c < o)
                     rejection_confirmed = bool(rsi_turn_down and (c < u3))
                 elif bounce_type == "2bar":
-                    rejection_confirmed = (c < o) and (c < prev_c) and (c < u3)
+                    r_conf = (c < o) and (c < prev_c) and (c < u3)
                     if i >= 2:
-                        rejection_confirmed = rejection_confirmed and (prev_c < opens[i - 1]) and (prev_c < closes[i - 2])
+                        classic_2bar = (prev_c < opens[i - 1]) and (prev_c < closes[i - 2])
+                        bearish_engulfing = (c < lows[i - 1]) and ((o - c) > 0.015 * c)
+                        rejection_confirmed = r_conf and (classic_2bar or bearish_engulfing)
+                    else:
+                        rejection_confirmed = r_conf
                 else:
                     rejection_confirmed = (c < o) and (c < prev_c) and (c < u3)
 

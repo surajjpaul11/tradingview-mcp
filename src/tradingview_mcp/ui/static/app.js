@@ -11,6 +11,8 @@ const channelLookbackGroup = document.getElementById('channel-lookback-group');
 const channelLookbackSelect = document.getElementById('channel-lookback-select');
 const channelStoplossGroup = document.getElementById('channel-stoploss-group');
 const channelStoplossCheckbox = document.getElementById('channel-stoploss-checkbox');
+const channelMidlineGroup = document.getElementById('channel-midline-group');
+const channelMidlineCheckbox = document.getElementById('channel-midline-checkbox');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -33,12 +35,18 @@ function getChannelStoplossEnabled() {
     return channelStoplossCheckbox.checked;
 }
 
+function getChannelMidlineEnabled() {
+    if (!channelMidlineCheckbox) return false;
+    return channelMidlineCheckbox.checked;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
     if (channelMultGroup) channelMultGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLookbackGroup) channelLookbackGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelStoplossGroup) channelStoplossGroup.style.display = isChannel ? 'flex' : 'none';
+    if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
@@ -404,6 +412,12 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (channelMidlineCheckbox) {
+            channelMidlineCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         syncChannelMultVisibility(strategySelect.value);
 
         // Trigger initial data load
@@ -492,14 +506,16 @@ function buildMarkers(tradesData, sorted, strategy) {
             const sideStr = (trade.side || '').toLowerCase();
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+            const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : '';
+            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : '');
+            const entryColor = isMidlineReclaim ? '#3B82F6' : (isLong ? '#10B981' : '#F59E0B');
 
             // 1. Entry Marker
             markers.push({
                 time: snappedEntry,
                 position: isLong ? 'belowBar' : 'aboveBar',
-                color: isLong ? '#10B981' : '#F59E0B',
+                color: entryColor,
                 shape: isLong ? 'arrowUp' : 'arrowDown',
                 text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
             });
@@ -541,8 +557,13 @@ function buildMarkers(tradesData, sorted, strategy) {
             const existing = consolidatedMap.get(key);
             existing.count += 1;
             const isSL = (existing.text && existing.text.includes('STOP LOSS')) || (m.text && m.text.includes('STOP LOSS'));
+            const isMid = (existing.text && existing.text.includes('MID RECLAIM')) || (m.text && m.text.includes('MID RECLAIM'));
             const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
-            existing.text = isSL ? `${existing.count}x STOP LOSS ${action}` : `${existing.count}x ${action}`;
+            let prefix = '';
+            if (isSL) prefix = 'STOP LOSS ';
+            else if (isMid) prefix = 'MID RECLAIM ';
+            existing.text = `${existing.count}x ${prefix}${action}`;
+            if (isMid && m.position === 'belowBar') existing.color = '#3B82F6';
         }
     });
 
@@ -764,7 +785,7 @@ async function updateDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -881,7 +902,7 @@ async function updateAdvDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}` 
             : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),

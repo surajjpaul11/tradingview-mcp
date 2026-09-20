@@ -312,6 +312,7 @@ def run_enhanced_channel(
     stopgap_type = params.get("stopgap_type", "close")
     dynamic_sizing = params.get("dynamic_sizing", False)
     use_stop_loss = params.get("use_stop_loss", True)
+    midline_reentry = params.get("midline_reentry", False)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -553,6 +554,27 @@ def run_enhanced_channel(
                     }
                     continue
 
+            # --- CASH RE-ENTRY / TACTICAL MIDLINE RECLAIM ---
+            if midline_reentry and mid_3m[i] is not None:
+                prev_below_mid = (prev_c <= mid_3m[i - 1]) if (i > 0 and mid_3m[i - 1] is not None) else False
+                curr_above_mid = (c > mid_3m[i])
+                bullish_mid = (c > o) and (c > prev_c)
+                if prev_below_mid and curr_above_mid and bullish_mid:
+                    allowed = not (htf_filter and s_1y < -0.05)
+                    if allowed:
+                        position = {
+                            "side": "long",
+                            "entry_date": date,
+                            "entry_price": round(c, 4),
+                            "entry_bar": i,
+                            "entry_reason": "midline_reclaim",
+                            "tier": "tactical_midline",
+                            "size_pct": 0.5 if dynamic_sizing else 1.0,
+                            "stop_level": stopgap_level,
+                            "target_reached": False,
+                        }
+                        continue
+
             # --- SHORT ENTRY EVALUATION (IF NOT LONG-ONLY) ---
             if not long_only:
                 recent_touch_top = False
@@ -793,6 +815,7 @@ def run_backtest(
     stopgap_type: str = "close",
     dynamic_sizing: bool = False,
     use_stop_loss: bool = True,
+    midline_reentry: bool = False,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -815,6 +838,7 @@ def run_backtest(
         "stopgap_type": stopgap_type,
         "dynamic_sizing": dynamic_sizing,
         "use_stop_loss": use_stop_loss,
+        "midline_reentry": midline_reentry,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -869,13 +893,15 @@ def main():
     parser.add_argument("--no-htf-filter", action="store_true", help="Disable higher timeframe 1Y trend filter")
     parser.add_argument("--no-confluence", action="store_true", help="Disable confluence detection")
     parser.add_argument("--no-stop-loss", action="store_true", help="Disable stopgap and trailing stop loss")
+    parser.add_argument("--midline-reentry", action="store_true", help="Enable tactical midline reclaim cash re-entry")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
     args = parser.parse_args()
 
     side_label = "LONG + SHORT" if args.allow_short else "LONG-ONLY"
     sl_label = "OFF" if args.no_stop_loss else "ON"
+    mid_label = "ON" if args.midline_reentry else "OFF"
     print(f"\n{'='*65}")
-    print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label}) [Stop Loss: {sl_label}]")
+    print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label}) [Stop Loss: {sl_label}] [Midline Re-entry: {mid_label}]")
     print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}  |  Stopgap: {args.stopgap_type.upper()}")
     print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
@@ -901,6 +927,7 @@ def main():
         stopgap_type=args.stopgap_type,
         dynamic_sizing=args.dynamic_sizing,
         use_stop_loss=not args.no_stop_loss,
+        midline_reentry=args.midline_reentry,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

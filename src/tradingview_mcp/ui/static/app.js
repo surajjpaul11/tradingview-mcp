@@ -353,8 +353,8 @@ async function loadFilters() {
             });
         }
 
-        // Default to enhanced_lines strategy if available
-        const defaultStrategy = 'enhanced_lines';
+        // Default to enhanced_channel strategy if available
+        const defaultStrategy = 'enhanced_channel';
         const hasDefault = data.strategies && data.strategies.includes(defaultStrategy);
         if (hasDefault) {
             strategySelect.value = defaultStrategy;

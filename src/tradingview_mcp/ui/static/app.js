@@ -455,7 +455,8 @@ function buildMarkers(tradesData, sorted, strategy) {
         const entryTime = toChartTime(trade.created_at);
         if (isTimeInCandleRange(entryTime, sorted)) {
             const snappedEntry = findNearestCandleTime(entryTime, sorted);
-            const isLong = (trade.side || '').toLowerCase() === 'buy';
+            const sideStr = (trade.side || '').toLowerCase();
+            const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
 
             // 1. Entry Marker
@@ -473,7 +474,8 @@ function buildMarkers(tradesData, sorted, strategy) {
             const exitTime = toChartTime(trade.closed_at);
             if (isTimeInCandleRange(exitTime, sorted)) {
                 const snappedExit = findNearestCandleTime(exitTime, sorted);
-                const isLong = (trade.side || '').toLowerCase() === 'buy';
+                const sideStr = (trade.side || '').toLowerCase();
+                const isLong = sideStr === 'buy' || sideStr === 'long';
                 const isWin = (trade.pnl_usd || 0) >= 0;
                 const pnlPct = Number(trade.pnl_pct || 0);
                 const pnlSign = pnlPct >= 0 ? '+' : '';

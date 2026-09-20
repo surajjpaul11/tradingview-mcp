@@ -471,6 +471,12 @@ function isTimeInCandleRange(tradeTime, candles) {
     return tradeTime >= (minTime - margin) && tradeTime <= (maxTime + margin);
 }
 
+function isStopLossReason(reason) {
+    if (!reason || typeof reason !== 'string') return false;
+    const r = reason.toLowerCase();
+    return r.includes('stop') || r.includes('stopgap') || r.includes('trailing');
+}
+
 function buildMarkers(tradesData, sorted, strategy) {
     if (!sorted || sorted.length === 0 || !tradesData || !Array.isArray(tradesData.trades)) {
         return [];
@@ -486,6 +492,8 @@ function buildMarkers(tradesData, sorted, strategy) {
             const sideStr = (trade.side || '').toLowerCase();
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+            const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
+            const entryPrefix = isStopEntry ? 'STOP LOSS ' : '';
 
             // 1. Entry Marker
             markers.push({
@@ -493,7 +501,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                 position: isLong ? 'belowBar' : 'aboveBar',
                 color: isLong ? '#10B981' : '#F59E0B',
                 shape: isLong ? 'arrowUp' : 'arrowDown',
-                text: `${stratPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
+                text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
             });
         }
 
@@ -508,13 +516,16 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const pnlPct = Number(trade.pnl_pct || 0);
                 const pnlSign = pnlPct >= 0 ? '+' : '';
                 const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+                const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
+                const exitPrefix = isStopExit ? 'STOP LOSS ' : '';
+                const action = isLong ? 'SELL' : 'COVER';
 
                 markers.push({
                     time: snappedExit,
                     position: isLong ? 'aboveBar' : 'belowBar',
-                    color: isWin ? '#10B981' : '#EF4444',
+                    color: isStopExit ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'),
                     shape: isLong ? 'arrowDown' : 'arrowUp',
-                    text: `${stratPrefix}${isLong ? 'SELL' : 'COVER'} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
+                    text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
                 });
             }
         }
@@ -529,8 +540,9 @@ function buildMarkers(tradesData, sorted, strategy) {
         } else {
             const existing = consolidatedMap.get(key);
             existing.count += 1;
+            const isSL = (existing.text && existing.text.includes('STOP LOSS')) || (m.text && m.text.includes('STOP LOSS'));
             const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
-            existing.text = `${existing.count}x ${action}`;
+            existing.text = isSL ? `${existing.count}x STOP LOSS ${action}` : `${existing.count}x ${action}`;
         }
     });
 

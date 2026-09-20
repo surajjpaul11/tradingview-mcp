@@ -311,6 +311,7 @@ def run_enhanced_channel(
     bounce_type = params.get("bounce_type", "2bar")
     stopgap_type = params.get("stopgap_type", "close")
     dynamic_sizing = params.get("dynamic_sizing", False)
+    use_stop_loss = params.get("use_stop_loss", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -393,7 +394,7 @@ def run_enhanced_channel(
 
                 # Check Stopgap: Price dropped below the ratcheted stopgap level
                 is_stop_hit = (c < position["stop_level"]) if stopgap_type == "close" else (c < position["stop_level"] or l < position["stop_level"])
-                if is_stop_hit:
+                if use_stop_loss and is_stop_hit:
                     exit_price = c if stopgap_type == "close" else min(c, position["stop_level"])
                     exit_type = "stopgap_exit" if exit_price <= position["entry_price"] else "trailing_channel_exit"
                     trades.append({
@@ -447,7 +448,7 @@ def run_enhanced_channel(
                     position["stop_level"] = short_stop_level
 
                 is_stop_hit = (c > position["stop_level"]) if stopgap_type == "close" else (c > position["stop_level"] or h > position["stop_level"])
-                if is_stop_hit:
+                if use_stop_loss and is_stop_hit:
                     exit_price = c if stopgap_type == "close" else max(c, position["stop_level"])
                     exit_type = "stopgap_exit" if exit_price >= position["entry_price"] else "trailing_channel_exit"
                     trades.append({
@@ -791,6 +792,7 @@ def run_backtest(
     bounce_type: str = "2bar",
     stopgap_type: str = "close",
     dynamic_sizing: bool = False,
+    use_stop_loss: bool = True,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -812,6 +814,7 @@ def run_backtest(
         "bounce_type": bounce_type,
         "stopgap_type": stopgap_type,
         "dynamic_sizing": dynamic_sizing,
+        "use_stop_loss": use_stop_loss,
     }
 
     strat_output = run_enhanced_channel(candles, params)
@@ -865,12 +868,14 @@ def main():
     parser.add_argument("--allow-short", action="store_true", help="Enable short trades on channel top rejection")
     parser.add_argument("--no-htf-filter", action="store_true", help="Disable higher timeframe 1Y trend filter")
     parser.add_argument("--no-confluence", action="store_true", help="Disable confluence detection")
+    parser.add_argument("--no-stop-loss", action="store_true", help="Disable stopgap and trailing stop loss")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart")
     args = parser.parse_args()
 
     side_label = "LONG + SHORT" if args.allow_short else "LONG-ONLY"
+    sl_label = "OFF" if args.no_stop_loss else "ON"
     print(f"\n{'='*65}")
-    print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label})")
+    print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label}) [Stop Loss: {sl_label}]")
     print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}  |  Stopgap: {args.stopgap_type.upper()}")
     print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
@@ -895,6 +900,7 @@ def main():
         bounce_type=args.bounce_type,
         stopgap_type=args.stopgap_type,
         dynamic_sizing=args.dynamic_sizing,
+        use_stop_loss=not args.no_stop_loss,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

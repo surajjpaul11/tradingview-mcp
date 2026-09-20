@@ -9,6 +9,8 @@ const channelMultGroup = document.getElementById('channel-mult-group');
 const channelMultSelect = document.getElementById('channel-mult-select');
 const channelLookbackGroup = document.getElementById('channel-lookback-group');
 const channelLookbackSelect = document.getElementById('channel-lookback-select');
+const channelStoplossGroup = document.getElementById('channel-stoploss-group');
+const channelStoplossCheckbox = document.getElementById('channel-stoploss-checkbox');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -26,11 +28,17 @@ function getSelectedChannelLookback() {
     return parseInt(channelLookbackSelect.value, 10) || 50;
 }
 
+function getChannelStoplossEnabled() {
+    if (!channelStoplossCheckbox) return true;
+    return channelStoplossCheckbox.checked;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
     if (channelMultGroup) channelMultGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLookbackGroup) channelLookbackGroup.style.display = isChannel ? 'flex' : 'none';
+    if (channelStoplossGroup) channelStoplossGroup.style.display = isChannel ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
@@ -390,6 +398,12 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (channelStoplossCheckbox) {
+            channelStoplossCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         syncChannelMultVisibility(strategySelect.value);
 
         // Trigger initial data load
@@ -737,7 +751,9 @@ async function updateDashboard() {
     setLoading(true, 'loading');
 
     try {
-        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}` : '';
+        const multParam = (strategy === 'enhanced_channel') 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}` 
+            : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
@@ -852,7 +868,9 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}` : '';
+        const multParam = (strategy === 'enhanced_channel') 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}` 
+            : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)

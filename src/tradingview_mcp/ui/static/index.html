@@ -44,9 +44,23 @@
                         <select id="channel-mult-select">
                             <option value="2.0">2.0x (Wide · 95% CI)</option>
                             <option value="1.8">1.8x</option>
-                            <option value="1.6" selected>1.6x (Tight · Responsive)</option>
+                            <option value="1.7" selected>1.7x (Optimal · Balanced)</option>
+                            <option value="1.6">1.6x (Tight · Responsive)</option>
                             <option value="1.5">1.5x (Ultra-Tight)</option>
                             <option value="1.4">1.4x</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="channel-lookback-group" style="display: none;">
+                    <label for="channel-lookback-select">Lookback (Bars)</label>
+                    <div class="custom-select">
+                        <select id="channel-lookback-select">
+                            <option value="30">30 bars (~6 wk)</option>
+                            <option value="42">42 bars (~2 mo)</option>
+                            <option value="50" selected>50 bars (Optimal · ~2.5 mo)</option>
+                            <option value="63">63 bars (~3 mo)</option>
+                            <option value="84">84 bars (~4 mo)</option>
                         </select>
                     </div>
                 </div>

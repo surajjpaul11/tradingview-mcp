@@ -7,6 +7,8 @@ const tickerSelect = document.getElementById('ticker-select');
 const strategySelect = document.getElementById('strategy-select');
 const channelMultGroup = document.getElementById('channel-mult-group');
 const channelMultSelect = document.getElementById('channel-mult-select');
+const channelLookbackGroup = document.getElementById('channel-lookback-group');
+const channelLookbackSelect = document.getElementById('channel-lookback-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -15,14 +17,20 @@ const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 
 function getSelectedChannelMult() {
-    if (!channelMultSelect) return 2.0;
-    return parseFloat(channelMultSelect.value) || 2.0;
+    if (!channelMultSelect) return 1.7;
+    return parseFloat(channelMultSelect.value) || 1.7;
+}
+
+function getSelectedChannelLookback() {
+    if (!channelLookbackSelect) return 50;
+    return parseInt(channelLookbackSelect.value, 10) || 50;
 }
 
 function syncChannelMultVisibility(strategy) {
-    if (!channelMultGroup) return;
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
-    channelMultGroup.style.display = (currentStrat === 'enhanced_channel') ? 'flex' : 'none';
+    const isChannel = (currentStrat === 'enhanced_channel');
+    if (channelMultGroup) channelMultGroup.style.display = isChannel ? 'flex' : 'none';
+    if (channelLookbackGroup) channelLookbackGroup.style.display = isChannel ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
@@ -376,6 +384,12 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (channelLookbackSelect) {
+            channelLookbackSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         syncChannelMultVisibility(strategySelect.value);
 
         // Trigger initial data load
@@ -655,7 +669,8 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
 
     try {
         const mult = getSelectedChannelMult();
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&channel_mult=${mult}`);
+        const lb = getSelectedChannelLookback();
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data.overlays || data.overlays.length === 0) return;
@@ -722,7 +737,7 @@ async function updateDashboard() {
     setLoading(true, 'loading');
 
     try {
-        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}` : '';
+        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}` : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
@@ -837,7 +852,7 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}` : '';
+        const multParam = (strategy === 'enhanced_channel') ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}` : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)

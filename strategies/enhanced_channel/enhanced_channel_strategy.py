@@ -51,10 +51,10 @@ from typing import Optional, List, Dict, Any, Tuple
 # DEFAULT STRATEGY PARAMETERS
 # ==============================================================================
 
-TACTICAL_LOOKBACK    = 63     # ~3 months of daily trading bars
+TACTICAL_LOOKBACK    = 50     # ~2.5 months (50 bars) optimal swing channel
 INTERMEDIATE_LOOKBACK = 252    # ~1 year of daily trading bars
 MACRO_LOOKBACK       = 1260   # ~5 years of daily trading bars
-CHANNEL_MULT         = 2.0    # standard error multiplier for upper/lower bounds
+CHANNEL_MULT         = 1.7    # standard error multiplier for upper/lower bounds
 LEEWAY_PCT           = 0.05   # 5% leeway band at channel edges
 STOPGAP_PCT          = 0.05   # 5% buffer below lower line before stop loss fires
 HTF_FILTER           = True   # use 1Y trend / regime filter
@@ -855,10 +855,10 @@ def main():
     parser.add_argument("--stopgap-type", default="close", choices=["low", "close", "atr"], help="Stopgap trigger (default: close)")
     parser.add_argument("--dynamic-sizing", action="store_true", help="Enable multi-tier sizing (50%% tactical, 100%% confluence) for lowest drawdown")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
-    parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 63 = 3m)")
+    parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 50 = ~2.5m)")
     parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
     parser.add_argument("--macro-lb", type=int, default=MACRO_LOOKBACK, help="Macro lookback bars (default: 1260 = 5y)")
-    parser.add_argument("--channel-mult", type=float, default=CHANNEL_MULT, help="Std error multiplier (default: 2.0)")
+    parser.add_argument("--channel-mult", type=float, default=CHANNEL_MULT, help="Std error multiplier (default: 1.7)")
     parser.add_argument("--leeway", type=float, default=LEEWAY_PCT, help="Leeway tolerance fraction (default: 0.05 = 5%%)")
     parser.add_argument("--stopgap", type=float, default=STOPGAP_PCT, help="Stopgap margin below lower channel (default: 0.05 = 5%%)")
     parser.add_argument("--confirm-bars", type=int, default=2, choices=[1, 2], help="Bounce confirmation bars required (default: 2)")

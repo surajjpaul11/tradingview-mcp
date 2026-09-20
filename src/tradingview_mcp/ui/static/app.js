@@ -507,9 +507,10 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
             const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
+            const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : '');
-            const entryColor = isMidlineReclaim ? '#3B82F6' : (isLong ? '#10B981' : '#F59E0B');
+            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : ''));
+            const entryColor = isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isLong ? '#10B981' : '#F59E0B'));
 
             // 1. Entry Marker
             markers.push({
@@ -560,14 +561,17 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isMidStop = (existing.text && existing.text.includes('MID STOP')) || (m.text && m.text.includes('MID STOP'));
             const isSL = (existing.text && existing.text.includes('STOP LOSS')) || (m.text && m.text.includes('STOP LOSS'));
             const isMid = (existing.text && existing.text.includes('MID RECLAIM')) || (m.text && m.text.includes('MID RECLAIM'));
+            const isLowerReclaim = (existing.text && existing.text.includes('LOWER RECLAIM')) || (m.text && m.text.includes('LOWER RECLAIM'));
             const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
             let prefix = '';
             if (isMidStop) prefix = 'MID STOP ';
             else if (isSL) prefix = 'STOP LOSS ';
             else if (isMid) prefix = 'MID RECLAIM ';
+            else if (isLowerReclaim) prefix = 'LOWER RECLAIM ';
             existing.text = `${existing.count}x ${prefix}${action}`;
             if ((isMidStop || isSL) && m.position === 'aboveBar') existing.color = '#F43F5E';
             if (isMid && m.position === 'belowBar') existing.color = '#3B82F6';
+            if (isLowerReclaim && m.position === 'belowBar') existing.color = '#06B6D4';
         }
     });
 

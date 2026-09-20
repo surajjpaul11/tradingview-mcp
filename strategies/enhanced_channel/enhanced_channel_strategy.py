@@ -563,8 +563,8 @@ def run_enhanced_channel(
                 if low_3m[look_idx] is not None and up_3m[look_idx] is not None:
                     ch_h = up_3m[look_idx] - low_3m[look_idx]
                     bot_lee = low_3m[look_idx] + leeway_pct * ch_h
-                    stp_lvl = low_3m[look_idx] - stopgap_pct * ch_h
-                    if lows[look_idx] <= bot_lee and lows[look_idx] >= stp_lvl:
+                    # Any touch or breach into/below lower channel leeway zone qualifies as a bottom contact
+                    if lows[look_idx] <= bot_lee or closes[look_idx] <= low_3m[look_idx]:
                         recent_touch_bottom = True
                         break
 
@@ -584,7 +584,14 @@ def run_enhanced_channel(
             else:  # "1bar"
                 bounce_confirmed = (c > o) and (c > prev_c) and (c > d3)
 
-            if recent_touch_bottom and bounce_confirmed:
+            # Lower Channel Reclaim: Price moved from below/at lower band to above it on a confirmed bullish candle
+            prev_d3 = low_3m[i - 1] if (i > 0 and low_3m[i - 1] is not None) else d3
+            was_below_channel = (prev_c <= prev_d3) or (opens[i] <= d3) or (lows[i] <= d3)
+            reclaimed_channel = was_below_channel and (c > d3) and (c > o) and (c > prev_c)
+
+            should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed)
+
+            if should_enter_bottom:
                 allowed = True
                 if htf_filter:
                     if s_1y < -0.05 and pos_1y_pct > 0.60:
@@ -592,7 +599,7 @@ def run_enhanced_channel(
 
                 if allowed:
                     tier = "tactical_3m"
-                    entry_reason = "bottom_bounce"
+                    entry_reason = "channel_reclaim" if reclaimed_channel else "bottom_bounce"
                     size_pct = 0.5 if dynamic_sizing else 1.0
                     if confluence_boost and pos_1y_pct <= 0.30:
                         tier = "confluence_grade_a"

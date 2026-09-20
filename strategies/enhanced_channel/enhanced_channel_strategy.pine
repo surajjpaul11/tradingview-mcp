@@ -76,13 +76,18 @@ var float active_stop_level = na
 var bool  target_reached    = false
 
 // 1. Entry Logic:
-// Touch or dip into bottom leeway zone within last 3 bars
-recent_touch_bottom = ta.lowest(low, 3) <= bottom_leeway_ceiling and ta.lowest(low, 3) >= stopgap_floor
+// Touch or breach into/below bottom leeway zone within last 3 bars
+recent_touch_bottom = ta.lowest(low, 3) <= bottom_leeway_ceiling or ta.lowest(close, 3) <= low_3m
 
-// Confirmed bounce
+// Confirmed bounce (2-bar continuation OR Bullish Engulfing reclaim expansion)
 bounce_1b = (close > open) and (close > close[1]) and (close > low_3m)
 bounce_2b = bounce_1b and (close[1] > open[1]) and (close[1] > close[2])
-bounce_confirmed = (confirm_bars == 2) ? bounce_2b : bounce_1b
+bullish_engulfing = bounce_1b and (close > high[1]) and ((close - open) > 0.015 * close)
+bounce_confirmed = (confirm_bars == 2) ? (bounce_2b or bullish_engulfing) : bounce_1b
+
+// Lower Channel Reclaim: Price moved from below/at lower band to above it on a confirmed bullish day
+was_below_channel = (close[1] <= low_3m[1]) or (open <= low_3m) or (low <= low_3m)
+reclaimed_channel = was_below_channel and (close > low_3m) and (close > open) and (close > close[1])
 
 // HTF Filter
 htf_allowed = true
@@ -91,7 +96,8 @@ if use_htf_filter
         htf_allowed := false
 
 is_confluence = (pos_1y_pct <= 0.30)
-long_entry_condition = recent_touch_bottom and bounce_confirmed and htf_allowed and (strategy.position_size == 0)
+should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed)
+long_entry_condition = should_enter_bottom and htf_allowed and (strategy.position_size == 0)
 
 var bool reached_mid = false
 
@@ -168,5 +174,6 @@ plot(show_macro ? mid_5y : na, "5Y Macro Midline", color=color.new(#9C27B0, 30),
 plot(strategy.position_size > 0 ? active_stop_level : na, "Active Ratchet Stop", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
 
 // Visual Entry & Exit Shapes
-plotshape(long_entry_condition and not is_confluence, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plotshape(long_entry_condition and not is_confluence and reclaimed_channel, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
+plotshape(long_entry_condition and not is_confluence and not reclaimed_channel, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
 plotshape(long_entry_condition and is_confluence, title="Confluence Grade A Buy", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, size=size.normal, text="GRADE A")

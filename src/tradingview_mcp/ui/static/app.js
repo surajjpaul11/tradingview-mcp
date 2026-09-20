@@ -701,9 +701,9 @@ function updateChannelLegend(containerId, isVisible) {
     el.innerHTML = `
         <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Tactical Lower (Buy Zone)</div>
         <div class="channel-pill"><span class="channel-dot" style="background: #EF4444;"></span>Tactical Upper (Take Profit)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Tactical Mid (3M)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Intermediate (1Y)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #A855F7;"></span>Macro (5Y)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Tactical Mid (50b)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Intermediate Mid (200b)</div>
+        <div class="channel-pill"><span class="channel-dot" style="background: #A855F7;"></span>Macro Mid (1000b)</div>
     `;
 }
 

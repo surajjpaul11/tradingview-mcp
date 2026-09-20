@@ -5,10 +5,10 @@ strategy("Enhanced Channel Strategy", overlay=true, initial_capital=10000, defau
 // INPUTS
 // ==============================================================================
 grp_ch = "Channel Parameters"
-tactical_len     = input.int(63, "Tactical Lookback (3-Month)", minval=10, group=grp_ch, tooltip="Lookback period in bars for tactical swings (~63 daily bars)")
-intermediate_len = input.int(252, "Intermediate Lookback (1-Year)", minval=30, group=grp_ch, tooltip="Lookback period in bars for cyclical trend (~252 daily bars)")
-macro_len        = input.int(1260, "Macro Lookback (5-Year)", minval=60, group=grp_ch, tooltip="Lookback period in bars for secular regime (~1260 daily bars)")
-channel_mult     = input.float(2.0, "Channel Width Multiplier (StdErr)", minval=0.5, step=0.1, group=grp_ch)
+tactical_len     = input.int(50, "Tactical Lookback (50-Bar)", minval=10, group=grp_ch, tooltip="Lookback period in bars for tactical swings (~50 daily bars)")
+intermediate_len = input.int(200, "Intermediate Lookback (200-Bar)", minval=30, group=grp_ch, tooltip="Lookback period in bars for cyclical trend (~200 daily bars)")
+macro_len        = input.int(1000, "Macro Lookback (1000-Bar)", minval=60, group=grp_ch, tooltip="Lookback period in bars for secular regime (~1000 daily bars)")
+channel_mult     = input.float(1.7, "Channel Width Multiplier (StdErr)", minval=0.5, step=0.1, group=grp_ch)
 leeway_pct       = input.float(5.0, "Boundary Leeway (%)", minval=1.0, maxval=20.0, step=0.5, group=grp_ch, tooltip="Percentage of channel height defining the edge bounce zone")
 stopgap_pct      = input.float(5.0, "Stopgap Margin (%)", minval=1.0, maxval=20.0, step=0.5, group=grp_ch, tooltip="Margin below lower channel line before emergency stop loss triggers")
 

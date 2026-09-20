@@ -52,8 +52,8 @@ from typing import Optional, List, Dict, Any, Tuple
 # ==============================================================================
 
 TACTICAL_LOOKBACK    = 50     # ~2.5 months (50 bars) optimal swing channel
-INTERMEDIATE_LOOKBACK = 252    # ~1 year of daily trading bars
-MACRO_LOOKBACK       = 1260   # ~5 years of daily trading bars
+INTERMEDIATE_LOOKBACK = 200    # ~200 daily trading bars (institutional trendline)
+MACRO_LOOKBACK       = 1000   # ~1000 daily trading bars (~4 years)
 CHANNEL_MULT         = 1.7    # standard error multiplier for upper/lower bounds
 LEEWAY_PCT           = 0.05   # 5% leeway band at channel edges
 STOPGAP_PCT          = 0.05   # 5% buffer below lower line before stop loss fires
@@ -649,8 +649,8 @@ def run_enhanced_channel(
             {"label": "Tactical Upper (3M)", "color": "#2196F3", "type": "line", "points": tactical_upper_overlay},
             {"label": "Tactical Mid (3M)", "color": "#90CAF9", "type": "line", "points": tactical_mid_overlay},
             {"label": "Tactical Lower (3M)", "color": "#2196F3", "type": "line", "points": tactical_lower_overlay},
-            {"label": "Intermediate Mid (1Y)", "color": "#FF9800", "type": "line", "points": intermediate_mid_overlay},
-            {"label": "Macro Mid (5Y)", "color": "#9C27B0", "type": "line", "points": macro_mid_overlay},
+            {"label": "Intermediate Mid (200b)", "color": "#FF9800", "type": "line", "points": intermediate_mid_overlay},
+            {"label": "Macro Mid (1000b)", "color": "#9C27B0", "type": "line", "points": macro_mid_overlay},
         ]
     }
 
@@ -883,8 +883,8 @@ def main():
     parser.add_argument("--dynamic-sizing", action="store_true", help="Enable multi-tier sizing (50%% tactical, 100%% confluence) for lowest drawdown")
     parser.add_argument("--initial-capital", type=float, default=INITIAL_CAPITAL)
     parser.add_argument("--tactical-lb", type=int, default=TACTICAL_LOOKBACK, help="Tactical lookback bars (default: 50 = ~2.5m)")
-    parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 252 = 1y)")
-    parser.add_argument("--macro-lb", type=int, default=MACRO_LOOKBACK, help="Macro lookback bars (default: 1260 = 5y)")
+    parser.add_argument("--intermediate-lb", type=int, default=INTERMEDIATE_LOOKBACK, help="Intermediate lookback bars (default: 200)")
+    parser.add_argument("--macro-lb", type=int, default=MACRO_LOOKBACK, help="Macro lookback bars (default: 1000)")
     parser.add_argument("--channel-mult", type=float, default=CHANNEL_MULT, help="Std error multiplier (default: 1.7)")
     parser.add_argument("--leeway", type=float, default=LEEWAY_PCT, help="Leeway tolerance fraction (default: 0.05 = 5%%)")
     parser.add_argument("--stopgap", type=float, default=STOPGAP_PCT, help="Stopgap margin below lower channel (default: 0.05 = 5%%)")
@@ -903,7 +903,7 @@ def main():
     print(f"\n{'='*65}")
     print(f"  Enhanced Channel Strategy — {args.symbol.upper()} ({side_label}) [Stop Loss: {sl_label}] [Midline Re-entry: {mid_label}]")
     print(f"  Geometry: {args.channel_type.upper()}  |  Bounce Confirm: {args.bounce_type.upper()}  |  Stopgap: {args.stopgap_type.upper()}")
-    print(f"  Timeframes: Tactical 3M ({args.tactical_lb}b) | Intermediate 1Y ({args.intermediate_lb}b) | Macro 5Y ({args.macro_lb}b)")
+    print(f"  Timeframes: Tactical ({args.tactical_lb}b) | Intermediate ({args.intermediate_lb}b) | Macro ({args.macro_lb}b)")
     print(f"  Channel Mult: {args.channel_mult}x  |  Leeway: {args.leeway*100:.1f}%  |  Stopgap: {args.stopgap*100:.1f}%")
     print(f"{'='*65}\n")
 

@@ -93,15 +93,28 @@ if use_htf_filter
 is_confluence = (pos_1y_pct <= 0.30)
 long_entry_condition = recent_touch_bottom and bounce_confirmed and htf_allowed and (strategy.position_size == 0)
 
+var bool reached_mid = false
+
 // 2. Position Management & Exit Logic
 if strategy.position_size > 0
     // Ratchet stopgap upward as channel advances (never decrease stop loss)
     if na(active_stop_level) or stopgap_floor > active_stop_level
         active_stop_level := stopgap_floor
 
+    // Track if price reached above the tactical midline
+    if high >= mid_3m or close >= mid_3m
+        reached_mid := true
+
     // Track if upper zone was reached
     if high >= top_leeway_floor or close >= top_leeway_floor
         target_reached := true
+
+    // Midline Stop Loss: Price reached above mid and now crosses below going down (e.g. 3 June 2026)
+    if reached_mid and close < mid_3m and close < open and close < close[1] and close[1] >= mid_3m[1]
+        strategy.close("Long", comment="Mid Stop SL")
+        active_stop_level := na
+        target_reached    := false
+        reached_mid       := false
 
     // Stopgap Exit: Price breaks below stopgap line
     is_stop_hit = (stopgap_mode == "close") ? (close < active_stop_level) : (close < active_stop_level or low < active_stop_level)
@@ -109,6 +122,7 @@ if strategy.position_size > 0
         strategy.close("Long", comment="Stopgap SL")
         active_stop_level := na
         target_reached    := false
+        reached_mid       := false
 
     // Channel Top Rejection Exit: Touched top zone and turned downward
     downward_rejection = (close < open) and (close < close[1])
@@ -116,6 +130,7 @@ if strategy.position_size > 0
         strategy.close("Long", comment="Channel Top TP")
         active_stop_level := na
         target_reached    := false
+        reached_mid       := false
 
 // Execute Entry with Confluence Sizing
 if long_entry_condition
@@ -123,6 +138,7 @@ if long_entry_condition
     strategy.entry("Long", strategy.long, comment=comment_text)
     active_stop_level := stopgap_floor
     target_reached    := false
+    reached_mid       := false
 
 
 // ==============================================================================

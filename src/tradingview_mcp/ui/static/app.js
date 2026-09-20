@@ -533,13 +533,14 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const pnlSign = pnlPct >= 0 ? '+' : '';
                 const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
                 const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
-                const exitPrefix = isStopExit ? 'STOP LOSS ' : '';
+                const isMidStop = (trade.exit_reason === 'midline_stop_exit') || (trade.notes && trade.notes.includes('midline_stop'));
+                const exitPrefix = isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '');
                 const action = isLong ? 'SELL' : 'COVER';
 
                 markers.push({
                     time: snappedExit,
                     position: isLong ? 'aboveBar' : 'belowBar',
-                    color: isStopExit ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'),
+                    color: (isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'),
                     shape: isLong ? 'arrowDown' : 'arrowUp',
                     text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
                 });
@@ -556,13 +557,16 @@ function buildMarkers(tradesData, sorted, strategy) {
         } else {
             const existing = consolidatedMap.get(key);
             existing.count += 1;
+            const isMidStop = (existing.text && existing.text.includes('MID STOP')) || (m.text && m.text.includes('MID STOP'));
             const isSL = (existing.text && existing.text.includes('STOP LOSS')) || (m.text && m.text.includes('STOP LOSS'));
             const isMid = (existing.text && existing.text.includes('MID RECLAIM')) || (m.text && m.text.includes('MID RECLAIM'));
             const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
             let prefix = '';
-            if (isSL) prefix = 'STOP LOSS ';
+            if (isMidStop) prefix = 'MID STOP ';
+            else if (isSL) prefix = 'STOP LOSS ';
             else if (isMid) prefix = 'MID RECLAIM ';
             existing.text = `${existing.count}x ${prefix}${action}`;
+            if ((isMidStop || isSL) && m.position === 'aboveBar') existing.color = '#F43F5E';
             if (isMid && m.position === 'belowBar') existing.color = '#3B82F6';
         }
     });

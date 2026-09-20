@@ -416,6 +416,36 @@ def run_enhanced_channel(
                     position = None
                     continue
 
+                # Track whether price has reached or traded above the tactical midline
+                if m3 is not None and (h >= m3 or c >= m3 or position.get("entry_reason") == "midline_reclaim"):
+                    position["reached_mid"] = True
+
+                # Check Midline Stop Loss:
+                # If price reached above the midline and is now crossing below in the negative direction,
+                # sell immediately to cut loss and preserve capital (e.g. 3 June 2026).
+                if use_stop_loss and position.get("reached_mid", False) and m3 is not None:
+                    prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else m3
+                    crossed_below_mid = (prev_c >= prev_m) and (c < m3)
+                    going_down = (c < o) and (c < prev_c)
+                    if crossed_below_mid and going_down:
+                        trades.append({
+                            "side": "long",
+                            "entry_date": position["entry_date"],
+                            "entry_price": position["entry_price"],
+                            "entry_bar": position["entry_bar"],
+                            "entry_reason": position["entry_reason"],
+                            "exit_date": date,
+                            "exit_price": round(c, 4),
+                            "exit_bar": i,
+                            "exit_reason": "midline_stop_exit",
+                            "bars_held": i - position["entry_bar"],
+                            "tier": position["tier"],
+                            "size_pct": position.get("size_pct", 1.0),
+                            "strategy": "enhanced_channel",
+                        })
+                        position = None
+                        continue
+
                 # Track whether price has reached the upper channel zone
                 if h >= top_leeway or c >= top_leeway:
                     position["target_reached"] = True
@@ -469,6 +499,34 @@ def run_enhanced_channel(
                     })
                     position = None
                     continue
+
+                # Track whether price has reached or traded below the tactical midline
+                if m3 is not None and (l <= m3 or c <= m3):
+                    position["reached_mid"] = True
+
+                # Check Midline Stop Loss (Short cover if price crosses above midline in positive direction)
+                if use_stop_loss and position.get("reached_mid", False) and m3 is not None:
+                    prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else m3
+                    crossed_above_mid = (prev_c <= prev_m) and (c > m3)
+                    going_up = (c > o) and (c > prev_c)
+                    if crossed_above_mid and going_up:
+                        trades.append({
+                            "side": "short",
+                            "entry_date": position["entry_date"],
+                            "entry_price": position["entry_price"],
+                            "entry_bar": position["entry_bar"],
+                            "entry_reason": position["entry_reason"],
+                            "exit_date": date,
+                            "exit_price": round(c, 4),
+                            "exit_bar": i,
+                            "exit_reason": "midline_stop_exit",
+                            "bars_held": i - position["entry_bar"],
+                            "tier": position["tier"],
+                            "size_pct": position.get("size_pct", 1.0),
+                            "strategy": "enhanced_channel",
+                        })
+                        position = None
+                        continue
 
                 # Track if price reached bottom leeway zone
                 if l <= bottom_leeway or c <= bottom_leeway:
@@ -551,6 +609,7 @@ def run_enhanced_channel(
                         "size_pct": size_pct,
                         "stop_level": stopgap_level,
                         "target_reached": False,
+                        "reached_mid": False,
                     }
                     continue
 
@@ -572,6 +631,7 @@ def run_enhanced_channel(
                             "size_pct": 0.5 if dynamic_sizing else 1.0,
                             "stop_level": stopgap_level,
                             "target_reached": False,
+                            "reached_mid": True,
                         }
                         continue
 
@@ -622,6 +682,7 @@ def run_enhanced_channel(
                             "tier": tier,
                             "stop_level": u3 + stopgap_margin,
                             "target_reached": False,
+                            "reached_mid": False,
                         }
 
     # Close open position on last bar
@@ -766,6 +827,7 @@ def calc_metrics(
         "channel_bottom_exit": sum(1 for t in trades if t["exit_reason"] == "channel_bottom_exit"),
         "trailing_channel_exit": sum(1 for t in trades if t["exit_reason"] == "trailing_channel_exit"),
         "stopgap_exit": sum(1 for t in trades if t["exit_reason"] == "stopgap_exit"),
+        "midline_stop_exit": sum(1 for t in trades if t["exit_reason"] == "midline_stop_exit"),
         "end_of_data": sum(1 for t in trades if t["exit_reason"] == "end_of_data"),
     }
 
@@ -789,6 +851,7 @@ def calc_metrics(
         "channel_bottom_exits": exit_counts["channel_bottom_exit"],
         "trailing_channel_exits": exit_counts["trailing_channel_exit"],
         "stopgap_exits": exit_counts["stopgap_exit"],
+        "midline_stop_exits": exit_counts["midline_stop_exit"],
         "end_of_data_exits": exit_counts["end_of_data"],
     }
 

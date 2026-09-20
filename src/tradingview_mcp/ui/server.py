@@ -156,6 +156,7 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
                 ret_pct = float(t.get("return_pct", 0.0))
                 side_raw = (t.get("side") or "long").lower()
                 side = "buy" if side_raw in ("long", "buy") else "sell"
+                pnl_u = round((exit_p - entry_p) * (1000.0 / entry_p), 2) if (exit_p and entry_p > 0) else 0.0
                 trades.append({
                     "trade_id": str(uuid.uuid4()),
                     "symbol": clean_sym,

@@ -313,6 +313,7 @@ def run_enhanced_channel(
     dynamic_sizing = params.get("dynamic_sizing", False)
     use_stop_loss = params.get("use_stop_loss", True)
     midline_reentry = params.get("midline_reentry", False)
+    midline_cross = params.get("midline_cross", False) or midline_reentry
     channel_inflection = params.get("channel_inflection", True)
     lower_reclaim = params.get("lower_reclaim", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
@@ -422,10 +423,34 @@ def run_enhanced_channel(
                 if m3 is not None and (h >= m3 or c >= m3 or position.get("entry_reason") == "midline_reclaim"):
                     position["reached_mid"] = True
 
+                # Check Midline Cross Exit:
+                # If midline_cross is enabled, price crossing down below the midline triggers an immediate exit
+                if midline_cross and m3 is not None:
+                    prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else m3
+                    crossed_below_mid = (prev_c >= prev_m or opens[i] >= m3) and (c < m3)
+                    if crossed_below_mid:
+                        trades.append({
+                            "side": "long",
+                            "entry_date": position["entry_date"],
+                            "entry_price": position["entry_price"],
+                            "entry_bar": position["entry_bar"],
+                            "entry_reason": position["entry_reason"],
+                            "exit_date": date,
+                            "exit_price": round(c, 4),
+                            "exit_bar": i,
+                            "exit_reason": "midline_cross_exit",
+                            "bars_held": i - position["entry_bar"],
+                            "tier": position["tier"],
+                            "size_pct": position.get("size_pct", 1.0),
+                            "strategy": "enhanced_channel",
+                        })
+                        position = None
+                        continue
+
                 # Check Midline Stop Loss:
                 # If price reached above the midline and is now crossing below in the negative direction,
                 # sell immediately to cut loss and preserve capital (e.g. 3 June 2026).
-                if use_stop_loss and position.get("reached_mid", False) and m3 is not None:
+                if not midline_cross and use_stop_loss and position.get("reached_mid", False) and m3 is not None:
                     prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else m3
                     crossed_below_mid = (prev_c >= prev_m) and (c < m3)
                     going_down = (c < o) and (c < prev_c)
@@ -585,7 +610,7 @@ def run_enhanced_channel(
                 b_conf = (c > o) and (c > prev_c) and (c > d3)
                 if i >= 2:
                     classic_2bar = (prev_c > opens[i - 1]) and (prev_c > closes[i - 2])
-                    bullish_engulfing = (c > highs[i - 1]) and ((c - o) > 0.015 * c)
+                    bullish_engulfing = (c > highs[i - 1]) and (max(c - o, c - prev_c) >= 0.015 * prev_c)
                     bounce_confirmed = b_conf and (classic_2bar or bullish_engulfing)
                 else:
                     bounce_confirmed = b_conf
@@ -602,7 +627,8 @@ def run_enhanced_channel(
             if should_enter_bottom:
                 allowed = True
                 if htf_filter:
-                    if s_1y < -0.05 and pos_1y_pct > 0.60:
+                    htf_cap = 0.75 if reclaimed_channel else 0.60
+                    if s_1y < -0.05 and pos_1y_pct > htf_cap:
                         allowed = False
 
                 if allowed:
@@ -628,20 +654,20 @@ def run_enhanced_channel(
                     }
                     continue
 
-            # --- CASH RE-ENTRY / TACTICAL MIDLINE RECLAIM ---
-            if midline_reentry and mid_3m[i] is not None:
-                prev_below_mid = (prev_c <= mid_3m[i - 1]) if (i > 0 and mid_3m[i - 1] is not None) else False
-                curr_above_mid = (c > mid_3m[i])
+            # --- TACTICAL MIDLINE CROSS BUY ---
+            if midline_cross and mid_3m[i] is not None and position is None:
+                prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else mid_3m[i]
+                crossed_above_mid = (prev_c <= prev_m or opens[i] <= mid_3m[i]) and (c > mid_3m[i])
                 bullish_mid = (c > o) and (c > prev_c)
-                if prev_below_mid and curr_above_mid and bullish_mid:
-                    allowed = not (htf_filter and s_1y < -0.05)
+                if crossed_above_mid and bullish_mid:
+                    allowed = not (htf_filter and s_1y < -0.05 and pos_1y_pct > 0.70)
                     if allowed:
                         position = {
                             "side": "long",
                             "entry_date": date,
                             "entry_price": round(c, 4),
                             "entry_bar": i,
-                            "entry_reason": "midline_reclaim",
+                            "entry_reason": "midline_cross",
                             "tier": "tactical_midline",
                             "size_pct": 0.5 if dynamic_sizing else 1.0,
                             "stop_level": stopgap_level,
@@ -925,6 +951,7 @@ def run_backtest(
     dynamic_sizing: bool = False,
     use_stop_loss: bool = True,
     midline_reentry: bool = False,
+    midline_cross: bool = False,
     channel_inflection: bool = True,
     lower_reclaim: bool = True,
 ) -> Dict[str, Any]:
@@ -950,6 +977,7 @@ def run_backtest(
         "dynamic_sizing": dynamic_sizing,
         "use_stop_loss": use_stop_loss,
         "midline_reentry": midline_reentry,
+        "midline_cross": midline_cross,
         "channel_inflection": channel_inflection,
         "lower_reclaim": lower_reclaim,
     }

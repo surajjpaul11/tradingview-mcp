@@ -181,7 +181,7 @@ plot(show_macro ? mid_5y : na, "5Y Macro Midline", color=color.new(#9C27B0, 30),
 plot(strategy.position_size > 0 ? active_stop_level : na, "Active Ratchet Stop", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
 
 // Visual Entry & Exit Shapes
-plotshape(long_entry_condition and not is_confluence and channel_curl_entry, title="Channel Curl Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#A855F7, 0), size=size.small, text="CURL")
+plotshape(long_entry_condition and not is_confluence and channel_curl_entry, title="Channel Curl Buy", style=shape.triangleup, location=location.belowbar, color=color.yellow, textcolor=color.black, size=size.small, text="CURL BUY")
 plotshape(long_entry_condition and not is_confluence and reclaimed_channel and not channel_curl_entry, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
 plotshape(long_entry_condition and not is_confluence and not reclaimed_channel and not channel_curl_entry, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
 plotshape(long_entry_condition and is_confluence, title="Confluence Grade A Buy", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, size=size.normal, text="GRADE A")

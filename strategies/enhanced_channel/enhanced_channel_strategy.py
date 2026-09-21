@@ -313,6 +313,7 @@ def run_enhanced_channel(
     dynamic_sizing = params.get("dynamic_sizing", False)
     use_stop_loss = params.get("use_stop_loss", True)
     midline_reentry = params.get("midline_reentry", False)
+    channel_inflection = params.get("channel_inflection", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -642,6 +643,37 @@ def run_enhanced_channel(
                         }
                         continue
 
+            # --- CHANNEL INFLECTION / VALLEY CURL (TURNING HORIZONTAL TO UPWARD) ---
+            if channel_inflection and position is None:
+                m0 = mid_3m[i]
+                m1 = mid_3m[i - 1] if i >= 1 else None
+                m2 = mid_3m[i - 2] if i >= 2 else None
+                m3_prev = mid_3m[i - 3] if i >= 3 else None
+
+                if None not in (m0, m1, m2, m3_prev):
+                    # Was declining previously (channel was going downwards)
+                    was_declining = (m2 < m3_prev) or (m1 < m3_prev)
+                    # Flattens and curls strictly upward (rate of increase >= 0.3% of channel height)
+                    is_turning_up = (m0 > m1) and ((m0 - m1) >= 0.003 * ch_height)
+                    # Price confirmation: green candle closing at or above curling midline
+                    price_above_mid = (c >= m0) and (c > o) and (c > prev_c)
+                    if was_declining and is_turning_up and price_above_mid:
+                        allowed = not (htf_filter and s_1y < -0.05 and pos_1y_pct > 0.60)
+                        if allowed:
+                            position = {
+                                "side": "long",
+                                "entry_date": date,
+                                "entry_price": round(c, 4),
+                                "entry_bar": i,
+                                "entry_reason": "channel_inflection",
+                                "tier": "tactical_inflection",
+                                "size_pct": 0.5 if dynamic_sizing else 1.0,
+                                "stop_level": stopgap_level,
+                                "target_reached": False,
+                                "reached_mid": True,
+                            }
+                            continue
+
             # --- SHORT ENTRY EVALUATION (IF NOT LONG-ONLY) ---
             if not long_only:
                 recent_touch_top = False
@@ -886,6 +918,7 @@ def run_backtest(
     dynamic_sizing: bool = False,
     use_stop_loss: bool = True,
     midline_reentry: bool = False,
+    channel_inflection: bool = True,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -909,6 +942,7 @@ def run_backtest(
         "dynamic_sizing": dynamic_sizing,
         "use_stop_loss": use_stop_loss,
         "midline_reentry": midline_reentry,
+        "channel_inflection": channel_inflection,
     }
 
     strat_output = run_enhanced_channel(candles, params)

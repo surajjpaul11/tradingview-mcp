@@ -89,6 +89,13 @@ bounce_confirmed = (confirm_bars == 2) ? (bounce_2b or bullish_engulfing) : boun
 was_below_channel = (close[1] <= low_3m[1]) or (open <= low_3m) or (low <= low_3m)
 reclaimed_channel = was_below_channel and (close > low_3m) and (close > open) and (close > close[1])
 
+// Channel Inflection / Valley Curl: Midline was declining, flattens, and curls strictly upward
+was_declining_mid = (mid_3m[2] < mid_3m[4]) or (mid_3m[1] < mid_3m[3])
+ch_height = up_3m - low_3m
+is_turning_up_mid = (mid_3m > mid_3m[1]) and ((mid_3m - mid_3m[1]) >= 0.003 * ch_height)
+price_above_mid = (close >= mid_3m) and (close > open) and (close > close[1])
+channel_curl_entry = was_declining_mid and is_turning_up_mid and price_above_mid
+
 // HTF Filter
 htf_allowed = true
 if use_htf_filter
@@ -96,7 +103,7 @@ if use_htf_filter
         htf_allowed := false
 
 is_confluence = (pos_1y_pct <= 0.30)
-should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed)
+should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed) or channel_curl_entry
 long_entry_condition = should_enter_bottom and htf_allowed and (strategy.position_size == 0)
 
 var bool reached_mid = false
@@ -174,6 +181,7 @@ plot(show_macro ? mid_5y : na, "5Y Macro Midline", color=color.new(#9C27B0, 30),
 plot(strategy.position_size > 0 ? active_stop_level : na, "Active Ratchet Stop", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
 
 // Visual Entry & Exit Shapes
-plotshape(long_entry_condition and not is_confluence and reclaimed_channel, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
-plotshape(long_entry_condition and not is_confluence and not reclaimed_channel, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plotshape(long_entry_condition and not is_confluence and channel_curl_entry, title="Channel Curl Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#A855F7, 0), size=size.small, text="CURL")
+plotshape(long_entry_condition and not is_confluence and reclaimed_channel and not channel_curl_entry, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
+plotshape(long_entry_condition and not is_confluence and not reclaimed_channel and not channel_curl_entry, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
 plotshape(long_entry_condition and is_confluence, title="Confluence Grade A Buy", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, size=size.normal, text="GRADE A")

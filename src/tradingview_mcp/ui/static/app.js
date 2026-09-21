@@ -534,12 +534,13 @@ function buildMarkers(tradesData, sorted, strategy) {
             const sideStr = (trade.side || '').toLowerCase();
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+            const isMidlineCross = (trade.entry_reason === 'midline_cross') || (trade.notes && trade.notes.includes('midline_cross'));
             const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
             const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : '')));
-            const entryColor = isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B')));
+            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : ''))));
+            const entryColor = isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B'))));
 
             // 1. Entry Marker
             markers.push({
@@ -563,8 +564,9 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const pnlSign = pnlPct >= 0 ? '+' : '';
                 const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
                 const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
+                const isMidlineCrossExit = (trade.exit_reason === 'midline_cross_exit') || (trade.notes && trade.notes.includes('midline_cross_exit'));
                 const isMidStop = (trade.exit_reason === 'midline_stop_exit') || (trade.notes && trade.notes.includes('midline_stop'));
-                const exitPrefix = isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '');
+                const exitPrefix = isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : ''));
                 const action = isLong ? 'SELL' : 'COVER';
 
                 markers.push({
@@ -825,7 +827,7 @@ async function updateDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -942,7 +944,7 @@ async function updateAdvDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
             : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),

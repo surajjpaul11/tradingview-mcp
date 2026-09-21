@@ -17,6 +17,7 @@ use_htf_filter     = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt
 use_confluence     = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
 use_lower_reclaim  = input.bool(true, "Enable Lower Channel Reclaim", group=grp_filt, tooltip="Allows entries when price breaches lower channel and reclaims back above it")
 use_channel_curl   = input.bool(true, "Enable Channel Curl Buy", group=grp_filt, tooltip="Allows entries when declining channel flattens and curls upwards")
+use_midline_cross  = input.bool(false, "Enable Midline Cross (Buy Up / Sell Down)", group=grp_filt, tooltip="Triggers buy when price crosses above midline, and triggers sell when price crosses below midline")
 confirm_bars       = input.int(2, "Bounce Confirmation Bars", minval=1, maxval=2, group=grp_ch, tooltip="1 = single green bounce bar, 2 = 2 consecutive higher closes (recommended)")
 stopgap_mode     = input.string("close", "Stopgap Trigger Mode", options=["close", "low"], group=grp_ch, tooltip="close = candle close below stopgap, low = intraday touch")
 dynamic_size     = input.bool(true, "Enable Confluence Position Sizing", group=grp_filt, tooltip="100% on Confluence Grade A, 50% on Tactical-only")
@@ -84,7 +85,7 @@ recent_touch_bottom = use_lower_reclaim ? (ta.lowest(low, 3) <= bottom_leeway_ce
 // Confirmed bounce (2-bar continuation OR Bullish Engulfing reclaim expansion)
 bounce_1b = (close > open) and (close > close[1]) and (close > low_3m)
 bounce_2b = bounce_1b and (close[1] > open[1]) and (close[1] > close[2])
-bullish_engulfing = bounce_1b and (close > high[1]) and ((close - open) > 0.015 * close)
+bullish_engulfing = bounce_1b and (close > high[1]) and (math.max(close - open, close - close[1]) >= 0.015 * close[1])
 bounce_confirmed = (confirm_bars == 2) ? (bounce_2b or bullish_engulfing) : bounce_1b
 
 // Lower Channel Reclaim: Price moved from below/at lower band to above it on a confirmed bullish day
@@ -98,14 +99,18 @@ is_turning_up_mid = (mid_3m > mid_3m[1]) and ((mid_3m - mid_3m[1]) >= 0.003 * ch
 price_above_mid = (close >= mid_3m) and (close > open) and (close > close[1])
 channel_curl_entry = use_channel_curl and was_declining_mid and is_turning_up_mid and price_above_mid
 
+// Midline Cross Up Entry
+mid_cross_up = use_midline_cross and ta.crossover(close, mid_3m) and (close > open) and (close > close[1])
+
 // HTF Filter
 htf_allowed = true
 if use_htf_filter
-    if slope_1y < -0.05 and pos_1y_pct > 0.60
+    htf_ceiling = (reclaimed_channel or mid_cross_up) ? 0.75 : 0.60
+    if slope_1y < -0.05 and pos_1y_pct > htf_ceiling
         htf_allowed := false
 
 is_confluence = (pos_1y_pct <= 0.30)
-should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed) or channel_curl_entry
+should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed) or channel_curl_entry or mid_cross_up
 long_entry_condition = should_enter_bottom and htf_allowed and (strategy.position_size == 0)
 
 var bool reached_mid = false
@@ -124,8 +129,15 @@ if strategy.position_size > 0
     if high >= top_leeway_floor or close >= top_leeway_floor
         target_reached := true
 
+    // Midline Cross Exit: Price crosses below midline
+    if use_midline_cross and ta.crossunder(close, mid_3m)
+        strategy.close("Long", comment="Mid Cross Exit")
+        active_stop_level := na
+        target_reached    := false
+        reached_mid       := false
+
     // Midline Stop Loss: Price reached above mid and now crosses below going down (e.g. 3 June 2026)
-    if reached_mid and close < mid_3m and close < open and close < close[1] and close[1] >= mid_3m[1]
+    if not use_midline_cross and reached_mid and close < mid_3m and close < open and close < close[1] and close[1] >= mid_3m[1]
         strategy.close("Long", comment="Mid Stop SL")
         active_stop_level := na
         target_reached    := false
@@ -184,6 +196,7 @@ plot(strategy.position_size > 0 ? active_stop_level : na, "Active Ratchet Stop",
 
 // Visual Entry & Exit Shapes
 plotshape(long_entry_condition and not is_confluence and channel_curl_entry, title="Channel Curl Buy", style=shape.triangleup, location=location.belowbar, color=color.yellow, textcolor=color.black, size=size.small, text="CURL BUY")
-plotshape(long_entry_condition and not is_confluence and reclaimed_channel and not channel_curl_entry, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
-plotshape(long_entry_condition and not is_confluence and not reclaimed_channel and not channel_curl_entry, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plotshape(long_entry_condition and not is_confluence and mid_cross_up and not channel_curl_entry, title="Midline Cross Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#0EA5E9, 0), size=size.small, text="MID CROSS")
+plotshape(long_entry_condition and not is_confluence and reclaimed_channel and not channel_curl_entry and not mid_cross_up, title="Lower Reclaim Buy", style=shape.triangleup, location=location.belowbar, color=color.new(#00BCD4, 0), size=size.small, text="RECLAIM")
+plotshape(long_entry_condition and not is_confluence and not reclaimed_channel and not channel_curl_entry and not mid_cross_up, title="Tactical Bounce Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
 plotshape(long_entry_condition and is_confluence, title="Confluence Grade A Buy", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, size=size.normal, text="GRADE A")

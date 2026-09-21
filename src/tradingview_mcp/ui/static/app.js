@@ -16,7 +16,7 @@ const channelMidlineCheckbox = document.getElementById('channel-midline-checkbox
 const channelLowerReclaimGroup = document.getElementById('channel-lower-reclaim-group');
 const channelLowerReclaimCheckbox = document.getElementById('channel-lower-reclaim-checkbox');
 const channelCurlGroup = document.getElementById('channel-curl-group');
-const channelCurlCheckbox = document.getElementById('channel-curl-checkbox');
+const channelCurlSelect = document.getElementById('channel-curl-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -49,9 +49,14 @@ function getChannelLowerReclaimEnabled() {
     return channelLowerReclaimCheckbox.checked;
 }
 
+function getChannelCurlMode() {
+    if (!channelCurlSelect) return 'both';
+    return channelCurlSelect.value || 'both';
+}
+
 function getChannelCurlEnabled() {
-    if (!channelCurlCheckbox) return true;
-    return channelCurlCheckbox.checked;
+    const mode = getChannelCurlMode();
+    return mode !== 'none';
 }
 
 function syncChannelMultVisibility(strategy) {
@@ -454,8 +459,8 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
-        if (channelCurlCheckbox) {
-            channelCurlCheckbox.onchange = () => {
+        if (channelCurlSelect) {
+            channelCurlSelect.onchange = () => {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
@@ -847,7 +852,7 @@ async function updateDashboard() {
     try {
         const reqPeriod = (activeRange === '1y' || activeRange === '5y') ? activeRange : '5y';
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -964,7 +969,7 @@ async function updateAdvDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),

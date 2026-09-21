@@ -314,7 +314,15 @@ def run_enhanced_channel(
     use_stop_loss = params.get("use_stop_loss", True)
     midline_reentry = params.get("midline_reentry", False)
     midline_cross = params.get("midline_cross", False) or midline_reentry
-    channel_inflection = params.get("channel_inflection", True)
+    channel_curl_mode = params.get("channel_curl_mode", None)
+    if channel_curl_mode is not None:
+        mode_str = str(channel_curl_mode).lower().strip()
+        curl_buy = mode_str in ("both", "buy", "curl buy", "both (curl buy and curl sell)")
+        curl_sell = mode_str in ("both", "sell", "curl sell", "both (curl buy and curl sell)")
+    else:
+        channel_inflection = params.get("channel_inflection", True)
+        curl_buy = bool(channel_inflection)
+        curl_sell = bool(channel_inflection)
     lower_reclaim = params.get("lower_reclaim", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
@@ -499,8 +507,8 @@ def run_enhanced_channel(
                     continue
 
                 # Check Channel Curl Sell / Exit:
-                # If channel_inflection is enabled and channel tops out and curls downward
-                if channel_inflection and m3 is not None and i >= 3:
+                # If curl_sell is enabled and channel tops out and curls downward
+                if curl_sell and m3 is not None and i >= 3:
                     m0 = mid_3m[i]
                     m1 = mid_3m[i - 1]
                     m2 = mid_3m[i - 2]
@@ -708,7 +716,7 @@ def run_enhanced_channel(
                         continue
 
             # --- CHANNEL INFLECTION / VALLEY CURL (TURNING HORIZONTAL TO UPWARD) ---
-            if channel_inflection and position is None:
+            if curl_buy and position is None:
                 m0 = mid_3m[i]
                 m1 = mid_3m[i - 1] if i >= 1 else None
                 m2 = mid_3m[i - 2] if i >= 2 else None
@@ -990,6 +998,7 @@ def run_backtest(
     midline_reentry: bool = False,
     midline_cross: bool = False,
     channel_inflection: bool = True,
+    channel_curl_mode: str = "both",
     lower_reclaim: bool = True,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
@@ -1016,6 +1025,7 @@ def run_backtest(
         "midline_reentry": midline_reentry,
         "midline_cross": midline_cross,
         "channel_inflection": channel_inflection,
+        "channel_curl_mode": channel_curl_mode,
         "lower_reclaim": lower_reclaim,
     }
 

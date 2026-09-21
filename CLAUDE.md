@@ -278,6 +278,14 @@ Use these skills for details (loaded on-demand to save tokens):
 
 **Key rules:** Always bind to `0.0.0.0`. Only use ports 8000–8004. Commit and push before restarts.
 
+### Automatic port selection
+
+Both servers pick the first free port starting at `--port` / `$PORT` (default 8000), so several worktrees can run at once:
+- UI dashboard: `./start.command` (or `uv run python src/tradingview_mcp/ui/server.py [--port N]`) — prints the URL it chose.
+- MCP HTTP: `uv run tradingview-mcp streamable-http [--port N]`.
+- `--strict-port` or `PORT_STRICT=1` fails instead of moving. `PORT_MAX_TRIES` caps the scan (default 50); inside Docker set `PORT_MAX_TRIES=5` to stay within 8000–8004.
+- Logic lives in `src/tradingview_mcp/core/utils/ports.py` (also a CLI: `python -m tradingview_mcp.core.utils.ports`).
+
 ## Git in Cowork Sessions
 
 Cowork's shell reaches this repo through a mounted folder where files **cannot be deleted**, and it runs git 2.34. Rules:

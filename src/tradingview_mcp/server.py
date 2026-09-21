@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from typing import Any, Dict, List, Optional
 from typing_extensions import TypedDict
 from mcp.server.fastmcp import FastMCP
@@ -1014,7 +1015,10 @@ def main() -> None:
 	parser = argparse.ArgumentParser(description="TradingView Screener MCP server")
 	parser.add_argument("transport", choices=["stdio", "streamable-http"], default="stdio", nargs="?", help="Transport (default stdio)")
 	parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
-	parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
+	parser.add_argument("--port", type=int, default=None,
+		help="Preferred port for streamable-http (default: $PORT or 8000). The next free port is used if it is busy.")
+	parser.add_argument("--strict-port", action="store_true",
+		help="Fail instead of moving to another port if --port is busy (also: PORT_STRICT=1)")
 	args = parser.parse_args()
 
 	if os.environ.get("DEBUG_MCP"):
@@ -1024,9 +1028,12 @@ def main() -> None:
 	if args.transport == "stdio":
 		mcp.run()
 	else:
+		from tradingview_mcp.core.utils.ports import resolve_port
+		port = resolve_port(args.port, args.host, strict=True if args.strict_port else None)
+		print(f"[mcp] streamable-http on {args.host}:{port}", file=sys.stderr, flush=True)
 		try:
 			mcp.settings.host = args.host
-			mcp.settings.port = args.port
+			mcp.settings.port = port
 		except Exception:
 			pass
 		mcp.run(transport="streamable-http")

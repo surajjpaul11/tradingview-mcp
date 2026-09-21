@@ -13,9 +13,11 @@ leeway_pct       = input.float(5.0, "Boundary Leeway (%)", minval=1.0, maxval=20
 stopgap_pct      = input.float(5.0, "Stopgap Margin (%)", minval=1.0, maxval=20.0, step=0.5, group=grp_ch, tooltip="Margin below lower channel line before emergency stop loss triggers")
 
 grp_filt = "Regime & Filters"
-use_htf_filter   = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt, tooltip="Prevents 3M long entries when 1Y trend is declining sharply near the top of the 1Y range")
-use_confluence   = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
-confirm_bars     = input.int(2, "Bounce Confirmation Bars", minval=1, maxval=2, group=grp_ch, tooltip="1 = single green bounce bar, 2 = 2 consecutive higher closes (recommended)")
+use_htf_filter     = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt, tooltip="Prevents 3M long entries when 1Y trend is declining sharply near the top of the 1Y range")
+use_confluence     = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
+use_lower_reclaim  = input.bool(true, "Enable Lower Channel Reclaim", group=grp_filt, tooltip="Allows entries when price breaches lower channel and reclaims back above it")
+use_channel_curl   = input.bool(true, "Enable Channel Curl Buy", group=grp_filt, tooltip="Allows entries when declining channel flattens and curls upwards")
+confirm_bars       = input.int(2, "Bounce Confirmation Bars", minval=1, maxval=2, group=grp_ch, tooltip="1 = single green bounce bar, 2 = 2 consecutive higher closes (recommended)")
 stopgap_mode     = input.string("close", "Stopgap Trigger Mode", options=["close", "low"], group=grp_ch, tooltip="close = candle close below stopgap, low = intraday touch")
 dynamic_size     = input.bool(true, "Enable Confluence Position Sizing", group=grp_filt, tooltip="100% on Confluence Grade A, 50% on Tactical-only")
 
@@ -77,7 +79,7 @@ var bool  target_reached    = false
 
 // 1. Entry Logic:
 // Touch or breach into/below bottom leeway zone within last 3 bars
-recent_touch_bottom = ta.lowest(low, 3) <= bottom_leeway_ceiling or ta.lowest(close, 3) <= low_3m
+recent_touch_bottom = use_lower_reclaim ? (ta.lowest(low, 3) <= bottom_leeway_ceiling or ta.lowest(close, 3) <= low_3m) : (ta.lowest(low, 3) <= bottom_leeway_ceiling and ta.lowest(low, 3) >= stopgap_floor)
 
 // Confirmed bounce (2-bar continuation OR Bullish Engulfing reclaim expansion)
 bounce_1b = (close > open) and (close > close[1]) and (close > low_3m)
@@ -87,14 +89,14 @@ bounce_confirmed = (confirm_bars == 2) ? (bounce_2b or bullish_engulfing) : boun
 
 // Lower Channel Reclaim: Price moved from below/at lower band to above it on a confirmed bullish day
 was_below_channel = (close[1] <= low_3m[1]) or (open <= low_3m) or (low <= low_3m)
-reclaimed_channel = was_below_channel and (close > low_3m) and (close > open) and (close > close[1])
+reclaimed_channel = use_lower_reclaim and was_below_channel and (close > low_3m) and (close > open) and (close > close[1])
 
 // Channel Inflection / Valley Curl: Midline was declining, flattens, and curls strictly upward
 was_declining_mid = (mid_3m[2] < mid_3m[4]) or (mid_3m[1] < mid_3m[3])
 ch_height = up_3m - low_3m
 is_turning_up_mid = (mid_3m > mid_3m[1]) and ((mid_3m - mid_3m[1]) >= 0.003 * ch_height)
 price_above_mid = (close >= mid_3m) and (close > open) and (close > close[1])
-channel_curl_entry = was_declining_mid and is_turning_up_mid and price_above_mid
+channel_curl_entry = use_channel_curl and was_declining_mid and is_turning_up_mid and price_above_mid
 
 // HTF Filter
 htf_allowed = true

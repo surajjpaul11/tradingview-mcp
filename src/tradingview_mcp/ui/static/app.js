@@ -13,6 +13,10 @@ const channelStoplossGroup = document.getElementById('channel-stoploss-group');
 const channelStoplossCheckbox = document.getElementById('channel-stoploss-checkbox');
 const channelMidlineGroup = document.getElementById('channel-midline-group');
 const channelMidlineCheckbox = document.getElementById('channel-midline-checkbox');
+const channelLowerReclaimGroup = document.getElementById('channel-lower-reclaim-group');
+const channelLowerReclaimCheckbox = document.getElementById('channel-lower-reclaim-checkbox');
+const channelCurlGroup = document.getElementById('channel-curl-group');
+const channelCurlCheckbox = document.getElementById('channel-curl-checkbox');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -40,6 +44,16 @@ function getChannelMidlineEnabled() {
     return channelMidlineCheckbox.checked;
 }
 
+function getChannelLowerReclaimEnabled() {
+    if (!channelLowerReclaimCheckbox) return true;
+    return channelLowerReclaimCheckbox.checked;
+}
+
+function getChannelCurlEnabled() {
+    if (!channelCurlCheckbox) return true;
+    return channelCurlCheckbox.checked;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
@@ -47,6 +61,8 @@ function syncChannelMultVisibility(strategy) {
     if (channelLookbackGroup) channelLookbackGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelStoplossGroup) channelStoplossGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
+    if (channelLowerReclaimGroup) channelLowerReclaimGroup.style.display = isChannel ? 'flex' : 'none';
+    if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
@@ -414,6 +430,18 @@ async function loadFilters() {
         }
         if (channelMidlineCheckbox) {
             channelMidlineCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (channelLowerReclaimCheckbox) {
+            channelLowerReclaimCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (channelCurlCheckbox) {
+            channelCurlCheckbox.onchange = () => {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
@@ -797,7 +825,7 @@ async function updateDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -914,7 +942,7 @@ async function updateAdvDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
             : '';
         const [candlesRes, tradesRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),

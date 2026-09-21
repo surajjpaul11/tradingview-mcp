@@ -16,7 +16,9 @@ grp_filt = "Regime & Filters"
 use_htf_filter     = input.bool(true, "Enable 1-Year HTF Filter", group=grp_filt, tooltip="Prevents 3M long entries when 1Y trend is declining sharply near the top of the 1Y range")
 use_confluence     = input.bool(true, "Highlight Confluence Grade A Entries", group=grp_filt, tooltip="Highlights setups where 3M bottom bounce coincides with 1Y lower zone")
 use_lower_reclaim  = input.bool(true, "Enable Lower Channel Reclaim", group=grp_filt, tooltip="Allows entries when price breaches lower channel and reclaims back above it")
-use_channel_curl   = input.bool(true, "Enable Channel Curl Buy", group=grp_filt, tooltip="Allows entries when declining channel flattens and curls upwards")
+channel_curl_mode  = input.string("Both (curl buy and curl sell)", "Channel Curl Mode", options=["None", "Both (curl buy and curl sell)", "Curl buy", "Curl sell"], group=grp_filt, tooltip="Control whether both curl buy and curl sell are active, or each one separately")
+curl_buy_enabled   = (channel_curl_mode == "Both (curl buy and curl sell)") or (channel_curl_mode == "Curl buy")
+curl_sell_enabled  = (channel_curl_mode == "Both (curl buy and curl sell)") or (channel_curl_mode == "Curl sell")
 use_midline_cross  = input.bool(false, "Enable Midline Cross (Buy Up / Sell Down)", group=grp_filt, tooltip="Triggers buy when price crosses above midline, and triggers sell when price crosses below midline")
 confirm_bars       = input.int(2, "Bounce Confirmation Bars", minval=1, maxval=2, group=grp_ch, tooltip="1 = single green bounce bar, 2 = 2 consecutive higher closes (recommended)")
 stopgap_mode     = input.string("close", "Stopgap Trigger Mode", options=["close", "low"], group=grp_ch, tooltip="close = candle close below stopgap, low = intraday touch")
@@ -98,12 +100,12 @@ ch_height = up_3m - low_3m
 pos_in_channel = (ch_height > 0) ? ((close - low_3m) / ch_height) : 0.5
 is_turning_up_mid = (mid_3m > mid_3m[1]) and ((mid_3m - mid_3m[1]) >= 0.003 * ch_height)
 price_above_mid = (close >= mid_3m) and (close > open) and (close > close[1])
-channel_curl_entry = use_channel_curl and (pos_in_channel <= 0.65) and was_declining_mid and is_turning_up_mid and price_above_mid
+channel_curl_entry = curl_buy_enabled and (pos_in_channel <= 0.65) and was_declining_mid and is_turning_up_mid and price_above_mid
 
 // Channel Curl Sell / Exit: Midline was ascending, tops out, and curls downward
 was_ascending_mid = (mid_3m[2] > mid_3m[4]) or (mid_3m[1] > mid_3m[3])
 is_curling_down_mid = (mid_3m < mid_3m[1]) and (((mid_3m[1] - mid_3m) >= 0.002 * ch_height) or (close < open and close < close[1]))
-channel_curl_sell = use_channel_curl and was_ascending_mid and is_curling_down_mid and (pos_in_channel >= 0.50 or reached_mid)
+channel_curl_sell = curl_sell_enabled and was_ascending_mid and is_curling_down_mid and (pos_in_channel >= 0.50 or reached_mid)
 
 // Midline Cross Up Entry
 mid_cross_up = use_midline_cross and ta.crossover(close, mid_3m) and (close > open) and (close > close[1])

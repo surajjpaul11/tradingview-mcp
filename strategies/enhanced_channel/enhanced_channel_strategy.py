@@ -314,6 +314,7 @@ def run_enhanced_channel(
     use_stop_loss = params.get("use_stop_loss", True)
     midline_reentry = params.get("midline_reentry", False)
     channel_inflection = params.get("channel_inflection", True)
+    lower_reclaim = params.get("lower_reclaim", True)
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -564,10 +565,16 @@ def run_enhanced_channel(
                 if low_3m[look_idx] is not None and up_3m[look_idx] is not None:
                     ch_h = up_3m[look_idx] - low_3m[look_idx]
                     bot_lee = low_3m[look_idx] + leeway_pct * ch_h
-                    # Any touch or breach into/below lower channel leeway zone qualifies as a bottom contact
-                    if lows[look_idx] <= bot_lee or closes[look_idx] <= low_3m[look_idx]:
-                        recent_touch_bottom = True
-                        break
+                    if lower_reclaim:
+                        # Any touch or breach into/below lower channel leeway zone qualifies as a bottom contact
+                        if lows[look_idx] <= bot_lee or closes[look_idx] <= low_3m[look_idx]:
+                            recent_touch_bottom = True
+                            break
+                    else:
+                        stp_lvl = low_3m[look_idx] - stopgap_pct * ch_h
+                        if lows[look_idx] <= bot_lee and lows[look_idx] >= stp_lvl:
+                            recent_touch_bottom = True
+                            break
 
             if bounce_type == "rsi":
                 rsi_now = rsi_vals[i] if i < len(rsi_vals) else None
@@ -588,7 +595,7 @@ def run_enhanced_channel(
             # Lower Channel Reclaim: Price moved from below/at lower band to above it on a confirmed bullish candle
             prev_d3 = low_3m[i - 1] if (i > 0 and low_3m[i - 1] is not None) else d3
             was_below_channel = (prev_c <= prev_d3) or (opens[i] <= d3) or (lows[i] <= d3)
-            reclaimed_channel = was_below_channel and (c > d3) and (c > o) and (c > prev_c)
+            reclaimed_channel = lower_reclaim and was_below_channel and (c > d3) and (c > o) and (c > prev_c)
 
             should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed)
 
@@ -919,6 +926,7 @@ def run_backtest(
     use_stop_loss: bool = True,
     midline_reentry: bool = False,
     channel_inflection: bool = True,
+    lower_reclaim: bool = True,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
     candles = fetch_ohlcv(symbol, period, interval)
@@ -943,6 +951,7 @@ def run_backtest(
         "use_stop_loss": use_stop_loss,
         "midline_reentry": midline_reentry,
         "channel_inflection": channel_inflection,
+        "lower_reclaim": lower_reclaim,
     }
 
     strat_output = run_enhanced_channel(candles, params)

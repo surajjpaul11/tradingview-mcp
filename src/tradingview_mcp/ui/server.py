@@ -127,7 +127,7 @@ async def get_filters():
     return {"symbols": symbols, "strategies": all_strategies}
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False):
+async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -143,6 +143,10 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
             ec_kwargs["use_stop_loss"] = use_stop_loss
         if midline_reentry is not None:
             ec_kwargs["midline_reentry"] = midline_reentry
+        if lower_reclaim is not None:
+            ec_kwargs["lower_reclaim"] = lower_reclaim
+        if channel_inflection is not None:
+            ec_kwargs["channel_inflection"] = channel_inflection
 
         if ec_kwargs:
             try:
@@ -206,7 +210,7 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -222,6 +226,10 @@ async def api_stats(symbol: str, strategy: str = None, channel_mult: float = Non
             ec_kwargs["use_stop_loss"] = use_stop_loss
         if midline_reentry is not None:
             ec_kwargs["midline_reentry"] = midline_reentry
+        if lower_reclaim is not None:
+            ec_kwargs["lower_reclaim"] = lower_reclaim
+        if channel_inflection is not None:
+            ec_kwargs["channel_inflection"] = channel_inflection
 
         if ec_kwargs:
             try:
@@ -245,6 +253,8 @@ async def api_stats(symbol: str, strategy: str = None, channel_mult: float = Non
                     filter_dict["lookback"] = ec_kwargs["tactical_lookback"]
                 filter_dict["use_stop_loss"] = ec_kwargs.get("use_stop_loss", True)
                 filter_dict["midline_reentry"] = ec_kwargs.get("midline_reentry", False)
+                filter_dict["lower_reclaim"] = ec_kwargs.get("lower_reclaim", True)
+                filter_dict["channel_inflection"] = ec_kwargs.get("channel_inflection", True)
                 return {
                     "total_trades": tot_trades,
                     "total_pnl_usd": tot_pnl_usd,

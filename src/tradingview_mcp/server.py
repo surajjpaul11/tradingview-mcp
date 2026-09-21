@@ -2999,6 +2999,7 @@ def backtest_strategy(
                                 'higher_highs' — Multi-timeframe market structure (HH/HL detection)
                                 'enhanced_lines' — Channel trend following with volume-weighted bounce trading
                                 'volume_price_breakout' — New price high with a 3% gain and 2x prior volume; next-open entry
+                                'resistance_lines' — Horizontal S/R levels: buy support bounce (reversal candle), sell at resistance bounce
         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
         initial_capital:      Starting capital in USD (default: $10,000)
         commission_pct:       Per-trade commission % (default: 0.1%)

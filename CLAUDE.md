@@ -53,6 +53,7 @@ strategies/                              # Strategy pairs: same name, .py + .pin
   enhanced_lines_strategy.py             # Enhanced Lines — channel bounce trading, volume-weighted sizing
   enhanced_lines_strategy.html           # Interactive visual of channel bounce concept
   compare_enhanced_lines.py             # Enhanced Lines vs Straight Line vs B&H comparison script
+  resistance_lines/                      # Resistance Lines — horizontal S/R bounce (long only): .py, .pine, compare script
 ```
 
 ### Strategy Convention
@@ -140,9 +141,18 @@ Every strategy gets two files with the **same filename**, different extensions:
    - Tuned defaults: dev=3.0, stop=2.0, hold=15 (tested 8 variants across 23 symbols)
    - Long-only mode: +1.40% avg across 23 symbols, best on high-vol assets (VXX +25.73% vs B&H)
 
+### Phase 1f: Resistance Lines Strategy (COMPLETE, on branch `claude`)
+
+1. **Created `strategies/resistance_lines/`** — horizontal support/resistance bounce, long only
+   - Levels = clusters of confirmed swing highs/lows (>= 2 touches within 0.75 ATR, last 500 bars)
+   - Buy: support-zone touch + close back above + hammer/bullish engulfing, RR >= 1.5
+   - Exit: stop 1.0 ATR below level, target = next resistance zone, or resistance bounce (shooting star/bearish engulfing)
+   - Daily bars by default — 1h tested and not viable after 0.30% round-trip costs
+   - Registered in `backtest_service._STRATEGY_MAP` as `resistance_lines`; Pine v6 port included (not yet compiled in TradingView)
+
 Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.md)
 
-### Available Backtest Strategies (12 total)
+### Available Backtest Strategies (13 total)
 
 | Strategy | Type | Sides | Description |
 |----------|------|-------|-------------|
@@ -158,6 +168,7 @@ Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.
 | **straight_line** | **Trendline break** | **Long (+ optional short)** | **4-point trendline confirmation, 1.5% tolerance, 1-bar break confirm** |
 | **volatility_harvester** | **Mean reversion** | **Long + Short** | **ATR Z-Score + volume entries, ER regime gate, triple-layer exits** |
 | **enhanced_lines** | **Channel trend** | **Long + Short** | **Channel bounce trading, volume-weighted sizing, tax-optimized partial sells** |
+| **resistance_lines** | **Horizontal S/R bounce** | **Long only** | **Clustered swing-pivot levels, hammer/engulfing confirmation, stop beyond level, target next level** |
 
 ## What Needs To Be Done
 
@@ -247,6 +258,10 @@ python strategies/volatility_harvester_strategy.py --symbol BTC-USD --no-volume-
 # Run standalone Enhanced Lines backtest
 python strategies/enhanced_lines_strategy.py --symbol SPY --period 2y
 python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
+
+# Run standalone Resistance Lines backtest (daily, 5y by default)
+python strategies/resistance_lines/resistance_lines_strategy.py --symbol SPY
+python strategies/resistance_lines/compare_resistance_lines.py      # variant comparison, 23 symbols
 ```
 
 ## Inspiration
@@ -269,7 +284,7 @@ Cowork's shell reaches this repo through a mounted folder where files **cannot b
 
 - Work happens in the `Claude` worktree (`.claude/worktrees/Claude`, branch `claude`). Keep working on `claude` until Suraj says to merge.
 - Read-only git commands always use `git --no-optional-locks ...` (plain `git status` leaves a stale `index.lock`).
-- Staging, committing and pushing are allowed. Commit with per-command identity: `git -c user.name="Suraj Paul" -c user.email="suraj.j.paul@gmail.com" commit ...`.
+- Staging and committing are allowed. Pushing is NOT possible from Cowork (remote is SSH; the Cowork shell has no SSH keys) — Suraj pushes from his Mac. Commit with per-command identity: `git -c user.name="Suraj Paul" -c user.email="suraj.j.paul@gmail.com" commit ...`.
 - After any git write, move leftover `*.lock` / `tmp_obj_*` files with `mv -n` into `.git/_to_delete/`. Suraj deletes that folder periodically. Never ask for delete permission for this.
 - Never run `git worktree prune` from Cowork — it cannot see Mac paths and would unlink the `Claude` worktree.
 - Do not enable `worktree.useRelativePaths` (requires git ≥ 2.48; would make the repo unreadable to Cowork's git 2.34).

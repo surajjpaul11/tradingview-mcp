@@ -511,7 +511,7 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
             const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : '')));
-            const entryColor = isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#A855F7' : (isLong ? '#10B981' : '#F59E0B')));
+            const entryColor = isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B')));
 
             // 1. Entry Marker
             markers.push({
@@ -575,7 +575,7 @@ function buildMarkers(tradesData, sorted, strategy) {
             if ((isMidStop || isSL) && m.position === 'aboveBar') existing.color = '#F43F5E';
             if (isMid && m.position === 'belowBar') existing.color = '#3B82F6';
             if (isLowerReclaim && m.position === 'belowBar') existing.color = '#06B6D4';
-            if (isCurl && m.position === 'belowBar') existing.color = '#A855F7';
+            if (isCurl && m.position === 'belowBar') existing.color = '#FACC15';
         }
     });
 

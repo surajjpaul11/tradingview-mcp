@@ -986,7 +986,12 @@ def run_backtest(
     trades = apply_costs(strat_output["raw_trades"], commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital)
 
-    bnh = round((candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100.0, 2)
+    # Calculate Buy & Hold return from the strategy's first entry (or full candle span if no trades)
+    if trades:
+        first_entry = trades[0]["entry_price"]
+        bnh = round((candles[-1]["close"] - first_entry) / first_entry * 100.0, 2)
+    else:
+        bnh = round((candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100.0, 2)
 
     return {
         "symbol": symbol.upper(),

@@ -109,19 +109,28 @@ function switchTab(tab) {
         panel.classList.toggle('active', isActive);
     });
 
-    // Initialize advanced chart if first switch
-    if (tab === 'advanced' && !advChart) {
-        initAdvChart();
+    if (tab === 'advanced') {
+        if (!advChart) {
+            initAdvChart();
+        } else {
+            const container = document.getElementById('adv-chart');
+            if (container && advChart) {
+                advChart.applyOptions({
+                    width: container.clientWidth || 800,
+                    height: container.clientHeight || 500,
+                });
+            }
+        }
         updateAdvDashboard();
-    } else if (tab === 'advanced' && advChart) {
-        // Resize to fit container
-        const container = document.getElementById('adv-chart');
-        if (container && advChart) {
-            advChart.applyOptions({
+    } else if (tab === 'regular') {
+        const container = document.getElementById('tv-chart');
+        if (container && chart) {
+            chart.applyOptions({
                 width: container.clientWidth || 800,
                 height: container.clientHeight || 500,
             });
         }
+        updateDashboard();
     }
 }
 
@@ -322,7 +331,12 @@ function initTimeframeButtons() {
         btn.addEventListener('click', (e) => {
             const range = e.currentTarget.dataset.range;
             if (range) {
+                const prevRange = activeRange;
+                activeRange = range;
                 applyTimeframeRange(range);
+                if (range !== prevRange && (range === '1y' || range === '5y')) {
+                    updateDashboard();
+                }
             }
         });
     });
@@ -826,8 +840,9 @@ async function updateDashboard() {
     setLoading(true, 'loading');
 
     try {
+        const reqPeriod = (activeRange === '1y' || activeRange === '5y') ? activeRange : '5y';
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}` 
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -944,15 +959,17 @@ async function updateAdvDashboard() {
 
     try {
         const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}` 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
             : '';
-        const [candlesRes, tradesRes] = await Promise.all([
+        const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
+        const statsData = statsRes.ok ? await statsRes.json() : {};
 
         const rawCandles = candlesData.candles || [];
         const sorted = rawCandles
@@ -996,6 +1013,39 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
         }
+
+        // -- Update Top Stats Cards for Current Period --
+        const pnl = statsData.total_pnl_usd || 0;
+        const pnlSign = pnl >= 0 ? '+' : '-';
+        pnlVal.textContent = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+        pnlVal.className = 'stat-value' + (pnl > 0 ? ' profit' : pnl < 0 ? ' loss' : '');
+
+        const pnlPct = statsData.total_pnl_pct != null
+            ? statsData.total_pnl_pct
+            : (statsData.total_pnl_usd ? (statsData.total_pnl_usd / 100) : 0);
+        const pnlPctSign = pnlPct >= 0 ? '+' : '';
+        if (pnlPctVal) {
+            pnlPctVal.textContent = `${pnlPctSign}${Number(pnlPct).toFixed(2)}%`;
+            pnlPctVal.className = 'stat-value' + (pnlPct > 0 ? ' profit' : pnlPct < 0 ? ' loss' : '');
+        }
+
+        let bnh = statsData.buy_and_hold_pct;
+        if ((bnh == null || bnh === 0) && sorted.length >= 2) {
+            bnh = ((sorted[sorted.length - 1].close - sorted[0].close) / sorted[0].close) * 100;
+        }
+        if (bnhVal) {
+            if (bnh != null) {
+                const bnhSign = bnh >= 0 ? '+' : '';
+                bnhVal.textContent = `${bnhSign}${Number(bnh).toFixed(2)}%`;
+                bnhVal.className = 'stat-value' + (bnh > 0 ? ' profit' : bnh < 0 ? ' loss' : '');
+            } else {
+                bnhVal.textContent = '--';
+                bnhVal.className = 'stat-value';
+            }
+        }
+
+        winrateVal.textContent = `${statsData.win_rate_pct || 0}%`;
+        totalTradesVal.textContent = (tradesData.trades ? tradesData.trades.length : statsData.total_trades) || 0;
 
         // Fit content
         advChart.timeScale().fitContent();

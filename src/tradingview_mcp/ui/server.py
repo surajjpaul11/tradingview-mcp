@@ -127,7 +127,7 @@ async def get_filters():
     return {"symbols": symbols, "strategies": all_strategies}
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True):
+async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, period: str = "5y"):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -161,7 +161,7 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
                 clean_sym = symbol.strip().upper()
                 if clean_sym in ("PORTFOLIO", "TOTAL"):
                     clean_sym = "SPY"
-                res = run_ec_backtest(symbol=clean_sym, period="5y", **ec_kwargs)
+                res = run_ec_backtest(symbol=clean_sym, period=period, **ec_kwargs)
                 trades = []
                 for t in res.get("trade_log", []):
                     entry_d = t.get("entry_date", "")
@@ -212,7 +212,7 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, period: str = "5y"):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -246,7 +246,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mul
                 clean_sym = symbol.strip().upper()
                 if clean_sym in ("PORTFOLIO", "TOTAL"):
                     clean_sym = "SPY"
-                res = run_ec_backtest(symbol=clean_sym, period="5y", **ec_kwargs)
+                res = run_ec_backtest(symbol=clean_sym, period=period, **ec_kwargs)
                 tot_trades = res.get("total_trades", 0)
                 tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
                 wr = res.get("win_rate_pct", 0.0)

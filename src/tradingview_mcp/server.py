@@ -2998,6 +2998,7 @@ def backtest_strategy(
                                 'vwma17'     — VWMA(17) crossover with ATR stop-loss & take-profit
                                 'higher_highs' — Multi-timeframe market structure (HH/HL detection)
                                 'enhanced_lines' — Channel trend following with volume-weighted bounce trading
+                                'volume_price_breakout' — New price high with a 3% gain and 2x prior volume; next-open entry
         period:               Historical data period: '1mo', '3mo', '6mo', '1y', '2y'
         initial_capital:      Starting capital in USD (default: $10,000)
         commission_pct:       Per-trade commission % (default: 0.1%)
@@ -3201,6 +3202,13 @@ def execute_trade(
             "order": None,
             "executed": False,
             "reason": f"No active signal (current: {signal['signal']}). No order placed.",
+        }
+    if not dry_run and broker.lower() == "bitget" and signal["signal"] == "short":
+        return {
+            "signal_check": signal,
+            "order": None,
+            "executed": False,
+            "reason": "Bitget is configured for spot trading; a sell cannot open a short position.",
         }
 
     # Step 2: Map symbol to broker format

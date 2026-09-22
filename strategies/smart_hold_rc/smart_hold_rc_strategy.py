@@ -186,9 +186,11 @@ def run_smart_hold_rc(candles: list[dict], vix_candles: list[dict] | None = None
     atr_vals = calc_atr(candles, 14)
     rsi_vals = calc_rsi(closes, 14)
 
-    # Compute volatility bucket: median ATR% over first 100 bars
+    # Fix the volatility bucket before the first eligible decision.
+    warmup = max(slow_ma_period, exit_ma_period, pivot_left + pivot_right) + 5
+    # Use only candles strictly before the first scored bar.
     atr_pct_vals = []
-    for i in range(min(100, n)):
+    for i in range(min(warmup, n)):
         if atr_vals[i] is not None and closes[i] > 0:
             atr_pct_vals.append(atr_vals[i] / closes[i] * 100)
     median_atr_pct = sorted(atr_pct_vals)[len(atr_pct_vals) // 2] if atr_pct_vals else 1.5
@@ -236,8 +238,6 @@ def run_smart_hold_rc(candles: list[dict], vix_candles: list[dict] | None = None
 
     trades: list[dict] = []
     capital = initial_cap
-
-    warmup = max(slow_ma_period, exit_ma_period, pivot_left + pivot_right) + 5
 
     for i in range(warmup, n):
         close = closes[i]

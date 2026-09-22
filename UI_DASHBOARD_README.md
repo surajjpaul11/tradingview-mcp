@@ -29,15 +29,18 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
 
 1. Open a system terminal and navigate to the project's root directly:
    ```bash
-   cd /Users/spaul11/Projects/tradingview-mcp
+   cd /Users/spaul11/Projects/codex
    ```
 
-2. Run the `server.py` file strictly wrapped in `uv run`:
+2. Run the dashboard launcher with `uv run`:
    ```bash
-   uv run python src/tradingview_mcp/ui/server.py
+   uv run python -m tradingview_mcp.ui.launcher --open-browser
    ```
 
-3. Open a browser and navigate to the local dashboard address:
-   [http://127.0.0.1:8000](http://127.0.0.1:8000)
+3. The launcher prints and opens the dashboard address. It starts at port 8000 and tries the next free port if another copy is already running. Set `PORT` to change the starting port.
+
+The dashboard's **Opportunity research** link opens an editable cross-stock watchlist scanner. It highlights current completed-bar buys and their historical long-trade outcomes. The displayed win rates are not calibrated probabilities; see [the scanner groundwork](docs/OPPORTUNITY_SCANNER.md) for its present limits.
+
+The scanner includes [Volume-Confirmed Price Breakout](docs/VOLUME_PRICE_BREAKOUT.md), which checks for a new price high with an unusually large price gain and volume surge. Its pending signals and earlier closed trades appear alongside the other supported strategies.
 
 *(The server will stay active until manually killed with `Ctrl + C` in the shell).*

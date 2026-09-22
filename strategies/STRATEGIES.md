@@ -329,6 +329,97 @@ Downtrend resistance trendline (buy when price closes above):
 
 ---
 
+## Sloped Lines Strategy
+
+**Files:** `strategies/sloped_lines/sloped_lines_strategy.py` | `strategies/sloped_lines/sloped_lines_visual.html`
+**Type:** Alternating trendline breakout | **Sides:** Long only (short optional via `--enable-short`) | **MCP key:** `sloped_lines`
+
+### Overview
+
+An alternating trendline breakout strategy. While price is falling, draw a descending resistance line
+connecting two lower swing highs (green lines). When price breaks above → BUY. While holding, draw an
+ascending support line connecting two higher swing lows (blue lines). When price breaks below → SELL.
+Repeat.
+
+### How It Works
+
+**Phase 1 — Waiting for Buy (out of market):**
+1. Detect swing highs using pivot logic (5 bars left/right)
+2. Find two consecutive swing highs where `high₂ < high₁` (lower highs → descending)
+3. Validate: no candle close breaks above the line between the two anchor points
+4. Extend the line forward and watch for a break
+5. When price **closes above** the projected resistance → **BUY**
+
+**Phase 2 — Holding (long position):**
+1. Detect swing lows that form after the buy
+2. Find two consecutive swing lows where `low₂ > low₁` (higher lows → ascending)
+3. Validate: no candle close breaks below the line between the two anchor points
+4. Extend the line forward and watch for a break
+5. When price **closes below** the projected support → **SELL**
+6. Return to Phase 1
+
+**Key Differences from Straight Line:**
+- Only 2 anchor points needed (vs 4-point confirmation in Straight Line)
+- Validates line integrity (no close violates the line between anchors)
+- Always alternates between descending resistance and ascending support
+- Simpler state machine: just `waiting_for_buy` ↔ `holding`
+
+### Default Parameters
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `pivot_lookback` | 5 | Bars left/right for swing point detection |
+| `trendline_tolerance` | 0.015 | 1.5% tolerance for line validation |
+| `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
+| `enable_short` | false | Enable short positions on support break |
+| `interval` | 1h | Hourly candles |
+| `period` | 2y | Data lookback |
+
+### Usage
+
+```bash
+# Default (SPY, 2y, 1h, long-only)
+python strategies/sloped_lines/sloped_lines_strategy.py
+
+# Different symbol
+python strategies/sloped_lines/sloped_lines_strategy.py --symbol AAPL --period 2y
+
+# Enable short selling
+python strategies/sloped_lines/sloped_lines_strategy.py --symbol QQQ --enable-short
+
+# Tighter tolerance
+python strategies/sloped_lines/sloped_lines_strategy.py --symbol NVDA --trendline-tolerance 0.01
+```
+
+### Visual Example
+
+```
+Phase 1: Descending Resistance (Green line — lower highs)
+
+     Price
+     |*
+     | * LH₁
+     |   *-----------
+     |  LH₂ *        ---- line projected forward
+     |     *    *
+     |       *    *       * ← close above line = BUY
+     |         *
+     +---------------------- Time
+
+Phase 2: Ascending Support (Blue line — higher lows)
+
+     Price
+     |                *
+     |              *   *
+     |            *       *     * ← close below line = SELL
+     |         *  HL₂      *  /
+     |       * HL₁      ----*--- line projected forward
+     |     *-----------
+     +---------------------- Time
+```
+
+---
+
 ## Enhanced Straight Lines Strategy
 
 **Files:** `strategies/enhanced_lines_strategy.py` | `strategies/enhanced_lines_strategy.html`

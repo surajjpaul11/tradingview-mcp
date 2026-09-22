@@ -205,7 +205,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     return candles, tf, actual_period
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -224,7 +224,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
             candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
 
-            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, candles=candles)
+            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars, candles=candles)
             trades = []
             for t in res.get("trade_log", []):
                 entry_d = t.get("entry_date", "")
@@ -338,7 +338,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -357,7 +357,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
             candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
 
-            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, candles=candles)
+            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars, candles=candles)
             tot_trades = res.get("total_trades", 0)
             tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
             wr = res.get("win_rate_pct", 0.0)
@@ -369,7 +369,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
                 "win_rate_pct": wr,
                 "winning_trades": int(tot_trades * (wr / 100.0)),
                 "losing_trades": tot_trades - int(tot_trades * (wr / 100.0)),
-                "filters": {"strategy": "sloped_lines", "symbol": clean_sym, "full_candle": full_candle, "use_wick": use_wick, "confirm_candles": confirm_candles, "inverse_color_trigger": inverse_color_trigger, "line_angle": line_angle, "stop_loss_mode": stop_loss_mode, "timeframe": actual_tf, "period": actual_period},
+                "filters": {"strategy": "sloped_lines", "symbol": clean_sym, "full_candle": full_candle, "use_wick": use_wick, "confirm_candles": confirm_candles, "inverse_color_trigger": inverse_color_trigger, "line_angle": line_angle, "stop_loss_mode": stop_loss_mode, "min_anchor_bars": min_anchor_bars, "timeframe": actual_tf, "period": actual_period},
             }
         except Exception as e:
             print(f"On-the-fly sloped_lines stats error for {symbol}: {e}")
@@ -451,7 +451,7 @@ async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: 
     return {"candles": candles, "timeframe": actual_tf, "period": actual_period}
 
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """
     Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
     and return trendline segments for chart overlay.
@@ -484,7 +484,7 @@ async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timefram
             if str(strategy_dir) not in sys.path:
                 sys.path.insert(0, str(strategy_dir))
             from sloped_lines_strategy import run_sloped_lines_with_trendlines
-            result = run_sloped_lines_with_trendlines(candles, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode)
+            result = run_sloped_lines_with_trendlines(candles, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars)
             return {"trendlines": result.get("trendlines", []), "timeframe": actual_tf, "period": actual_period}
 
         else:

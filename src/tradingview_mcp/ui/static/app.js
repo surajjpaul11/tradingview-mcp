@@ -71,6 +71,8 @@ const slopedLineAngleGroup = document.getElementById('sloped-line-angle-group');
 const slopedLineAngleSelect = document.getElementById('sloped-line-angle-select');
 const slopedStopLossGroup = document.getElementById('sloped-stop-loss-group');
 const slopedStopLossSelect = document.getElementById('sloped-stop-loss-select');
+const slopedAnchorBarsGroup = document.getElementById('sloped-anchor-bars-group');
+const slopedAnchorBarsSelect = document.getElementById('sloped-anchor-bars-select');
 
 function getFullCandleEnabled() {
     if (!slopedFullCandleCheckbox) return false;
@@ -103,6 +105,12 @@ function getStopLossMode() {
     return slopedStopLossSelect.value || 'exit_peak_reclaim';
 }
 
+function getMinAnchorBars() {
+    if (!slopedAnchorBarsSelect) return 2;
+    const val = parseInt(slopedAnchorBarsSelect.value, 10);
+    return isNaN(val) ? 2 : val;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
@@ -119,6 +127,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedInverseColorGroup) slopedInverseColorGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedAnchorBarsGroup) slopedAnchorBarsGroup.style.display = isSloped ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
@@ -531,6 +540,12 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (slopedAnchorBarsSelect) {
+            slopedAnchorBarsSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         syncChannelMultVisibility(strategySelect.value);
 
         // Trigger initial data load
@@ -757,7 +772,7 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none') {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2) {
     // Remove previous trendline series
     existingSeriesList.forEach(s => {
         try { chartInstance.removeSeries(s); } catch (_) {}
@@ -765,7 +780,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
     existingSeriesList.length = 0;
 
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}${fullCandleParam}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -954,7 +969,7 @@ async function updateDashboard() {
         const reqPeriod = activeTimeframe || '1y';
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel') 
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}` 
@@ -1008,7 +1023,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode());
+            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
@@ -1082,7 +1097,7 @@ async function updateAdvDashboard() {
 
     try {
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel') 
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
@@ -1126,7 +1141,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;

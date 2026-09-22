@@ -54,6 +54,7 @@ SLIPPAGE_PCT         = 0.05
 DEFAULT_LINE_ANGLE   = 3.0     # default minimum percentage angle/slope threshold
 DEFAULT_STOP_LOSS_MODE = "exit_peak_reclaim"  # default stop loss behavior
 DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: touch break)
+DEFAULT_MIN_ANCHOR_BARS = 2    # default minimum bar distance between anchors
 
 
 # ==============================================================================
@@ -200,7 +201,7 @@ def build_descending_resistance(
     candidate_highs: list[tuple[int, float]] | None = None,
     current_bar: int | None = None,
     tolerance: float = TRENDLINE_TOLERANCE,
-    min_anchor_bars: int = 4,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
     candles: list[dict] | None = None,
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
@@ -232,10 +233,10 @@ def build_descending_resistance(
                 is_a1_valid = False
 
         if is_a1_valid:
-            eligible_a2 = [p for p in confirmed_highs if p[0] >= a1[0] + min_anchor_bars and p[1] < a1[1]]
+            eligible_a2 = [p for p in confirmed_highs if p[0] > a1[0] and p[0] >= a1[0] + min_anchor_bars and p[1] < a1[1]]
             if candidate_highs:
                 for p in candidate_highs:
-                    if p[0] >= a1[0] + min_anchor_bars and p[1] < a1[1] and p not in eligible_a2:
+                    if p[0] > a1[0] and p[0] >= a1[0] + min_anchor_bars and p[1] < a1[1] and p not in eligible_a2:
                         eligible_a2.append(p)
             eligible_a2.sort(key=lambda x: x[0])
 
@@ -306,7 +307,7 @@ def build_descending_resistance(
         for j in range(i + 1, len(eligible)):
             a2 = eligible[j]
 
-            if a2[0] < a1[0] + min_anchor_bars:
+            if a2[0] <= a1[0] or a2[0] < a1[0] + min_anchor_bars:
                 continue
 
             if a2[1] >= a1[1]:
@@ -366,7 +367,7 @@ def build_ascending_support(
     candidate_lows: list[tuple[int, float]] | None = None,
     current_bar: int | None = None,
     tolerance: float = TRENDLINE_TOLERANCE,
-    min_anchor_bars: int = 4,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
     candles: list[dict] | None = None,
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
@@ -398,10 +399,10 @@ def build_ascending_support(
                 is_a1_valid = False
 
         if is_a1_valid:
-            eligible_a2 = [p for p in confirmed_lows if p[0] >= a1[0] + min_anchor_bars and p[1] > a1[1]]
+            eligible_a2 = [p for p in confirmed_lows if p[0] > a1[0] and p[0] >= a1[0] + min_anchor_bars and p[1] > a1[1]]
             if candidate_lows:
                 for p in candidate_lows:
-                    if p[0] >= a1[0] + min_anchor_bars and p[1] > a1[1] and p not in eligible_a2:
+                    if p[0] > a1[0] and p[0] >= a1[0] + min_anchor_bars and p[1] > a1[1] and p not in eligible_a2:
                         eligible_a2.append(p)
             eligible_a2.sort(key=lambda x: x[0])
 
@@ -472,7 +473,7 @@ def build_ascending_support(
         for j in range(i + 1, len(eligible)):
             a2 = eligible[j]
 
-            if a2[0] < a1[0] + min_anchor_bars:
+            if a2[0] <= a1[0] or a2[0] < a1[0] + min_anchor_bars:
                 continue
 
             if a2[1] <= a1[1]:
@@ -540,6 +541,7 @@ def run_sloped_lines(
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
     stop_loss_mode: str = "exit_peak_reclaim",
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -565,6 +567,7 @@ def run_sloped_lines(
       - line_angle: Minimum percentage slope/angle threshold between anchors (0.0, 2.0, 3.0, 5.0, 8.0).
                     Lines with anchor rise/fall below this threshold are not formed.
       - stop_loss_mode: "none" (default), "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer".
+      - min_anchor_bars: Minimum bar distance between anchor 1 and anchor 2 (default 2).
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -820,6 +823,7 @@ def run_sloped_lines(
                     candidate_highs=cand_highs,
                     current_bar=i,
                     tolerance=trendline_tolerance,
+                    min_anchor_bars=min_anchor_bars,
                     candles=candles,
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
@@ -886,6 +890,7 @@ def run_sloped_lines(
                     candidate_lows=cand_lows,
                     current_bar=i,
                     tolerance=trendline_tolerance,
+                    min_anchor_bars=min_anchor_bars,
                     candles=candles,
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
@@ -1090,6 +1095,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
+    min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1102,6 +1108,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         inverse_color_trigger=inverse_color_trigger,
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
+        min_anchor_bars=min_anchor_bars,
     )
     return trades
 
@@ -1121,6 +1128,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
+    min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1134,6 +1142,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         inverse_color_trigger=inverse_color_trigger,
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
+        min_anchor_bars=min_anchor_bars,
     )
 
     formatted_trendlines = []
@@ -1200,6 +1209,7 @@ def run_backtest(
     inverse_color_trigger: bool = False,
     line_angle: float = DEFAULT_LINE_ANGLE,
     stop_loss_mode: str = DEFAULT_STOP_LOSS_MODE,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1217,7 +1227,7 @@ def run_backtest(
             "trade_log": [],
         }
     raw_trades, trendlines = run_sloped_lines(
-        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode,
+        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)

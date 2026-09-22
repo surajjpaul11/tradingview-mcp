@@ -35,7 +35,7 @@ function getSelectedChannelLookback() {
 }
 
 function getChannelStoplossEnabled() {
-    if (!channelStoplossCheckbox) return true;
+    if (!channelStoplossCheckbox) return false;
     return channelStoplossCheckbox.checked;
 }
 
@@ -45,7 +45,7 @@ function getChannelMidlineEnabled() {
 }
 
 function getChannelLowerReclaimEnabled() {
-    if (!channelLowerReclaimCheckbox) return true;
+    if (!channelLowerReclaimCheckbox) return false;
     return channelLowerReclaimCheckbox.checked;
 }
 

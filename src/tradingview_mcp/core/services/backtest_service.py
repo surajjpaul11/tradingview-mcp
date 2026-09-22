@@ -52,6 +52,7 @@ _STRATEGY_LABELS = {
     "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
     "ema21":        "EMA 21 Price Crossover (Long + Short)",
     "enhanced_channel": "Enhanced Channel (MTF Regression Channel Bounce)",
+    "sloped_lines": "Sloped Lines (Alternating Trendline Breakout)",
 }
 
 
@@ -595,6 +596,7 @@ _STRATEGY_MAP = {
     "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
     "ema21":        _run_ema21,
     "enhanced_channel": _get_dynamic_runner("enhanced_channel_strategy.py", "run_enhanced_channel_trades"),
+    "sloped_lines": _get_dynamic_runner("sloped_lines_strategy.py", "run_sloped_lines_trades"),
 }
 
 

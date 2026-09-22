@@ -37,6 +37,7 @@
                     <label for="strategy-select">Strategy</label>
                     <div class="custom-select">
                         <select id="strategy-select">
+                            <option value="sloped_lines" selected>Slope Lines Strategy</option>
                             <option value="all">All Strategies</option>
                         </select>
                     </div>
@@ -101,6 +102,64 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="filter-group" id="sloped-full-candle-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-full-candle-checkbox">
+                        <input type="checkbox" id="sloped-full-candle-checkbox" checked>
+                        <span class="checkbox-text">Full Candle</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-wick-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-wick-checkbox">
+                        <input type="checkbox" id="sloped-wick-checkbox">
+                        <span class="checkbox-text">Wick</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-confirm-candles-group" style="display: flex;">
+                    <label for="sloped-confirm-candles-select">Confirmation Candles</label>
+                    <div class="custom-select">
+                        <select id="sloped-confirm-candles-select">
+                            <option value="0" selected>0</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-inverse-color-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-inverse-color-checkbox">
+                        <input type="checkbox" id="sloped-inverse-color-checkbox">
+                        <span class="checkbox-text">Inverse Color Trigger</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-line-angle-group" style="display: flex;">
+                    <label for="sloped-line-angle-select">Line Angle</label>
+                    <div class="custom-select">
+                        <select id="sloped-line-angle-select">
+                            <option value="0">0%</option>
+                            <option value="2">2%</option>
+                            <option value="3" selected>3%</option>
+                            <option value="5">5%</option>
+                            <option value="8">8%</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-stop-loss-group" style="display: flex;">
+                    <label for="sloped-stop-loss-select">Stop Loss</label>
+                    <div class="custom-select">
+                        <select id="sloped-stop-loss-select">
+                            <option value="none">None</option>
+                            <option value="exit_peak_reclaim" selected>Exit Peak Reclaim</option>
+                            <option value="barrier_trap_reentry">Barrier Trap Reentry</option>
+                            <option value="atr_stop_buffer">ATR Stop Buffer</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -156,18 +215,38 @@
                         </div>
                     </div>
 
-                    <!-- Regular Timeframe Bar -->
-                    <div class="timeframe-bar glass-panel">
-                        <div class="timeframe-info">
-                            <span class="timeframe-label">TIMEFRAME / RANGE</span>
-                            <span class="timeframe-hint" id="active-range-hint">5-Year History (5Y)</span>
+                    <!-- Dual Resolution & Timeframe Bar -->
+                    <div class="timeframe-bar glass-panel dual-controls-bar">
+                        <!-- Candle Resolution Group -->
+                        <div class="control-section">
+                            <div class="timeframe-info">
+                                <span class="timeframe-label">CANDLE RESOLUTION</span>
+                                <span class="timeframe-hint" id="active-res-hint">Daily (1D)</span>
+                            </div>
+                            <div class="timeframe-buttons" id="resolution-btn-group">
+                                <button class="tf-btn res-btn" data-res="30m" id="btn-res-30m">30m</button>
+                                <button class="tf-btn res-btn" data-res="1h" id="btn-res-1h">1H</button>
+                                <button class="tf-btn res-btn" data-res="4h" id="btn-res-4h">4H</button>
+                                <button class="tf-btn res-btn" data-res="12h" id="btn-res-12h">12H</button>
+                                <button class="tf-btn res-btn active" data-res="1d" id="btn-res-1d">1D</button>
+                                <button class="tf-btn res-btn" data-res="5d" id="btn-res-5d">5D</button>
+                            </div>
                         </div>
-                        <div class="timeframe-buttons" id="timeframe-btn-group">
-                            <button class="tf-btn" data-range="1d" id="btn-1d">Daily (1D)</button>
-                            <button class="tf-btn" data-range="1m" id="btn-1m">Monthly (1M)</button>
-                            <button class="tf-btn" data-range="ytd" id="btn-ytd">Year-to-Date (YTD)</button>
-                            <button class="tf-btn" data-range="1y" id="btn-1y">1-Year (1Y)</button>
-                            <button class="tf-btn active" data-range="5y" id="btn-5y">5-Year (5Y)</button>
+
+                        <div class="control-divider"></div>
+
+                        <!-- Timeframe / Range Group -->
+                        <div class="control-section">
+                            <div class="timeframe-info">
+                                <span class="timeframe-label">TIMEFRAME / RANGE</span>
+                                <span class="timeframe-hint" id="active-range-hint">1-Year (1Y)</span>
+                            </div>
+                            <div class="timeframe-buttons" id="timeframe-btn-group">
+                                <button class="tf-btn range-btn" data-range="3mo" id="btn-range-3mo">3M</button>
+                                <button class="tf-btn range-btn active" data-range="1y" id="btn-range-1y">1Y</button>
+                                <button class="tf-btn range-btn" data-range="5y" id="btn-range-5y">5Y</button>
+                                <button class="tf-btn range-btn" data-range="max" id="btn-range-max">MAX</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -211,6 +290,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=24"></script>
+    <script src="/static/app.js?v=32"></script>
 </body>
 </html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opportunity Research · Trade Visualizer</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #0b1220; color: #e5edf7; }
+    main { max-width: 1180px; margin: auto; padding: 2rem 1.2rem 4rem; }
+    a { color: #80baff; }
+    h1 { margin-bottom: .35rem; }
+    p { color: #b2bfd1; line-height: 1.55; }
+    .panel { background: #141f30; border: 1px solid #2c3e55; border-radius: 12px; padding: 1.2rem; margin: 1.4rem 0; }
+    label { display: block; margin-bottom: .45rem; font-weight: 600; }
+    .controls { display: flex; flex-wrap: wrap; gap: .7rem; }
+    input { flex: 1; min-width: 260px; border: 1px solid #54677f; border-radius: 7px; padding: .7rem; background: #0c1524; color: white; font-size: 1rem; }
+    button { border: 0; border-radius: 7px; padding: .7rem 1rem; background: #3788e8; color: white; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: .7rem .6rem; text-align: left; border-bottom: 1px solid #2c3e55; white-space: nowrap; }
+    th { color: #b2bfd1; font-size: .85rem; }
+    .buy { color: #64dca2; font-weight: 700; }
+    .muted { color: #9aaec4; }
+    .bad { color: #ff9d9d; }
+    .notice { border-left: 3px solid #f5bd57; padding-left: 1rem; }
+  </style>
+</head>
+<body>
+<main>
+  <a href="/">← Trade Visualizer</a>
+  <h1>Opportunity research</h1>
+  <p>Compare current buy signals across stocks using completed daily bars. Historical trade outcomes below are evidence, not calibrated odds for the next trade. This page does not place orders or select a stock for you.</p>
+  <section class="panel">
+    <label for="watchlist">Watchlist (up to 20 symbols, separated by commas)</label>
+    <div class="controls">
+      <input id="watchlist" value="GOOGL, AAPL, MELI, SPY, NVDA" autocomplete="off" spellcheck="false">
+      <button id="scan">Scan current buys</button>
+    </div>
+    <p id="status" role="status">Ready to scan.</p>
+  </section>
+  <section class="panel">
+    <h2>Current buy signals</h2>
+    <p id="active-summary" class="muted">Run a scan to check the latest completed bar.</p>
+    <div class="table-scroll"><table id="active-table" hidden>
+      <thead><tr><th>Stock</th><th>Strategy</th><th>Signal bar</th><th>Trigger</th><th>Observed wins</th><th>95% interval</th><th>Average net trade</th><th>Evidence</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+  <section class="panel">
+    <h2>Historical evidence by stock and strategy</h2>
+    <p class="notice">A high historical win rate can still lose money if losing trades are larger. The “probability” field remains unavailable until signal-level, out-of-sample calibration is built and checked.</p>
+    <div class="table-scroll"><table id="all-table" hidden>
+      <thead><tr><th>Stock</th><th>Strategy</th><th>Current buy?</th><th>Closed long trades</th><th>Observed win rate</th><th>Average net trade</th><th>Worst trade</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+</main>
+<script src="/static/opportunities.js"></script>
+</body>
+</html>

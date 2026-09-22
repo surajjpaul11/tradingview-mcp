@@ -1,0 +1,1012 @@
+{
+  "snapshot": "docs/returns_baseline_completed_2026-09-18.json",
+  "method": "Rerun Channel state machine with same-close entry masks; exclude end-of-data marks; 0.1% commission and 0.05% slippage each side.",
+  "limitations": "Exploratory five-symbol historical comparison. The later 30% is a date slice, not an untouched holdout. Channel still assumes same-close fills. Do not interpret as a calibrated probability or live recommendation.",
+  "results": {
+    "baseline": {
+      "GOOGL": {
+        "trades": 13,
+        "losses": 6,
+        "wins": 7,
+        "total_return_pct": 17.56,
+        "early": {
+          "trades": 5,
+          "losses": 1,
+          "wins": 4
+        },
+        "later": {
+          "trades": 8,
+          "losses": 5,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 5,
+          "midline_stop_exit": 4,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 14.871,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 13,
+        "losses": 7,
+        "wins": 6,
+        "total_return_pct": 14.72,
+        "early": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "later": {
+          "trades": 8,
+          "losses": 5,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 5,
+          "midline_stop_exit": 4,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -3.04
+      },
+      "MELI": {
+        "trades": 14,
+        "losses": 9,
+        "wins": 5,
+        "total_return_pct": -14.12,
+        "early": {
+          "trades": 9,
+          "losses": 6,
+          "wins": 3
+        },
+        "later": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 7,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -7.497
+      },
+      "SPY": {
+        "trades": 14,
+        "losses": 8,
+        "wins": 6,
+        "total_return_pct": 1.93,
+        "early": {
+          "trades": 8,
+          "losses": 6,
+          "wins": 2
+        },
+        "later": {
+          "trades": 6,
+          "losses": 2,
+          "wins": 4
+        },
+        "exit_reasons": {
+          "channel_top_exit": 3,
+          "midline_stop_exit": 8,
+          "stopgap_exit": 3
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 17,
+        "losses": 10,
+        "wins": 7,
+        "total_return_pct": 1.22,
+        "early": {
+          "trades": 10,
+          "losses": 6,
+          "wins": 4
+        },
+        "later": {
+          "trades": 7,
+          "losses": 4,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 6,
+          "midline_stop_exit": 5,
+          "stopgap_exit": 5,
+          "trailing_channel_exit": 1
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": -8.884
+      }
+    },
+    "rsi_active": {
+      "GOOGL": {
+        "trades": 6,
+        "losses": 3,
+        "wins": 3,
+        "total_return_pct": 3.05,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 6,
+          "losses": 3,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 3,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 10.021,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": 16.43,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 2,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -2.754
+      },
+      "MELI": {
+        "trades": 11,
+        "losses": 8,
+        "wins": 3,
+        "total_return_pct": -16.09,
+        "early": {
+          "trades": 6,
+          "losses": 5,
+          "wins": 1
+        },
+        "later": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -7.497
+      },
+      "SPY": {
+        "trades": 6,
+        "losses": 2,
+        "wins": 4,
+        "total_return_pct": 6.95,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 4,
+          "losses": 1,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 1
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 9,
+        "losses": 3,
+        "wins": 6,
+        "total_return_pct": 29.02,
+        "early": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "later": {
+          "trades": 4,
+          "losses": 1,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 6,
+          "midline_stop_exit": 3
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": -6.138
+      }
+    },
+    "bollinger_active": {
+      "GOOGL": {
+        "trades": 6,
+        "losses": 3,
+        "wins": 3,
+        "total_return_pct": 16.66,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 3,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 14.871,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": 15.01,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 2,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "stopgap_exit": 3
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -2.754
+      },
+      "MELI": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": -1.73,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 2,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 3
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -6.512
+      },
+      "SPY": {
+        "trades": 4,
+        "losses": 2,
+        "wins": 2,
+        "total_return_pct": 2.06,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 2,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 6,
+        "losses": 1,
+        "wins": 5,
+        "total_return_pct": 37.03,
+        "early": {
+          "trades": 2,
+          "losses": 0,
+          "wins": 2
+        },
+        "later": {
+          "trades": 4,
+          "losses": 1,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 1
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": -2.81
+      }
+    },
+    "rsi_or_bollinger": {
+      "GOOGL": {
+        "trades": 7,
+        "losses": 3,
+        "wins": 4,
+        "total_return_pct": 18.38,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 6,
+          "losses": 3,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 14.871,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 6,
+        "losses": 4,
+        "wins": 2,
+        "total_return_pct": 14.8,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 4,
+          "losses": 3,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 3
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -2.754
+      },
+      "MELI": {
+        "trades": 11,
+        "losses": 8,
+        "wins": 3,
+        "total_return_pct": -16.09,
+        "early": {
+          "trades": 6,
+          "losses": 5,
+          "wins": 1
+        },
+        "later": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -7.497
+      },
+      "SPY": {
+        "trades": 7,
+        "losses": 3,
+        "wins": 4,
+        "total_return_pct": 5.46,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 10,
+        "losses": 4,
+        "wins": 6,
+        "total_return_pct": 25.39,
+        "early": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "later": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 6,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 1
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": -6.138
+      }
+    },
+    "rsi_and_bollinger": {
+      "GOOGL": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": 1.56,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 10.021,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 4,
+        "losses": 2,
+        "wins": 2,
+        "total_return_pct": 16.64,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -2.754
+      },
+      "MELI": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": -1.73,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 2,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 3
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -6.512
+      },
+      "SPY": {
+        "trades": 3,
+        "losses": 1,
+        "wins": 2,
+        "total_return_pct": 3.51,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 1
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 5,
+        "losses": 0,
+        "wins": 5,
+        "total_return_pct": 40.99,
+        "early": {
+          "trades": 2,
+          "losses": 0,
+          "wins": 2
+        },
+        "later": {
+          "trades": 3,
+          "losses": 0,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 1
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": 0.117
+      }
+    },
+    "bollinger_below_middle": {
+      "GOOGL": {
+        "trades": 7,
+        "losses": 4,
+        "wins": 3,
+        "total_return_pct": 13.88,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 6,
+          "losses": 4,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 3,
+          "midline_stop_exit": 2,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 14.871,
+        "worst_loss_pct": -5.626
+      },
+      "AAPL": {
+        "trades": 8,
+        "losses": 4,
+        "wins": 4,
+        "total_return_pct": 16.12,
+        "early": {
+          "trades": 4,
+          "losses": 2,
+          "wins": 2
+        },
+        "later": {
+          "trades": 4,
+          "losses": 2,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 2,
+          "midline_stop_exit": 2,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 12.566,
+        "worst_loss_pct": -2.754
+      },
+      "MELI": {
+        "trades": 6,
+        "losses": 4,
+        "wins": 2,
+        "total_return_pct": -9.1,
+        "early": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "later": {
+          "trades": 4,
+          "losses": 3,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 4
+        },
+        "largest_win_pct": 10.411,
+        "worst_loss_pct": -7.497
+      },
+      "SPY": {
+        "trades": 6,
+        "losses": 2,
+        "wins": 4,
+        "total_return_pct": 3.34,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 9,
+        "losses": 3,
+        "wins": 6,
+        "total_return_pct": 34.41,
+        "early": {
+          "trades": 4,
+          "losses": 1,
+          "wins": 3
+        },
+        "later": {
+          "trades": 5,
+          "losses": 2,
+          "wins": 3
+        },
+        "exit_reasons": {
+          "channel_top_exit": 4,
+          "midline_stop_exit": 3,
+          "stopgap_exit": 2
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": -3.452
+      }
+    },
+    "bollinger_lower_reclaim": {
+      "GOOGL": {
+        "trades": 4,
+        "losses": 1,
+        "wins": 3,
+        "total_return_pct": 28.66,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 3,
+          "losses": 1,
+          "wins": 2
+        },
+        "exit_reasons": {
+          "channel_top_exit": 3,
+          "midline_stop_exit": 1
+        },
+        "largest_win_pct": 14.871,
+        "worst_loss_pct": -0.071
+      },
+      "AAPL": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "MELI": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "SPY": {
+        "trades": 3,
+        "losses": 2,
+        "wins": 1,
+        "total_return_pct": 1.91,
+        "early": {
+          "trades": 1,
+          "losses": 1,
+          "wins": 0
+        },
+        "later": {
+          "trades": 2,
+          "losses": 1,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1,
+          "stopgap_exit": 1
+        },
+        "largest_win_pct": 4.178,
+        "worst_loss_pct": -2.1
+      },
+      "NVDA": {
+        "trades": 2,
+        "losses": 0,
+        "wins": 2,
+        "total_return_pct": 14.91,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 1
+        },
+        "largest_win_pct": 14.31,
+        "worst_loss_pct": 0.525
+      }
+    },
+    "enhanced_lines_active": {
+      "GOOGL": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "AAPL": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "MELI": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "SPY": {
+        "trades": 5,
+        "losses": 3,
+        "wins": 2,
+        "total_return_pct": 0.08,
+        "early": {
+          "trades": 5,
+          "losses": 3,
+          "wins": 2
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1,
+          "midline_stop_exit": 4
+        },
+        "largest_win_pct": 1.494,
+        "worst_loss_pct": -1.679
+      },
+      "NVDA": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      }
+    },
+    "volume_breakout_recent_5": {
+      "GOOGL": {
+        "trades": 1,
+        "losses": 0,
+        "wins": 1,
+        "total_return_pct": 1.17,
+        "early": {
+          "trades": 1,
+          "losses": 0,
+          "wins": 1
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {
+          "channel_top_exit": 1
+        },
+        "largest_win_pct": 1.165,
+        "worst_loss_pct": 1.165
+      },
+      "AAPL": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "MELI": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "SPY": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      },
+      "NVDA": {
+        "trades": 0,
+        "losses": 0,
+        "wins": 0,
+        "total_return_pct": 0,
+        "early": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "later": {
+          "trades": 0,
+          "losses": 0,
+          "wins": 0
+        },
+        "exit_reasons": {},
+        "largest_win_pct": null,
+        "worst_loss_pct": null
+      }
+    }
+  }
+}

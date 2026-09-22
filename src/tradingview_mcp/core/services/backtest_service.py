@@ -18,15 +18,17 @@ import json
 import math
 import statistics
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import importlib.util
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from tradingview_mcp.core.services.indicators_calc import (
     calc_rsi, calc_bollinger, calc_macd, calc_ema, calc_supertrend, calc_donchian,
     calc_vwma, calc_atr, calc_sma,
 )
+from tradingview_mcp.core.services.volume_price_breakout import run_volume_price_breakout
 
 _UA       = "tradingview-mcp/0.7.0 backtest-bot"
 _YF_BASE  = "https://query1.finance.yahoo.com/v8/finance/chart"
@@ -52,6 +54,7 @@ _STRATEGY_LABELS = {
     "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
     "ema21":        "EMA 21 Price Crossover (Long + Short)",
     "enhanced_channel": "Enhanced Channel (MTF Regression Channel Bounce)",
+    "volume_price_breakout": "Volume-Confirmed Price Breakout",
 }
 
 
@@ -98,9 +101,33 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d") -> list[dict]:
     return candles
 
 
+def _completed_candles(candles: list[dict], symbol: str, interval: str,
+                       now: datetime | None = None) -> list[dict]:
+    """Exclude a provider's still-changing most recent bar from research/signals."""
+    if not candles:
+        return candles
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    latest = candles[-1]["date"]
+    if interval == "1d":
+        if symbol.upper().endswith("-USD"):
+            # Yahoo crypto daily bars roll at UTC midnight.
+            unfinished = latest == now_utc.date().isoformat()
+        else:
+            eastern = now_utc.astimezone(ZoneInfo("America/New_York"))
+            unfinished = (latest == eastern.date().isoformat()
+                          and (eastern.hour, eastern.minute) < (16, 15))
+    elif interval in ("1h", "30m"):
+        bar_start = datetime.fromisoformat(latest.replace(" ", "T")).replace(tzinfo=timezone.utc)
+        duration = timedelta(hours=1) if interval == "1h" else timedelta(minutes=30)
+        unfinished = now_utc < bar_start + duration
+    else:
+        unfinished = False
+    return candles[:-1] if unfinished else candles
+
+
 # ─── Strategy Engines ─────────────────────────────────────────────────────────
 
-def _run_rsi(candles, oversold=40, overbought=60, period=14, **_):
+def _run_rsi(candles, oversold=40, overbought=60, period=14, include_open=False, **_):
     closes = [c["close"] for c in candles]
     rsi    = calc_rsi(closes, period)
     trades, position = [], None
@@ -113,10 +140,12 @@ def _run_rsi(candles, oversold=40, overbought=60, period=14, **_):
         elif position is not None and rsi[i] > overbought:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
-def _run_bollinger(candles, period=20, std_mult=2.0, **_):
+def _run_bollinger(candles, period=20, std_mult=2.0, include_open=False, **_):
     closes = [c["close"] for c in candles]
     bb     = calc_bollinger(closes, period, std_mult)
     trades, position = [], None
@@ -129,10 +158,12 @@ def _run_bollinger(candles, period=20, std_mult=2.0, **_):
         elif position is not None and price > bb["middle"][i]:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
-def _run_macd(candles, fast=12, slow=26, signal=9, **_):
+def _run_macd(candles, fast=12, slow=26, signal=9, include_open=False, **_):
     closes = [c["close"] for c in candles]
     macd   = calc_macd(closes, fast, slow, signal)
     trades, position = [], None
@@ -146,11 +177,14 @@ def _run_macd(candles, fast=12, slow=26, signal=9, **_):
         elif position is not None and mp > sp and m <= s:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
 def _run_ema21(candles, ema_period=21, use_atr_exits=False,
-               atr_period=14, atr_sl_mult=1.5, atr_tp_mult=2.0, **_):
+               atr_period=14, atr_sl_mult=1.5, atr_tp_mult=2.0,
+               include_open=False, **_):
     closes = [c["close"] for c in candles]
     highs = [c["high"] for c in candles]
     lows = [c["low"] for c in candles]
@@ -206,10 +240,12 @@ def _run_ema21(candles, ema_period=21, use_atr_exits=False,
     for t in trades:
         t.pop("_sl", None)
         t.pop("_tp", None)
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None})
     return trades
 
 
-def _run_ema_cross(candles, fast_period=20, slow_period=50, **_):
+def _run_ema_cross(candles, fast_period=20, slow_period=50, include_open=False, **_):
     closes   = [c["close"] for c in candles]
     ema_fast = calc_ema(closes, fast_period)
     ema_slow = calc_ema(closes, slow_period)
@@ -224,10 +260,12 @@ def _run_ema_cross(candles, fast_period=20, slow_period=50, **_):
         elif position is not None and fp > sp and f <= s:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
-def _run_supertrend(candles, atr_period=10, multiplier=3.0, **_):
+def _run_supertrend(candles, atr_period=10, multiplier=3.0, include_open=False, **_):
     highs  = [c["high"]  for c in candles]
     lows   = [c["low"]   for c in candles]
     closes = [c["close"] for c in candles]
@@ -243,24 +281,28 @@ def _run_supertrend(candles, atr_period=10, multiplier=3.0, **_):
         elif position is not None and dp == 1 and d == -1:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
-def _run_donchian(candles, period=20, **_):
+def _run_donchian(candles, period=20, include_open=False, **_):
     highs  = [c["high"] for c in candles]
     lows   = [c["low"]  for c in candles]
     dc     = calc_donchian(highs, lows, period)
     trades, position = [], None
     for i in range(1, len(candles)):
-        if dc["upper"][i] is None:
+        if dc["upper"][i - 1] is None:
             continue
         price, date = candles[i]["close"], candles[i]["date"]
-        prev_high   = highs[i - 1]
-        if position is None and dc["upper"][i - 1] is not None and prev_high > dc["upper"][i - 1]:
+        # The preceding channel is the last fully known breakout boundary.
+        if position is None and price > dc["upper"][i - 1]:
             position = {"entry_date": date, "entry_price": price, "strategy": "donchian"}
-        elif position is not None and dc["lower"][i] is not None and price < dc["lower"][i]:
+        elif position is not None and price < dc["lower"][i - 1]:
             trades.append({**position, "exit_date": date, "exit_price": price})
             position = None
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "side": "long"})
     return trades
 
 
@@ -283,7 +325,8 @@ def _calc_efficiency_ratio(closes: list[float], period: int = 50) -> list[float 
 
 
 def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_multiplier=2.0,
-                er_period=50, er_threshold=0.3, sma_trending=200, sma_choppy=100, **_):
+                er_period=50, er_threshold=0.3, sma_trending=200, sma_choppy=100,
+                include_open=False, **_):
     """
     VWMA 17 Strategy — with adaptive SMA trend filter.
 
@@ -334,6 +377,7 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                         "exit_date":   date,
                         "exit_price":  position["stop_loss"],
                         "strategy":    "vwma17",
+                        "side":        "long",
                         "exit_reason": "stop_loss",
                     })
                     position = None
@@ -344,6 +388,7 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                         "exit_date":   date,
                         "exit_price":  position["take_profit"],
                         "strategy":    "vwma17",
+                        "side":        "long",
                         "exit_reason": "take_profit",
                     })
                     position = None
@@ -355,6 +400,7 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                         "exit_date":   date,
                         "exit_price":  position["stop_loss"],
                         "strategy":    "vwma17",
+                        "side":        "short",
                         "exit_reason": "stop_loss",
                         "short":       True,
                     })
@@ -366,6 +412,7 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                         "exit_date":   date,
                         "exit_price":  position["take_profit"],
                         "strategy":    "vwma17",
+                        "side":        "short",
                         "exit_reason": "take_profit",
                         "short":       True,
                     })
@@ -408,6 +455,8 @@ def _run_vwma17(candles, vwma_length=17, atr_length=14, atr_multiplier=1.5, tp_m
                     "strategy":    "vwma17",
                 }
 
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None})
     return trades
 
 
@@ -464,7 +513,8 @@ def _get_structure(confirmed_highs: list[tuple[int, float]],
     return "neutral"
 
 
-def _run_higher_highs(candles, pivot_lookback=5, min_swings=2, htf_multiplier=8, **_):
+def _run_higher_highs(candles, pivot_lookback=5, min_swings=2, htf_multiplier=8,
+                      include_open=False, **_):
     """
     Higher Highs / Lower Lows — multi-timeframe market structure strategy.
 
@@ -547,6 +597,8 @@ def _run_higher_highs(candles, pivot_lookback=5, min_swings=2, htf_multiplier=8,
                 if ltf_confirmed_highs[-1][1] < ltf_confirmed_highs[-2][1]:
                     position = {"entry_date": date, "entry_price": price, "side": "short"}
 
+    if include_open and position is not None:
+        trades.append({**position, "exit_date": None, "strategy": "higher_highs"})
     return trades
 
 
@@ -595,6 +647,7 @@ _STRATEGY_MAP = {
     "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
     "ema21":        _run_ema21,
     "enhanced_channel": _get_dynamic_runner("enhanced_channel_strategy.py", "run_enhanced_channel_trades"),
+    "volume_price_breakout": run_volume_price_breakout,
 }
 
 
@@ -616,13 +669,22 @@ def _apply_costs(trades: list[dict], commission_pct: float, slippage_pct: float)
 
 # ─── Trade Log & Equity Curve ─────────────────────────────────────────────────
 
+def _realized_pnl(trade: dict, capital: float) -> float:
+    """Convert a net trade return into account P&L using its actual exposure."""
+    if "shares" in trade:
+        exposure = float(trade["shares"]) * float(trade["entry_price"])
+    else:
+        exposure = capital * float(trade.get("size_pct", 1.0))
+    return exposure * float(trade["return_pct"]) / 100.0
+
 def _build_trade_log(trades: list[dict], initial_capital: float) -> list[dict]:
     """Full per-trade log with holding days, running capital, cumulative return."""
     capital = initial_capital
     log = []
     for i, t in enumerate(trades):
         capital_before = capital
-        capital *= (1 + t["return_pct"] / 100)
+        pnl = _realized_pnl(t, capital)
+        capital += pnl
         cum_return = round((capital - initial_capital) / initial_capital * 100, 2)
         try:
             entry_dt     = datetime.fromisoformat(t["entry_date"].replace(" ", "T"))
@@ -636,6 +698,11 @@ def _build_trade_log(trades: list[dict], initial_capital: float) -> list[dict]:
             "entry_price":           t["entry_price"],
             "exit_date":             t["exit_date"],
             "exit_price":            t["exit_price"],
+            "side":                  t.get("side", "long"),
+            "shares":                t.get("shares"),
+            "size_pct":              t.get("size_pct"),
+            "exit_reason":           t.get("exit_reason"),
+            "pnl_usd":               round(pnl, 2),
             "holding_days":          holding_days,
             "return_pct":            t["return_pct"],
             "gross_return_pct":      t.get("gross_return_pct", t["return_pct"]),
@@ -653,7 +720,7 @@ def _build_equity_curve(trades: list[dict], initial_capital: float) -> list[dict
     peak    = capital
     curve   = [{"date": "start", "equity": round(capital, 2), "drawdown_pct": 0.0}]
     for t in trades:
-        capital *= (1 + t["return_pct"] / 100)
+        capital += _realized_pnl(t, capital)
         peak     = max(peak, capital)
         dd       = round((peak - capital) / peak * 100, 2)
         curve.append({
@@ -684,9 +751,12 @@ def _calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1
     peak    = capital
     max_dd  = 0.0
     returns = []
+    pnls = []
     for t in trades:
-        r = t["return_pct"] / 100
-        capital *= (1 + r)
+        pnl = _realized_pnl(t, capital)
+        r = pnl / capital if capital else 0.0
+        capital += pnl
+        pnls.append(pnl)
         returns.append(r)
         peak   = max(peak, capital)
         max_dd = max(max_dd, (peak - capital) / peak * 100)
@@ -694,8 +764,8 @@ def _calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1
     total_return  = (capital - initial_capital) / initial_capital * 100
     avg_gain      = sum(t["return_pct"] for t in winners) / len(winners) if winners else 0
     avg_loss      = sum(t["return_pct"] for t in losers)  / len(losers)  if losers  else 0
-    gp            = sum(t["return_pct"] for t in winners)
-    gl            = abs(sum(t["return_pct"] for t in losers))
+    gp            = sum(p for p in pnls if p > 0)
+    gl            = abs(sum(p for p in pnls if p <= 0))
     profit_factor = round(gp / gl, 2) if gl > 0 else float("inf")
 
     ann  = _ANNUALIZATION.get(interval, 252)
@@ -763,7 +833,7 @@ def run_backtest(
         return {"error": f"Invalid interval '{interval}'. Choose: 1d or 1h"}
 
     try:
-        candles = _fetch_ohlcv(symbol, period, interval)
+        candles = _completed_candles(_fetch_ohlcv(symbol, period, interval), symbol, interval)
     except Exception as e:
         return {"error": f"Failed to fetch data for '{symbol}': {e}"}
 
@@ -823,7 +893,7 @@ def compare_strategies(
         return {"error": f"Invalid interval '{interval}'. Choose: 1d or 1h"}
 
     try:
-        candles = _fetch_ohlcv(symbol, period, interval)
+        candles = _completed_candles(_fetch_ohlcv(symbol, period, interval), symbol, interval)
     except Exception as e:
         return {"error": f"Failed to fetch data for '{symbol}': {e}"}
 
@@ -916,7 +986,7 @@ def walk_forward_backtest(
         return {"error": "train_ratio must be between 0.5 and 0.9"}
 
     try:
-        candles = _fetch_ohlcv(symbol, period, interval)
+        candles = _completed_candles(_fetch_ohlcv(symbol, period, interval), symbol, interval)
     except Exception as e:
         return {"error": f"Failed to fetch data for '{symbol}': {e}"}
 
@@ -943,21 +1013,27 @@ def walk_forward_backtest(
             continue
 
         train_t = _apply_costs(fn(train_c), commission_pct, slippage_pct)
-        test_t  = _apply_costs(fn(test_c),  commission_pct, slippage_pct)
+        # Preserve causal indicator and pivot history from the training slice.
+        # Score only trades opened in the test slice; positions spanning the
+        # split are intentionally excluded until a portfolio carry model exists.
+        test_start = test_c[0]["date"]
+        test_raw = [t for t in fn(window) if t["entry_date"] >= test_start]
+        test_t = _apply_costs(test_raw, commission_pct, slippage_pct)
         train_m = _calc_metrics(train_t, initial_capital, interval)
         test_m  = _calc_metrics(test_t,  initial_capital, interval)
 
         all_test_trades.extend(test_t)
 
         tr, te = train_m["total_return_pct"], test_m["total_return_pct"]
-        if tr == 0:
-            fold_rob = 1.0 if te == 0 else 0.0
-        elif tr < 0 and te < 0:
-            fold_rob = round(min(te / tr, 2.0), 2)
-        elif tr < 0:
-            fold_rob = 0.0
+        # A return ratio is meaningful only when both periods actually traded
+        # and the training period was profitable. Compare return per scored bar
+        # because the train and test slices have different durations.
+        if train_m["total_trades"] == 0 or test_m["total_trades"] == 0 or tr <= 0:
+            fold_rob = None
         else:
-            fold_rob = round(max(min(te / tr, 2.0), -1.0), 2)
+            train_rate = tr / len(train_c)
+            test_rate = te / len(test_c)
+            fold_rob = round(max(min(test_rate / train_rate, 2.0), -1.0), 2)
 
         folds.append({
             "fold":                  fold_i + 1,
@@ -981,14 +1057,18 @@ def walk_forward_backtest(
 
     avg_train  = round(statistics.mean(f["train_return_pct"] for f in folds), 2)
     avg_test   = round(statistics.mean(f["test_return_pct"]  for f in folds), 2)
-    avg_robust = round(statistics.mean(f["fold_robustness_score"] for f in folds), 2)
+    valid_scores = [f["fold_robustness_score"] for f in folds
+                    if f["fold_robustness_score"] is not None]
+    avg_robust = round(statistics.mean(valid_scores), 2) if valid_scores else None
     oos_m      = _calc_metrics(all_test_trades, initial_capital, interval)
 
-    if avg_robust >= 0.8:
+    if len(valid_scores) != len(folds) or oos_m["total_trades"] < 5:
+        verdict = "INSUFFICIENT EVIDENCE — too few trades or inactive/unprofitable training folds"
+    elif avg_robust >= 0.8 and avg_test > 0:
         verdict = "ROBUST — strategy performs consistently in-sample and out-of-sample"
-    elif avg_robust >= 0.5:
+    elif avg_robust >= 0.5 and avg_test > 0:
         verdict = "MODERATE — some degradation out-of-sample, use with caution"
-    elif avg_robust >= 0.2:
+    elif avg_robust >= 0.2 and avg_test > 0:
         verdict = "WEAK — significant out-of-sample degradation, likely overfitted"
     else:
         verdict = "OVERFITTED — strategy fails out-of-sample, do not trade live"

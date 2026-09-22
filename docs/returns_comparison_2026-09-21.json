@@ -1,0 +1,717 @@
+{
+  "compared_at_utc": "2026-09-21T14:00:19.251194+00:00",
+  "baseline_commit": "8356ffe81c97e070f758765b36d9957a77681533",
+  "after_commit": "8356ffe81c97e070f758765b36d9957a77681533",
+  "after_strategy_code_diff_sha256": "8f4d7729ed0a3e642635d3dba3e87e187256e142882308b983a14fd0659db7e8",
+  "snapshot": "docs/returns_baseline_2026-09-21.json",
+  "same_frozen_candles": true,
+  "settings": {
+    "interval": "1d",
+    "initial_capital": 10000.0,
+    "commission_pct_per_side": 0.1,
+    "slippage_pct_per_side": 0.05
+  },
+  "interpretation": "A positive difference is a higher measured return under the changed engine; it does not establish better predictive performance.",
+  "rows": [
+    {
+      "symbol": "GOOGL",
+      "strategy": "rsi",
+      "before_return_pct": -2.09,
+      "after_return_pct": -2.09,
+      "before_trades": 3,
+      "after_trades": 3,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "bollinger",
+      "before_return_pct": 9.94,
+      "after_return_pct": 9.94,
+      "before_trades": 8,
+      "after_trades": 8,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "macd",
+      "before_return_pct": 57.47,
+      "after_return_pct": 57.47,
+      "before_trades": 19,
+      "after_trades": 19,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "ema_cross",
+      "before_return_pct": 83.82,
+      "after_return_pct": 83.82,
+      "before_trades": 2,
+      "after_trades": 2,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "supertrend",
+      "before_return_pct": 75.8,
+      "after_return_pct": 75.8,
+      "before_trades": 6,
+      "after_trades": 6,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "donchian",
+      "before_return_pct": 0,
+      "after_return_pct": 60.21,
+      "before_trades": 0,
+      "after_trades": 6,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 60.21
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "vwma17",
+      "before_return_pct": 28.37,
+      "after_return_pct": -5.42,
+      "before_trades": 15,
+      "after_trades": 15,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": -33.79
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "higher_highs",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "enhanced_lines",
+      "before_return_pct": -62.13,
+      "after_return_pct": -15.09,
+      "before_trades": 12,
+      "after_trades": 12,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 47.04
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "straight_line",
+      "before_return_pct": 7.27,
+      "after_return_pct": 7.27,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "buy_and_protect",
+      "before_return_pct": 111.82,
+      "after_return_pct": 111.82,
+      "before_trades": 2,
+      "after_trades": 2,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "volatility_harvester",
+      "before_return_pct": 1.55,
+      "after_return_pct": 1.55,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "ema21",
+      "before_return_pct": 76.48,
+      "after_return_pct": 76.48,
+      "before_trades": 41,
+      "after_trades": 41,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "GOOGL",
+      "strategy": "enhanced_channel",
+      "before_return_pct": 7.54,
+      "after_return_pct": 18.73,
+      "before_trades": 21,
+      "after_trades": 14,
+      "buy_and_hold_return_pct": 118.68,
+      "change_percentage_points": 11.19
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "rsi",
+      "before_return_pct": 25.11,
+      "after_return_pct": 25.11,
+      "before_trades": 7,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "bollinger",
+      "before_return_pct": 9.68,
+      "after_return_pct": 9.68,
+      "before_trades": 8,
+      "after_trades": 8,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "macd",
+      "before_return_pct": 13.89,
+      "after_return_pct": 13.89,
+      "before_trades": 16,
+      "after_trades": 16,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "ema_cross",
+      "before_return_pct": 4.43,
+      "after_return_pct": 4.43,
+      "before_trades": 4,
+      "after_trades": 4,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "supertrend",
+      "before_return_pct": 15.52,
+      "after_return_pct": 15.52,
+      "before_trades": 7,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "donchian",
+      "before_return_pct": 0,
+      "after_return_pct": 7.7,
+      "before_trades": 0,
+      "after_trades": 5,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 7.7
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "vwma17",
+      "before_return_pct": 24.17,
+      "after_return_pct": -0.24,
+      "before_trades": 15,
+      "after_trades": 15,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": -24.41
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "higher_highs",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "enhanced_lines",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "straight_line",
+      "before_return_pct": 12.54,
+      "after_return_pct": 12.54,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "buy_and_protect",
+      "before_return_pct": 48.03,
+      "after_return_pct": 48.03,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "volatility_harvester",
+      "before_return_pct": 13.69,
+      "after_return_pct": 13.69,
+      "before_trades": 4,
+      "after_trades": 4,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "ema21",
+      "before_return_pct": -14.7,
+      "after_return_pct": -14.7,
+      "before_trades": 49,
+      "after_trades": 49,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "AAPL",
+      "strategy": "enhanced_channel",
+      "before_return_pct": 8.91,
+      "after_return_pct": 14.72,
+      "before_trades": 17,
+      "after_trades": 13,
+      "buy_and_hold_return_pct": 48.33,
+      "change_percentage_points": 5.81
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "rsi",
+      "before_return_pct": 61.34,
+      "after_return_pct": 61.34,
+      "before_trades": 8,
+      "after_trades": 8,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "bollinger",
+      "before_return_pct": 78.03,
+      "after_return_pct": 78.03,
+      "before_trades": 10,
+      "after_trades": 10,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "macd",
+      "before_return_pct": -9.71,
+      "after_return_pct": -9.71,
+      "before_trades": 22,
+      "after_trades": 22,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "ema_cross",
+      "before_return_pct": -21.35,
+      "after_return_pct": -21.35,
+      "before_trades": 5,
+      "after_trades": 5,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "supertrend",
+      "before_return_pct": -36.03,
+      "after_return_pct": -36.03,
+      "before_trades": 9,
+      "after_trades": 9,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "donchian",
+      "before_return_pct": 0,
+      "after_return_pct": -45.65,
+      "before_trades": 0,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": -45.65
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "vwma17",
+      "before_return_pct": -5.29,
+      "after_return_pct": -11.78,
+      "before_trades": 16,
+      "after_trades": 16,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": -6.49
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "higher_highs",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "enhanced_lines",
+      "before_return_pct": 4.01,
+      "after_return_pct": 0.68,
+      "before_trades": 2,
+      "after_trades": 2,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": -3.33
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "straight_line",
+      "before_return_pct": 33.04,
+      "after_return_pct": 33.04,
+      "before_trades": 2,
+      "after_trades": 2,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "buy_and_protect",
+      "before_return_pct": -27.67,
+      "after_return_pct": -27.67,
+      "before_trades": 7,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "volatility_harvester",
+      "before_return_pct": 38.97,
+      "after_return_pct": 38.97,
+      "before_trades": 4,
+      "after_trades": 4,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "ema21",
+      "before_return_pct": -66.93,
+      "after_return_pct": -66.93,
+      "before_trades": 70,
+      "after_trades": 70,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "MELI",
+      "strategy": "enhanced_channel",
+      "before_return_pct": -12.41,
+      "after_return_pct": -14.12,
+      "before_trades": 19,
+      "after_trades": 14,
+      "buy_and_hold_return_pct": -14.3,
+      "change_percentage_points": -1.71
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "rsi",
+      "before_return_pct": 16.02,
+      "after_return_pct": 16.02,
+      "before_trades": 6,
+      "after_trades": 6,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "bollinger",
+      "before_return_pct": 16.1,
+      "after_return_pct": 16.1,
+      "before_trades": 12,
+      "after_trades": 12,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "macd",
+      "before_return_pct": 1.6,
+      "after_return_pct": 1.6,
+      "before_trades": 21,
+      "after_trades": 21,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "ema_cross",
+      "before_return_pct": 14.13,
+      "after_return_pct": 14.13,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "supertrend",
+      "before_return_pct": 6.81,
+      "after_return_pct": 6.81,
+      "before_trades": 9,
+      "after_trades": 9,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "donchian",
+      "before_return_pct": 0,
+      "after_return_pct": 7.04,
+      "before_trades": 0,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 7.04
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "vwma17",
+      "before_return_pct": -8.85,
+      "after_return_pct": -0.9,
+      "before_trades": 18,
+      "after_trades": 18,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 7.95
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "higher_highs",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "enhanced_lines",
+      "before_return_pct": -3.6,
+      "after_return_pct": -2.5,
+      "before_trades": 42,
+      "after_trades": 42,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 1.1
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "straight_line",
+      "before_return_pct": 6.94,
+      "after_return_pct": 6.94,
+      "before_trades": 2,
+      "after_trades": 2,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "buy_and_protect",
+      "before_return_pct": 34.35,
+      "after_return_pct": 34.35,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "volatility_harvester",
+      "before_return_pct": 2.11,
+      "after_return_pct": 2.11,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "ema21",
+      "before_return_pct": -7.73,
+      "after_return_pct": -7.73,
+      "before_trades": 57,
+      "after_trades": 57,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "SPY",
+      "strategy": "enhanced_channel",
+      "before_return_pct": -1.53,
+      "after_return_pct": 1.93,
+      "before_trades": 20,
+      "after_trades": 14,
+      "buy_and_hold_return_pct": 34.65,
+      "change_percentage_points": 3.46
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "rsi",
+      "before_return_pct": 75.96,
+      "after_return_pct": 75.96,
+      "before_trades": 6,
+      "after_trades": 6,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "bollinger",
+      "before_return_pct": 77.96,
+      "after_return_pct": 77.96,
+      "before_trades": 10,
+      "after_trades": 10,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "macd",
+      "before_return_pct": -22.14,
+      "after_return_pct": -22.14,
+      "before_trades": 19,
+      "after_trades": 19,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "ema_cross",
+      "before_return_pct": 7.0,
+      "after_return_pct": 7.0,
+      "before_trades": 5,
+      "after_trades": 5,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "supertrend",
+      "before_return_pct": 17.68,
+      "after_return_pct": 17.68,
+      "before_trades": 7,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "donchian",
+      "before_return_pct": 0,
+      "after_return_pct": -18.35,
+      "before_trades": 0,
+      "after_trades": 7,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": -18.35
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "vwma17",
+      "before_return_pct": -32.75,
+      "after_return_pct": -25.3,
+      "before_trades": 18,
+      "after_trades": 18,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 7.45
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "higher_highs",
+      "before_return_pct": 0,
+      "after_return_pct": 0,
+      "before_trades": 0,
+      "after_trades": 0,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "enhanced_lines",
+      "before_return_pct": -0.99,
+      "after_return_pct": -0.33,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.66
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "straight_line",
+      "before_return_pct": 20.78,
+      "after_return_pct": 20.78,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "buy_and_protect",
+      "before_return_pct": 77.11,
+      "after_return_pct": 77.11,
+      "before_trades": 3,
+      "after_trades": 3,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "volatility_harvester",
+      "before_return_pct": 8.86,
+      "after_return_pct": 8.86,
+      "before_trades": 1,
+      "after_trades": 1,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "ema21",
+      "before_return_pct": -74.12,
+      "after_return_pct": -74.12,
+      "before_trades": 77,
+      "after_trades": 77,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 0.0
+    },
+    {
+      "symbol": "NVDA",
+      "strategy": "enhanced_channel",
+      "before_return_pct": -18.35,
+      "after_return_pct": 3.31,
+      "before_trades": 28,
+      "after_trades": 18,
+      "buy_and_hold_return_pct": 93.12,
+      "change_percentage_points": 21.66
+    }
+  ]
+}

@@ -23,11 +23,10 @@ echo [2/3] Checking trade database...
 if not exist "data" mkdir data
 uv run python test_strategies.py >nul 2>&1
 
-echo [3/3] Starting Trade Visualizer on http://127.0.0.1:8000 ...
-start http://127.0.0.1:8000
+echo [3/3] Starting Trade Visualizer on the first free port...
 
 echo.
 echo Server is running. Press Ctrl+C in this window to stop.
 echo.
 
-uv run python src/tradingview_mcp/ui/server.py
+uv run python -m tradingview_mcp.ui.launcher --open-browser

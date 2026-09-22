@@ -1,10 +1,11 @@
 import sqlite3
+import asyncio
 import os
 import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import yfinance as yf
@@ -13,6 +14,7 @@ import yfinance as yf
 from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection, init_db
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
 from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
+from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST, scan_opportunities
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
@@ -100,6 +102,21 @@ async def read_root():
     """Serve the single page application."""
     html_file = static_path / "index.html"
     return html_file.read_text()
+
+
+@app.get("/opportunities", response_class=HTMLResponse)
+async def read_opportunities():
+    """Show the research-only, cross-stock signal scanner."""
+    return (static_path / "opportunities.html").read_text()
+
+
+@app.get("/api/opportunities")
+async def api_opportunities(symbols: str = ",".join(DEFAULT_WATCHLIST)):
+    """Scan completed daily bars without placing trades or asserting probabilities."""
+    try:
+        return await asyncio.to_thread(scan_opportunities, symbols.split(","))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.get("/api/filters")
 async def get_filters():
@@ -487,5 +504,5 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", c
         return {"overlays": [], "error": str(e)}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("tradingview_mcp.ui.server:app", host="127.0.0.1", port=8000, reload=True)
+    from tradingview_mcp.ui.launcher import main
+    main()

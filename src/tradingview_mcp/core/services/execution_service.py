@@ -112,6 +112,11 @@ class BitgetAdapter(BrokerAdapter):
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
     ) -> dict:
+        # The spot adapter has no linked OCO/bracket implementation. Reject
+        # protected orders before submitting an entry that might be left bare.
+        if stop_loss is not None or take_profit is not None:
+            raise ValueError("Protected Bitget spot orders require a linked OCO implementation")
+
         # Place the main market order
         order = self._exchange.create_order(
             symbol=symbol,
@@ -120,45 +125,13 @@ class BitgetAdapter(BrokerAdapter):
             amount=quantity,
         )
 
-        sl_order = None
-        tp_order = None
-
-        # Place stop-loss order
-        if stop_loss is not None:
-            try:
-                sl_side = "sell" if side == "buy" else "buy"
-                sl_order = self._exchange.create_order(
-                    symbol=symbol,
-                    type="stop",
-                    side=sl_side,
-                    amount=quantity,
-                    price=stop_loss,
-                    params={"stopPrice": stop_loss, "triggerPrice": stop_loss},
-                )
-            except Exception as e:
-                sl_order = {"error": str(e)}
-
-        # Place take-profit order
-        if take_profit is not None:
-            try:
-                tp_side = "sell" if side == "buy" else "buy"
-                tp_order = self._exchange.create_order(
-                    symbol=symbol,
-                    type="limit",
-                    side=tp_side,
-                    amount=quantity,
-                    price=take_profit,
-                )
-            except Exception as e:
-                tp_order = {"error": str(e)}
-
         return {
             "order_id": order.get("id"),
             "status": order.get("status", "unknown"),
             "filled_price": order.get("average") or order.get("price"),
             "filled_quantity": order.get("filled", quantity),
-            "sl_order": sl_order,
-            "tp_order": tp_order,
+            "sl_order": None,
+            "tp_order": None,
             "raw": order,
         }
 
@@ -230,9 +203,11 @@ class AlpacaAdapter(BrokerAdapter):
             "time_in_force": "day",
         }
 
-        # Alpaca supports bracket orders natively
+        # Alpaca requires both legs for a bracket; a single leg uses OTO.
         if stop_loss is not None or take_profit is not None:
-            order_params["order_class"] = "bracket"
+            order_params["order_class"] = (
+                "bracket" if stop_loss is not None and take_profit is not None else "oto"
+            )
             if stop_loss is not None:
                 order_params["stop_loss"] = {"stop_price": str(round(stop_loss, 2))}
             if take_profit is not None:
@@ -332,6 +307,8 @@ def execute_order(
         return {"error": f"Invalid side '{side}'. Choose: buy or sell"}
     if capital_usd <= 0:
         return {"error": "capital_usd must be positive"}
+    if not dry_run and broker == "bitget" and (stop_loss is not None or take_profit is not None):
+        return {"error": "Protected Bitget spot orders require a linked OCO implementation"}
 
     # ── Get current price for position sizing ──
     if dry_run:

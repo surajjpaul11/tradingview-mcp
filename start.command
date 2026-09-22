@@ -77,25 +77,9 @@ fi
 
 # 4. Launch UI Server and open browser
 echo -e "\n${BOLD}[4/4] Launching Trade Visualizer Dashboard...${NC}"
-echo -e "      ${GREEN}✓ Web Dashboard URL:${NC} ${BOLD}http://127.0.0.1:8000${NC}"
-echo -e "      ${CYAN}ℹ Automatically opening browser...${NC}"
+echo -e "      ${CYAN}ℹ Selecting a free port and opening the browser...${NC}"
 echo -e "      ${YELLOW}ℹ Press [Ctrl + C] in this window to stop the server at any time.${NC}\n"
 echo -e "${CYAN}--------------------------------------------------------------------${NC}"
 
-# Background process to open browser once server is responding
-(
-    for i in {1..30}; do
-        if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/ 2>/dev/null | grep -E "(200|405)" > /dev/null; then
-            break
-        fi
-        sleep 0.4
-    done
-    if command -v open &> /dev/null; then
-        open "http://127.0.0.1:8000"
-    elif command -v xdg-open &> /dev/null; then
-        xdg-open "http://127.0.0.1:8000"
-    fi
-) &
-
 # Run the FastAPI server in the foreground
-uv run python src/tradingview_mcp/ui/server.py
+uv run python -m tradingview_mcp.ui.launcher --open-browser

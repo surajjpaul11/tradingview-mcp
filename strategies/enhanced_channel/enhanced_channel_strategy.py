@@ -131,12 +131,9 @@ def calc_linear_regression_channel(
     if n < 5:
         return midlines, uppers, lowers, slopes
 
-    # Precompute x terms for window length L
-    # We allow lookback to adapt if fewer bars exist, but require at least 15 bars
-    for i in range(n):
-        curr_len = lookback if (i + 1) >= lookback else (i + 1)
-        if curr_len < 10:
-            continue
+    # A named horizon must contain its full requested history.
+    for i in range(max(lookback - 1, 0), n):
+        curr_len = lookback
 
         window = prices[i - curr_len + 1 : i + 1]
         L = curr_len
@@ -201,10 +198,8 @@ def calc_donchian_channel(
     lowers: List[Optional[float]] = [None] * n
     slopes: List[Optional[float]] = [None] * n
 
-    for i in range(n):
-        curr_len = lookback if (i + 1) >= lookback else (i + 1)
-        if curr_len < 5:
-            continue
+    for i in range(max(lookback - 1, 0), n):
+        curr_len = lookback
         window_highs = highs[i - curr_len + 1 : i + 1]
         window_lows = lows[i - curr_len + 1 : i + 1]
         u = max(window_highs)
@@ -228,8 +223,8 @@ def calc_keltner_channel(
 ) -> Tuple[List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
     """Calculates Adaptive Keltner (EMA + ATR) Channel."""
     n = len(closes)
-    ema_vals = calc_ema(closes, min(lookback, max(5, n // 4)))
-    atr_vals = calc_atr(highs, lows, closes, min(lookback, max(5, n // 4)))
+    ema_vals = calc_ema(closes, lookback)
+    atr_vals = calc_atr(highs, lows, closes, lookback)
 
     midlines: List[Optional[float]] = [None] * n
     uppers: List[Optional[float]] = [None] * n
@@ -316,6 +311,11 @@ def run_enhanced_channel(
     midline_cross = params.get("midline_cross", False) or midline_reentry
     channel_inflection = params.get("channel_inflection", True)
     lower_reclaim = params.get("lower_reclaim", True)
+    # Optional research gate. The default strategy is unchanged; callers
+    # building a mask must use information available by each corresponding bar.
+    long_entry_mask = params.get("long_entry_mask")
+    if long_entry_mask is not None and len(long_entry_mask) != n:
+        raise ValueError("long_entry_mask must have one value per candle")
     rsi_vals = calc_rsi(closes, 14) if bounce_type == "rsi" else []
     atr_vals_stop = calc_atr(highs, lows, closes, 14) if stopgap_type == "atr" else []
 
@@ -344,7 +344,7 @@ def run_enhanced_channel(
     macro_mid_overlay = []
 
     # Warm-up requirement
-    min_warmup = min(tactical_lb, n // 3)
+    min_warmup = tactical_lb
 
     for i in range(min_warmup, n):
         date = candles[i]["date"]
@@ -366,6 +366,8 @@ def run_enhanced_channel(
             macro_mid_overlay.append({"time": date, "value": mid_5y[i]})
 
         if d3 is None or u3 is None or u3 <= d3:
+            continue
+        if htf_filter and (up_1y[i] is None or low_1y[i] is None):
             continue
 
         ch_height = u3 - d3
@@ -584,6 +586,7 @@ def run_enhanced_channel(
         # 2. EVALUATE ENTRY CONDITIONS (IF FLAT)
         # -------------------------------------------------------------
         if position is None:
+            long_entry_allowed = long_entry_mask is None or bool(long_entry_mask[i])
             # --- LONG ENTRY EVALUATION ---
             recent_touch_bottom = False
             for look_idx in range(max(0, i - 2), i + 1):
@@ -624,7 +627,7 @@ def run_enhanced_channel(
 
             should_enter_bottom = (recent_touch_bottom and bounce_confirmed) or (reclaimed_channel and bounce_confirmed)
 
-            if should_enter_bottom:
+            if should_enter_bottom and long_entry_allowed:
                 allowed = True
                 if htf_filter:
                     htf_cap = 0.75 if reclaimed_channel else 0.60
@@ -655,7 +658,7 @@ def run_enhanced_channel(
                     continue
 
             # --- TACTICAL MIDLINE CROSS BUY ---
-            if midline_cross and mid_3m[i] is not None and position is None:
+            if midline_cross and mid_3m[i] is not None and position is None and long_entry_allowed:
                 prev_m = mid_3m[i - 1] if (i > 0 and mid_3m[i - 1] is not None) else mid_3m[i]
                 crossed_above_mid = (prev_c <= prev_m or opens[i] <= mid_3m[i]) and (c > mid_3m[i])
                 bullish_mid = (c > o) and (c > prev_c)
@@ -677,7 +680,7 @@ def run_enhanced_channel(
                         continue
 
             # --- CHANNEL INFLECTION / VALLEY CURL (TURNING HORIZONTAL TO UPWARD) ---
-            if channel_inflection and position is None:
+            if channel_inflection and position is None and long_entry_allowed:
                 m0 = mid_3m[i]
                 m1 = mid_3m[i - 1] if i >= 1 else None
                 m2 = mid_3m[i - 2] if i >= 2 else None

@@ -226,13 +226,6 @@ def run_smart_hold(
         if atr_vals[i] is not None and closes[i] > 0:
             atr_pct[i] = atr_vals[i] / closes[i] * 100
 
-    # Compute historical volatility bucket (median ATR% over first 100 bars)
-    warmup_atr_pcts = [a for a in atr_pct[:min(100, n)] if a is not None]
-    if warmup_atr_pcts:
-        median_atr_pct = sorted(warmup_atr_pcts)[len(warmup_atr_pcts) // 2]
-    else:
-        median_atr_pct = 1.5
-
     # Adaptive exit: volatile stocks need more bars to confirm breakdown
     # Low vol (<1.5% ATR): use base confirm bars, slope < 0
     # Med vol (1.5-3%): add 2 bars, slope < 0
@@ -240,22 +233,11 @@ def run_smart_hold(
     # Always compute SMA200 — used for exit logic (high-vol) AND bear market regime gate
     sma_200_vals = sma(closes, 200)
 
-    if median_atr_pct > 3.0:
-        vol_extra_bars = 5
-        vol_label = "high"
-        slope_threshold = -0.01  # SMA must decline 1%+ over lookback
-        trail_atr_mult_adj = trail_atr_mult + 2  # wider trailing stop for volatile stocks
-    elif median_atr_pct > 1.5:
-        vol_extra_bars = 2
-        vol_label = "medium"
-        slope_threshold = 0.0
-        trail_atr_mult_adj = trail_atr_mult
-    else:
-        vol_extra_bars = 0
-        vol_label = "low"
-        slope_threshold = 0.0
-        trail_atr_mult_adj = trail_atr_mult
-    exit_confirm = exit_confirm_base + vol_extra_bars
+    median_atr_pct = 1.5
+    vol_label = "medium"
+    slope_threshold = 0.0
+    trail_atr_mult_adj = trail_atr_mult
+    exit_confirm = exit_confirm_base
 
     # Build VIX lookup by date + rolling VIX peak
     vix_by_date: dict[str, float] = {}
@@ -308,6 +290,26 @@ def run_smart_hold(
         date = c["date"]
         vix_val = vix_by_date.get(date)
         vix_peak = vix_peak_by_date.get(date)
+
+        # Classify with history available at this bar only. A future extension
+        # of the input must not change an earlier signal's volatility bucket.
+        recent_atr_pcts = sorted(a for a in atr_pct[max(0, i - 99):i + 1]
+                                 if a is not None)
+        median_atr_pct = (recent_atr_pcts[len(recent_atr_pcts) // 2]
+                          if recent_atr_pcts else 1.5)
+        if median_atr_pct > 3.0:
+            vol_extra_bars, vol_label = 5, "high"
+            slope_threshold = -0.01
+            trail_atr_mult_adj = trail_atr_mult + 2
+        elif median_atr_pct > 1.5:
+            vol_extra_bars, vol_label = 2, "medium"
+            slope_threshold = 0.0
+            trail_atr_mult_adj = trail_atr_mult
+        else:
+            vol_extra_bars, vol_label = 0, "low"
+            slope_threshold = 0.0
+            trail_atr_mult_adj = trail_atr_mult
+        exit_confirm = exit_confirm_base + vol_extra_bars
 
         # Update VIX regime consecutive counter (strict: resets to 0 on any bar below threshold)
         # This distinguishes sustained bear regimes (many consecutive days above VIX threshold)

@@ -15,6 +15,7 @@ from typing import Optional
 
 from tradingview_mcp.core.services.backtest_service import (
     _fetch_ohlcv,
+    _completed_candles,
     _STRATEGY_MAP,
     _STRATEGY_LABELS,
     _VALID_INTERVALS,
@@ -23,6 +24,10 @@ from tradingview_mcp.core.services.backtest_service import (
 
 # Strategies that produce SL/TP on their trades
 _SL_TP_STRATEGIES = {"vwma17"}
+_OPEN_STATE_STRATEGIES = {
+    "rsi", "bollinger", "macd", "ema_cross", "supertrend", "donchian",
+    "vwma17", "higher_highs", "ema21", "volume_price_breakout",
+}
 
 
 def get_live_signal(
@@ -66,7 +71,9 @@ def get_live_signal(
     # Fetch enough bars for indicator warm-up (300 daily bars, more for intraday)
     warmup_period = "2y" if interval == "1d" else "3mo"
     try:
-        candles = _fetch_ohlcv(symbol, warmup_period, interval)
+        candles = _completed_candles(
+            _fetch_ohlcv(symbol, warmup_period, interval), symbol, interval
+        )
     except Exception as e:
         return {"error": f"Failed to fetch data for '{symbol}': {e}"}
 
@@ -77,49 +84,61 @@ def get_live_signal(
     latest_price = candles[-1]["close"]
     latest_date = candles[-1]["date"]
 
-    # === Strategy A: run on ALL candles, check if last bar triggers entry ===
-    all_trades = fn(candles)
-
-    # === Strategy B: run on all-but-last candle to see prior state ===
-    prev_trades = fn(candles[:-1])
+    # Engines in this set can expose their still-open position. Other engines
+    # return a synthetic end_of_data trade, which is useful for research but
+    # must never be interpreted as a live exit.
+    kwargs = {"include_open": True} if strategy in _OPEN_STATE_STRATEGIES else {}
+    try:
+        all_trades = fn(candles, **kwargs)
+        prev_trades = fn(candles[:-1], **kwargs)
+    except Exception as e:
+        return {"error": f"Strategy evaluation failed for '{strategy}': {e}"}
 
     # Determine signal
     signal = "none"
     stop_loss = None
     take_profit = None
     exit_reason = None
+    signal_context = None
 
-    # Case 1: new trade appeared on the last bar (entry signal)
-    if len(all_trades) > len(prev_trades):
-        last_trade = all_trades[-1]
-        # If the trade was entered on the last bar
-        if last_trade.get("entry_date") == latest_date:
-            signal = last_trade.get("side", "long")
-            stop_loss = last_trade.get("stop_loss")
-            take_profit = last_trade.get("take_profit")
-        # If the trade was CLOSED on the last bar (exit)
-        elif last_trade.get("exit_date") == latest_date:
+    previous_entries = {
+        (t.get("entry_date"), t.get("entry_price"), t.get("side", "long"))
+        for t in prev_trades
+    }
+    new_entries = [
+        t for t in all_trades
+        if t.get("entry_date") == latest_date
+        and (t.get("entry_date"), t.get("entry_price"), t.get("side", "long"))
+        not in previous_entries
+    ]
+    if strategy == "volume_price_breakout":
+        # A historical fill occurs the day after its signal. Only a pending
+        # order from today's completed bar is a *new* actionable signal.
+        new_entries = [t for t in new_entries if t.get("pending_entry")]
+    if new_entries:
+        latest = new_entries[-1]
+        signal = latest.get("side", "long")
+        if strategy == "volume_price_breakout":
+            signal_context = {"price_gain_pct": latest["signal_gain_pct"],
+                              "volume_ratio": latest["signal_volume_ratio"]}
+        if strategy in _SL_TP_STRATEGIES:
+            stop_loss = latest.get("stop_loss")
+            take_profit = latest.get("take_profit")
+    else:
+        previous_exits = {
+            (t.get("entry_date"), t.get("exit_date"), t.get("exit_reason"))
+            for t in prev_trades if t.get("exit_date") is not None
+        }
+        real_exits = [
+            t for t in all_trades
+            if t.get("exit_date") == latest_date
+            and t.get("exit_reason") != "end_of_data"
+            and (t.get("entry_date"), t.get("exit_date"), t.get("exit_reason"))
+            not in previous_exits
+        ]
+        if real_exits:
             signal = "exit"
-            exit_reason = last_trade.get("exit_reason")
-    elif len(all_trades) == len(prev_trades) and len(all_trades) > 0:
-        last_all = all_trades[-1]
-        last_prev = prev_trades[-1]
-        # A trade that was open in prev got closed in all → exit on last bar
-        if (last_all.get("exit_date") == latest_date and
-                last_prev.get("exit_date") != latest_date):
-            signal = "exit"
-            exit_reason = last_all.get("exit_reason")
-
-    # For strategies with SL/TP, try to extract from the open position state
-    # by running on full data and checking if there's an unterminated position
-    if signal in ("long", "short") and strategy in _SL_TP_STRATEGIES:
-        # Re-extract SL/TP from the strategy's internal position
-        # The _run_vwma17 function stores SL/TP in the trade dict
-        for t in reversed(all_trades):
-            if t.get("entry_date") == latest_date:
-                stop_loss = t.get("stop_loss", stop_loss)
-                take_profit = t.get("take_profit", take_profit)
-                break
+            exit_reason = real_exits[-1].get("exit_reason")
 
     return {
         "signal": signal,
@@ -130,6 +149,7 @@ def get_live_signal(
         "stop_loss": round(stop_loss, 4) if stop_loss is not None else None,
         "take_profit": round(take_profit, 4) if take_profit is not None else None,
         "exit_reason": exit_reason,
+        "signal_context": signal_context,
         "interval": interval,
         "candles_fetched": len(candles),
         "latest_bar_date": latest_date,

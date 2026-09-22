@@ -16,7 +16,7 @@ const channelMidlineCheckbox = document.getElementById('channel-midline-checkbox
 const channelLowerReclaimGroup = document.getElementById('channel-lower-reclaim-group');
 const channelLowerReclaimCheckbox = document.getElementById('channel-lower-reclaim-checkbox');
 const channelCurlGroup = document.getElementById('channel-curl-group');
-const channelCurlCheckbox = document.getElementById('channel-curl-checkbox');
+const channelCurlSelect = document.getElementById('channel-curl-select');
 const loadingOverlay = document.getElementById('loading');
 const pnlVal = document.getElementById('pnl-val');
 const pnlPctVal = document.getElementById('pnl-pct-val');
@@ -35,7 +35,7 @@ function getSelectedChannelLookback() {
 }
 
 function getChannelStoplossEnabled() {
-    if (!channelStoplossCheckbox) return true;
+    if (!channelStoplossCheckbox) return false;
     return channelStoplossCheckbox.checked;
 }
 
@@ -45,13 +45,18 @@ function getChannelMidlineEnabled() {
 }
 
 function getChannelLowerReclaimEnabled() {
-    if (!channelLowerReclaimCheckbox) return true;
+    if (!channelLowerReclaimCheckbox) return false;
     return channelLowerReclaimCheckbox.checked;
 }
 
+function getChannelCurlMode() {
+    if (!channelCurlSelect) return 'both';
+    return channelCurlSelect.value || 'both';
+}
+
 function getChannelCurlEnabled() {
-    if (!channelCurlCheckbox) return true;
-    return channelCurlCheckbox.checked;
+    const mode = getChannelCurlMode();
+    return mode !== 'none';
 }
 
 function syncChannelMultVisibility(strategy) {
@@ -454,8 +459,8 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
-        if (channelCurlCheckbox) {
-            channelCurlCheckbox.onchange = () => {
+        if (channelCurlSelect) {
+            channelCurlSelect.onchange = () => {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
@@ -580,13 +585,15 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
                 const isMidlineCrossExit = (trade.exit_reason === 'midline_cross_exit') || (trade.notes && trade.notes.includes('midline_cross_exit'));
                 const isMidStop = (trade.exit_reason === 'midline_stop_exit') || (trade.notes && trade.notes.includes('midline_stop'));
-                const exitPrefix = isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : ''));
+                const isChannelCurlExit = (trade.exit_reason === 'channel_curl_exit') || (trade.notes && trade.notes.includes('channel_curl_exit')) || (trade.exit_reason === 'channel_curl_sell');
+                const exitPrefix = isChannelCurlExit ? 'CHANNEL CURL ' : (isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '')));
                 const action = isLong ? 'SELL' : 'COVER';
+                const exitColor = isChannelCurlExit ? '#EC4899' : ((isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'));
 
                 markers.push({
                     time: snappedExit,
                     position: isLong ? 'aboveBar' : 'belowBar',
-                    color: (isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'),
+                    color: exitColor,
                     shape: isLong ? 'arrowDown' : 'arrowUp',
                     text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
                 });
@@ -607,19 +614,22 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isSL = (existing.text && existing.text.includes('STOP LOSS')) || (m.text && m.text.includes('STOP LOSS'));
             const isMid = (existing.text && existing.text.includes('MID RECLAIM')) || (m.text && m.text.includes('MID RECLAIM'));
             const isLowerReclaim = (existing.text && existing.text.includes('LOWER RECLAIM')) || (m.text && m.text.includes('LOWER RECLAIM'));
-            const isCurl = (existing.text && existing.text.includes('CHANNEL CURL')) || (m.text && m.text.includes('CHANNEL CURL'));
+            const isCurlBuy = (existing.text && existing.text.includes('CHANNEL CURL BUY')) || (m.text && m.text.includes('CHANNEL CURL BUY'));
+            const isCurlSell = (existing.text && existing.text.includes('CHANNEL CURL SELL')) || (m.text && m.text.includes('CHANNEL CURL SELL'));
             const action = m.position === 'belowBar' ? 'BUY' : 'SELL';
             let prefix = '';
-            if (isMidStop) prefix = 'MID STOP ';
+            if (isCurlSell) prefix = 'CHANNEL CURL ';
+            else if (isMidStop) prefix = 'MID STOP ';
             else if (isSL) prefix = 'STOP LOSS ';
             else if (isMid) prefix = 'MID RECLAIM ';
             else if (isLowerReclaim) prefix = 'LOWER RECLAIM ';
-            else if (isCurl) prefix = 'CHANNEL CURL ';
+            else if (isCurlBuy) prefix = 'CHANNEL CURL ';
             existing.text = `${existing.count}x ${prefix}${action}`;
-            if ((isMidStop || isSL) && m.position === 'aboveBar') existing.color = '#F43F5E';
+            if (isCurlSell && m.position === 'aboveBar') existing.color = '#EC4899';
+            else if ((isMidStop || isSL) && m.position === 'aboveBar') existing.color = '#F43F5E';
             if (isMid && m.position === 'belowBar') existing.color = '#3B82F6';
             if (isLowerReclaim && m.position === 'belowBar') existing.color = '#06B6D4';
-            if (isCurl && m.position === 'belowBar') existing.color = '#FACC15';
+            if (isCurlBuy && m.position === 'belowBar') existing.color = '#FACC15';
         }
     });
 
@@ -841,8 +851,8 @@ async function updateDashboard() {
 
     try {
         const reqPeriod = (activeRange === '1y' || activeRange === '5y') ? activeRange : '5y';
-        const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}` 
+        const multParam = (strategy === 'enhanced_channel')
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}`
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
@@ -958,8 +968,8 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
+        const multParam = (strategy === 'enhanced_channel')
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}`
             : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),

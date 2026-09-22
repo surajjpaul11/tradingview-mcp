@@ -309,7 +309,15 @@ def run_enhanced_channel(
     use_stop_loss = params.get("use_stop_loss", True)
     midline_reentry = params.get("midline_reentry", False)
     midline_cross = params.get("midline_cross", False) or midline_reentry
-    channel_inflection = params.get("channel_inflection", True)
+    channel_curl_mode = params.get("channel_curl_mode", None)
+    if channel_curl_mode is not None:
+        mode_str = str(channel_curl_mode).lower().strip()
+        curl_buy = mode_str in ("both", "buy", "curl buy", "both (curl buy and curl sell)")
+        curl_sell = mode_str in ("both", "sell", "curl sell", "both (curl buy and curl sell)")
+    else:
+        channel_inflection = params.get("channel_inflection", True)
+        curl_buy = bool(channel_inflection)
+        curl_sell = bool(channel_inflection)
     lower_reclaim = params.get("lower_reclaim", True)
     # Optional research gate. The default strategy is unchanged; callers
     # building a mask must use information available by each corresponding bar.
@@ -500,6 +508,37 @@ def run_enhanced_channel(
                     position = None
                     continue
 
+                # Check Channel Curl Sell / Exit:
+                # If curl_sell is enabled and channel tops out and curls downward
+                if curl_sell and m3 is not None and i >= 3:
+                    m0 = mid_3m[i]
+                    m1 = mid_3m[i - 1]
+                    m2 = mid_3m[i - 2]
+                    m3_prev = mid_3m[i - 3]
+                    if None not in (m0, m1, m2, m3_prev):
+                        ch_h = (u3 - d3) if (u3 is not None and d3 is not None and u3 > d3) else ch_height
+                        pos_in_ch = ((c - d3) / ch_h) if (ch_h > 0 and d3 is not None) else 0.5
+                        was_ascending = (m2 > m3_prev) or (m1 > m3_prev)
+                        is_curling_down = (m0 < m1) and (((m1 - m0) >= 0.002 * ch_h) or (c < o and c < prev_c))
+                        if was_ascending and is_curling_down and (pos_in_ch >= 0.50 or position.get("reached_mid", False)):
+                            trades.append({
+                                "side": "long",
+                                "entry_date": position["entry_date"],
+                                "entry_price": position["entry_price"],
+                                "entry_bar": position["entry_bar"],
+                                "entry_reason": position["entry_reason"],
+                                "exit_date": date,
+                                "exit_price": round(c, 4),
+                                "exit_bar": i,
+                                "exit_reason": "channel_curl_exit",
+                                "bars_held": i - position["entry_bar"],
+                                "tier": position["tier"],
+                                "size_pct": position.get("size_pct", 1.0),
+                                "strategy": "enhanced_channel",
+                            })
+                            position = None
+                            continue
+
             elif side == "short":
                 # Short stopgap is above upper line
                 short_stop_level = u3 + stopgap_margin
@@ -680,20 +719,24 @@ def run_enhanced_channel(
                         continue
 
             # --- CHANNEL INFLECTION / VALLEY CURL (TURNING HORIZONTAL TO UPWARD) ---
-            if channel_inflection and position is None and long_entry_allowed:
+            if curl_buy and position is None and long_entry_allowed:
                 m0 = mid_3m[i]
                 m1 = mid_3m[i - 1] if i >= 1 else None
                 m2 = mid_3m[i - 2] if i >= 2 else None
                 m3_prev = mid_3m[i - 3] if i >= 3 else None
 
                 if None not in (m0, m1, m2, m3_prev):
+                    ch_h = (u3 - d3) if (u3 is not None and d3 is not None and u3 > d3) else ch_height
+                    pos_in_ch = ((c - d3) / ch_h) if (ch_h > 0 and d3 is not None) else 0.5
+                    in_valley_zone = pos_in_ch <= 0.65
+
                     # Was declining previously (channel was going downwards)
                     was_declining = (m2 < m3_prev) or (m1 < m3_prev)
                     # Flattens and curls strictly upward (rate of increase >= 0.3% of channel height)
-                    is_turning_up = (m0 > m1) and ((m0 - m1) >= 0.003 * ch_height)
+                    is_turning_up = (m0 > m1) and ((m0 - m1) >= 0.003 * ch_h)
                     # Price confirmation: green candle closing at or above curling midline
                     price_above_mid = (c >= m0) and (c > o) and (c > prev_c)
-                    if was_declining and is_turning_up and price_above_mid:
+                    if in_valley_zone and was_declining and is_turning_up and price_above_mid:
                         allowed = not (htf_filter and s_1y < -0.05 and pos_1y_pct > 0.60)
                         if allowed:
                             position = {
@@ -903,6 +946,7 @@ def calc_metrics(
         "trailing_channel_exit": sum(1 for t in trades if t["exit_reason"] == "trailing_channel_exit"),
         "stopgap_exit": sum(1 for t in trades if t["exit_reason"] == "stopgap_exit"),
         "midline_stop_exit": sum(1 for t in trades if t["exit_reason"] == "midline_stop_exit"),
+        "channel_curl_exit": sum(1 for t in trades if t["exit_reason"] == "channel_curl_exit"),
         "end_of_data": sum(1 for t in trades if t["exit_reason"] == "end_of_data"),
     }
 
@@ -927,6 +971,7 @@ def calc_metrics(
         "trailing_channel_exits": exit_counts["trailing_channel_exit"],
         "stopgap_exits": exit_counts["stopgap_exit"],
         "midline_stop_exits": exit_counts["midline_stop_exit"],
+        "channel_curl_exits": exit_counts["channel_curl_exit"],
         "end_of_data_exits": exit_counts["end_of_data"],
     }
 
@@ -956,6 +1001,7 @@ def run_backtest(
     midline_reentry: bool = False,
     midline_cross: bool = False,
     channel_inflection: bool = True,
+    channel_curl_mode: str = "both",
     lower_reclaim: bool = True,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
@@ -982,6 +1028,7 @@ def run_backtest(
         "midline_reentry": midline_reentry,
         "midline_cross": midline_cross,
         "channel_inflection": channel_inflection,
+        "channel_curl_mode": channel_curl_mode,
         "lower_reclaim": lower_reclaim,
     }
 

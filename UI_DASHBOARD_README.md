@@ -29,7 +29,7 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
 
 1. Open a system terminal and navigate to the project's root directly:
    ```bash
-   cd /Users/spaul11/Projects/codex
+   cd /Users/spaul11/Projects/tradingview-mcp
    ```
 
 2. Run the dashboard launcher with `uv run`:
@@ -37,7 +37,11 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
    uv run python -m tradingview_mcp.ui.launcher --open-browser
    ```
 
-3. The launcher prints and opens the dashboard address. It starts at port 8000 and tries the next free port if another copy is already running. Set `PORT` to change the starting port.
+3. The launcher prints and opens the dashboard address. It starts at port 8000 and tries the next free port if
+   another copy is already running, so several copies (e.g. one per git worktree) can run side by side.
+   Set `PORT` or `--port N` to change the starting port, and `--strict-port` (or `PORT_STRICT=1`) to fail
+   instead of moving to another port. The same selection applies to the MCP HTTP server
+   (`uv run tradingview-mcp streamable-http`).
 
 The dashboard's **Opportunity research** link opens an editable cross-stock watchlist scanner. It highlights current completed-bar buys and their historical long-trade outcomes. The displayed win rates are not calibrated probabilities; see [the scanner groundwork](docs/OPPORTUNITY_SCANNER.md) for its present limits.
 

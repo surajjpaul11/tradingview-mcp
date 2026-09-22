@@ -55,6 +55,7 @@ _STRATEGY_LABELS = {
     "ema21":        "EMA 21 Price Crossover (Long + Short)",
     "enhanced_channel": "Enhanced Channel (MTF Regression Channel Bounce)",
     "volume_price_breakout": "Volume-Confirmed Price Breakout",
+    "resistance_lines": "Resistance Lines (Horizontal S/R Bounce, Long Only)",
 }
 
 
@@ -648,6 +649,7 @@ _STRATEGY_MAP = {
     "ema21":        _run_ema21,
     "enhanced_channel": _get_dynamic_runner("enhanced_channel_strategy.py", "run_enhanced_channel_trades"),
     "volume_price_breakout": run_volume_price_breakout,
+    "resistance_lines": _get_dynamic_runner("resistance_lines_strategy.py", "run_resistance_lines"),
 }
 
 

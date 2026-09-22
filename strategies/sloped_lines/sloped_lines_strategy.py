@@ -812,9 +812,7 @@ def run_sloped_lines(
         if active_trendline is None:
             if state == "waiting_for_buy" or state == "short":
                 # Build descending resistance starting with sell candle high as anchor1!
-                cand_highs = None
-                if last_sell_point is not None:
-                    cand_highs = [(b, highs[b]) for b in range(last_sell_point[0] + 4, i + 1)]
+                cand_highs = [(b, highs[b]) for b in range(search_after_bar, i + 1)]
                 tl = build_descending_resistance(
                     confirmed_highs, closes,
                     search_after_bar=search_after_bar,
@@ -880,7 +878,7 @@ def run_sloped_lines(
 
                 # Build ascending support starting with entry candle low as anchor1!
                 entry_pt = (position["entry_bar"], position["entry_low"])
-                cand_lows = [(b, lows[b]) for b in range(position["entry_bar"] + 4, i + 1)]
+                cand_lows = [(b, lows[b]) for b in range(position["entry_bar"], i + 1)]
                 tl = build_ascending_support(
                     confirmed_lows, closes,
                     search_after_bar=position["entry_bar"],

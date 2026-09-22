@@ -423,7 +423,12 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
         except Exception as e:
             print(f"On-the-fly EC stats error for {symbol}: {e}")
 
-    stats = db.get_stats(symbol=symbol, strategy=strategy)
+    stats = get_pnl_summary(symbol=symbol, strategy=strategy)
+    if not stats or stats.get("total_trades", 0) == 0:
+        alt_sym = symbol.replace("-", "_") if "-" in symbol else symbol.replace("_", "-")
+        alt_stats = get_pnl_summary(symbol=alt_sym, strategy=strategy)
+        if alt_stats and alt_stats.get("total_trades", 0) > 0:
+            stats = alt_stats
     return stats
 
 @app.get("/api/candles")

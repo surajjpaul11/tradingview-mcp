@@ -53,6 +53,7 @@ COMMISSION_PCT       = 0.1
 SLIPPAGE_PCT         = 0.05
 DEFAULT_LINE_ANGLE   = 3.0     # default minimum percentage angle/slope threshold
 DEFAULT_STOP_LOSS_MODE = "exit_peak_reclaim"  # default stop loss behavior
+DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: touch break)
 
 
 # ==============================================================================
@@ -533,7 +534,7 @@ def run_sloped_lines(
     trendline_tolerance: float = TRENDLINE_TOLERANCE,
     confirm_bars: int = CONFIRM_BARS,
     enable_short: bool = ENABLE_SHORT,
-    full_candle: bool = True,
+    full_candle: bool = DEFAULT_FULL_CANDLE,
     use_wick: bool = False,
     confirm_candles: int = 0,
     inverse_color_trigger: bool = False,
@@ -1085,7 +1086,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     trendline_tolerance = kwargs.get("trendline_tolerance", TRENDLINE_TOLERANCE)
     confirm_bars = kwargs.get("confirm_bars", CONFIRM_BARS)
     enable_short = kwargs.get("enable_short", ENABLE_SHORT)
-    full_candle = kwargs.get("full_candle", True)
+    full_candle = kwargs.get("full_candle", DEFAULT_FULL_CANDLE)
     use_wick = kwargs.get("use_wick", USE_WICK)
     confirm_candles = kwargs.get("confirm_candles", 0)
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
@@ -1116,7 +1117,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     trendline_tolerance = kwargs.get("trendline_tolerance", TRENDLINE_TOLERANCE)
     confirm_bars = kwargs.get("confirm_bars", CONFIRM_BARS)
     enable_short = kwargs.get("enable_short", ENABLE_SHORT)
-    full_candle = kwargs.get("full_candle", True)
+    full_candle = kwargs.get("full_candle", DEFAULT_FULL_CANDLE)
     use_wick = kwargs.get("use_wick", USE_WICK)
     confirm_candles = kwargs.get("confirm_candles", 0)
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
@@ -1195,7 +1196,7 @@ def run_backtest(
     trendline_tolerance: float = TRENDLINE_TOLERANCE,
     confirm_bars: int = CONFIRM_BARS,
     enable_short: bool = ENABLE_SHORT,
-    full_candle: bool = True,
+    full_candle: bool = DEFAULT_FULL_CANDLE,
     use_wick: bool = False,
     confirm_candles: int = 0,
     inverse_color_trigger: bool = False,
@@ -1297,8 +1298,8 @@ def main():
     parser.add_argument("--line-angle", type=float, default=DEFAULT_LINE_ANGLE, choices=[0.0, 2.0, 3.0, 5.0, 8.0], help="Minimum percentage angle/slope threshold between line anchors (0, 2, 3, 5, 8, default: 3.0)")
     parser.add_argument("--stop-loss-mode", default=DEFAULT_STOP_LOSS_MODE, choices=["none", "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer"], help="Stop loss mode (none, exit_peak_reclaim, barrier_trap_reentry, atr_stop_buffer, default: exit_peak_reclaim)")
     parser.add_argument("--enable-short", action="store_true", default=ENABLE_SHORT, help="Enable short selling on support break")
-    parser.add_argument("--full-candle", action="store_true", default=True, help="Require candle to close across trendline for breakout (default: True)")
-    parser.add_argument("--touch-break", action="store_false", dest="full_candle", help="Allow intrabar touch/wick to break trendline")
+    parser.add_argument("--full-candle", action="store_true", default=DEFAULT_FULL_CANDLE, help="Require candle to close across trendline for breakout (default: False)")
+    parser.add_argument("--touch-break", action="store_false", dest="full_candle", help="Allow intrabar touch/wick to break trendline (default)")
     parser.add_argument("--use-wick", action="store_true", default=False, help="Use candle wicks instead of body for trendline contact points (default: False)")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart with trendlines")
     args = parser.parse_args()

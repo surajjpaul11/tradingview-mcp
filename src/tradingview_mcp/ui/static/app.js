@@ -73,7 +73,7 @@ const slopedStopLossGroup = document.getElementById('sloped-stop-loss-group');
 const slopedStopLossSelect = document.getElementById('sloped-stop-loss-select');
 
 function getFullCandleEnabled() {
-    if (!slopedFullCandleCheckbox) return true;
+    if (!slopedFullCandleCheckbox) return false;
     return slopedFullCandleCheckbox.checked;
 }
 

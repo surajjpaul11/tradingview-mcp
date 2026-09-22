@@ -205,7 +205,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     return candles, tf, actual_period
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = True, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -338,7 +338,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = True, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -451,7 +451,7 @@ async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: 
     return {"candles": candles, "timeframe": actual_tf, "period": actual_period}
 
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = True, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
+async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim"):
     """
     Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
     and return trendline segments for chart overlay.

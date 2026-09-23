@@ -1003,9 +1003,13 @@ def run_backtest(
     channel_inflection: bool = True,
     channel_curl_mode: str = "both",
     lower_reclaim: bool = True,
+    candles: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Complete backtest runner."""
-    candles = fetch_ohlcv(symbol, period, interval)
+    if candles is None:
+        candles = fetch_ohlcv(symbol, period, interval)
+    if not candles:
+        raise ValueError(f"No candles available for {symbol}")
     params = {
         "symbol": symbol,
         "period": period,

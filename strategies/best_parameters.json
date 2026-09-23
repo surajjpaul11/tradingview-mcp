@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Strategy Best Parameters Configuration",
+  "description": "Tracks optimal parameter sets and historical performance metrics for each strategy and ticker combination.",
+  "version": "1.0.0",
+  "strategies": {
+    "sloped_lines": {
+      "name": "Sloped Lines Strategy",
+      "description": "Dynamic sloped support and resistance trendlines with confirmation candles, anchor filters, and breakout triggers.",
+      "tickers": {
+        "AAPL": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 0,
+            "inverse_color_trigger": false,
+            "line_angle": 3.0,
+            "stop_loss_mode": "exit_peak_reclaim",
+            "min_anchor_bars": 2
+          },
+          "performance": {
+            "total_pnl": 4670.62,
+            "total_pnl_pct": 46.71,
+            "buy_and_hold_pct": 33.72,
+            "beats_bnh_pct": 12.99,
+            "win_rate_pct": 42.1,
+            "total_trades": 38,
+            "initial_capital": 10000.0
+          },
+          "notes": "Optimal parameter set yielding +46.71% return, beating buy & hold (+33.72%) by +12.99%.",
+          "last_updated": "2026-09-23"
+        },
+        "NVDA": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 0,
+            "inverse_color_trigger": true,
+            "line_angle": 3.0,
+            "stop_loss_mode": "barrier_trap_reentry",
+            "min_anchor_bars": 3
+          },
+          "performance": {
+            "total_pnl": 5576.99,
+            "total_pnl_pct": 55.77,
+            "buy_and_hold_pct": 27.74,
+            "beats_bnh_pct": 28.03,
+            "win_rate_pct": 37.0,
+            "total_trades": 27,
+            "initial_capital": 10000.0
+          },
+          "notes": "Optimal parameter set yielding +55.77% return with inverse color trigger and barrier trap reentry, beating buy & hold (+27.74%) by +28.03%.",
+          "last_updated": "2026-09-23"
+        },
+        "AMD": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 1,
+            "inverse_color_trigger": false,
+            "line_angle": 0.0,
+            "stop_loss_mode": "barrier_trap_reentry",
+            "min_anchor_bars": 4
+          },
+          "performance": {
+            "total_pnl": 38474.51,
+            "total_pnl_pct": 384.75,
+            "buy_and_hold_pct": 282.55,
+            "beats_bnh_pct": 102.20,
+            "win_rate_pct": 45.5,
+            "total_trades": 22,
+            "initial_capital": 10000.0
+          },
+          "notes": "Optimal parameter set yielding +384.75% return ($38,474 profit), beating buy & hold (+282.55%) by +102.20%.",
+          "last_updated": "2026-09-23"
+        },
+        "SPY": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 1,
+            "inverse_color_trigger": false,
+            "line_angle": 0.0,
+            "stop_loss_mode": "atr_stop_buffer",
+            "min_anchor_bars": 2
+          },
+          "performance": {
+            "total_pnl": 1707.35,
+            "total_pnl_pct": 17.07,
+            "buy_and_hold_pct": 17.89,
+            "beats_bnh_pct": -0.82,
+            "win_rate_pct": 72.7,
+            "total_trades": 11,
+            "initial_capital": 10000.0
+          },
+          "notes": "Optimal parameter set yielding +17.07% return with high win rate (72.7% across 11 trades) vs +17.89% buy & hold.",
+          "last_updated": "2026-09-23"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,648 @@
+{
+  "symbol": "AMD",
+  "strategy": "sloped_lines",
+  "strategy_label": "Sloped Lines (pivot=5, tol=1.5%, confirm_candles=0, angle=5.0%)",
+  "parameters": {
+    "pivot_lookback": 5,
+    "trendline_tolerance": 0.015,
+    "confirm_bars": 1,
+    "enable_short": false,
+    "full_candle": true,
+    "use_wick": false,
+    "confirm_candles": 0,
+    "inverse_color_trigger": false,
+    "line_angle": 5.0
+  },
+  "period": "1y",
+  "interval": "1d",
+  "candles_analyzed": 251,
+  "date_from": "2025-09-23",
+  "date_to": "2026-09-22",
+  "initial_capital": 10000.0,
+  "commission_pct": 0.1,
+  "slippage_pct": 0.05,
+  "total_trades": 10,
+  "winning_trades": 6,
+  "losing_trades": 4,
+  "long_trades": 10,
+  "short_trades": 0,
+  "support_break_exits": 10,
+  "resistance_break_exits": 0,
+  "end_of_data_exits": 0,
+  "win_rate_pct": 60.0,
+  "final_capital": 12350.99,
+  "total_return_pct": 23.51,
+  "avg_gain_pct": 6.13,
+  "avg_loss_pct": -3.39,
+  "max_drawdown_pct": -11.4,
+  "profit_factor": 2.71,
+  "sharpe_ratio": 5.51,
+  "expectancy_pct": 2.32,
+  "buy_and_hold_return_pct": 287.68,
+  "vs_buy_and_hold_pct": -264.17,
+  "trendlines": [
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 36,
+      "anchor1_price": 258.89,
+      "anchor2_bar": 55,
+      "anchor2_price": 222.0,
+      "break_bar": 62,
+      "break_price": 213.43,
+      "break_date": "2025-12-19"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 62,
+      "anchor1_price": 204.6,
+      "anchor2_bar": 66,
+      "anchor2_price": 214.99,
+      "break_bar": 67,
+      "break_price": 215.61,
+      "break_date": "2025-12-29"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 71,
+      "anchor1_price": 230.25,
+      "anchor2_bar": 75,
+      "anchor2_price": 205.72,
+      "break_bar": 76,
+      "break_price": 207.69,
+      "break_date": "2026-01-12"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 76,
+      "anchor1_price": 201.18,
+      "anchor2_bar": 80,
+      "anchor2_price": 231.83,
+      "break_bar": 81,
+      "break_price": 231.92,
+      "break_date": "2026-01-20"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 84,
+      "anchor1_price": 261.18,
+      "anchor2_bar": 90,
+      "anchor2_price": 246.27,
+      "break_bar": 105,
+      "break_price": 213.84,
+      "break_date": "2026-02-24"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 106,
+      "anchor1_price": 214.82,
+      "anchor2_bar": 110,
+      "anchor2_price": 191.46,
+      "break_bar": 111,
+      "break_price": 202.07,
+      "break_date": "2026-03-04"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 114,
+      "anchor1_price": 189.36,
+      "anchor2_bar": 123,
+      "anchor2_price": 201.33,
+      "break_bar": 127,
+      "break_price": 203.77,
+      "break_date": "2026-03-26"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 160,
+      "anchor1_price": 457.04,
+      "anchor2_bar": 164,
+      "anchor2_price": 414.05,
+      "break_bar": 165,
+      "break_price": 447.58,
+      "break_date": "2026-05-20"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 165,
+      "anchor1_price": 428.04,
+      "anchor2_bar": 169,
+      "anchor2_price": 495.54,
+      "break_bar": 171,
+      "break_price": 516.1,
+      "break_date": "2026-05-29"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 175,
+      "anchor1_price": 523.2,
+      "anchor2_bar": 179,
+      "anchor2_price": 467.97,
+      "break_bar": 180,
+      "break_price": 488.45,
+      "break_date": "2026-06-11"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 180,
+      "anchor1_price": 461.6,
+      "anchor2_bar": 184,
+      "anchor2_price": 512.48,
+      "break_bar": 187,
+      "break_price": 519.85,
+      "break_date": "2026-06-23"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 192,
+      "anchor1_price": 580.91,
+      "anchor2_bar": 198,
+      "anchor2_price": 546.72,
+      "break_bar": 199,
+      "break_price": 557.89,
+      "break_date": "2026-07-10"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 208,
+      "anchor1_price": 544.74,
+      "anchor2_bar": 212,
+      "anchor2_price": 452.68,
+      "break_bar": 213,
+      "break_price": 485.39,
+      "break_date": "2026-07-30"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 213,
+      "anchor1_price": 460.0,
+      "anchor2_bar": 219,
+      "anchor2_price": 483.36,
+      "break_bar": 220,
+      "break_price": 469.56,
+      "break_date": "2026-08-10"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 224,
+      "anchor1_price": 514.39,
+      "anchor2_bar": 228,
+      "anchor2_price": 469.46,
+      "break_bar": 229,
+      "break_price": 473.25,
+      "break_date": "2026-08-21"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 233,
+      "anchor1_price": 481.5,
+      "anchor2_bar": 238,
+      "anchor2_price": 456.16,
+      "break_bar": 239,
+      "break_price": 477.57,
+      "break_date": "2026-09-04"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 239,
+      "anchor1_price": 462.0,
+      "anchor2_bar": 243,
+      "anchor2_price": 510.71,
+      "break_bar": 244,
+      "break_price": 493.41,
+      "break_date": "2026-09-14"
+    }
+  ],
+  "overlays": [
+    {
+      "label": "\u25bc Resistance (lower highs)",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-11-12",
+          "value": 258.89
+        },
+        {
+          "time": "2025-12-22",
+          "value": 206.4674
+        }
+      ]
+    },
+    {
+      "label": "\u25b2 Support (higher lows)",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-19",
+          "value": 204.6
+        },
+        {
+          "time": "2025-12-30",
+          "value": 220.185
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-05",
+          "value": 230.25
+        },
+        {
+          "time": "2026-01-13",
+          "value": 193.455
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-12",
+          "value": 201.18
+        },
+        {
+          "time": "2026-01-21",
+          "value": 247.155
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-23",
+          "value": 261.18
+        },
+        {
+          "time": "2026-02-25",
+          "value": 206.51
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-02-25",
+          "value": 214.82
+        },
+        {
+          "time": "2026-03-05",
+          "value": 179.78
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-03-09",
+          "value": 189.36
+        },
+        {
+          "time": "2026-03-27",
+          "value": 207.98
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-05-13",
+          "value": 457.04
+        },
+        {
+          "time": "2026-05-21",
+          "value": 392.555
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-05-20",
+          "value": 428.04
+        },
+        {
+          "time": "2026-06-01",
+          "value": 546.165
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-06-04",
+          "value": 523.2
+        },
+        {
+          "time": "2026-06-12",
+          "value": 440.355
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-06-11",
+          "value": 461.6
+        },
+        {
+          "time": "2026-06-24",
+          "value": 563.36
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-06-30",
+          "value": 580.91
+        },
+        {
+          "time": "2026-07-13",
+          "value": 535.3233
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-07-23",
+          "value": 544.74
+        },
+        {
+          "time": "2026-07-31",
+          "value": 406.65
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-07-30",
+          "value": 460.0
+        },
+        {
+          "time": "2026-08-11",
+          "value": 491.1467
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-08-14",
+          "value": 514.39
+        },
+        {
+          "time": "2026-08-24",
+          "value": 446.995
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-08-27",
+          "value": 481.5
+        },
+        {
+          "time": "2026-09-08",
+          "value": 446.024
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-09-04",
+          "value": 462.0
+        },
+        {
+          "time": "2026-09-15",
+          "value": 535.065
+        }
+      ]
+    }
+  ],
+  "trade_log": [
+    {
+      "entry_date": "2025-12-19",
+      "entry_price": 213.43,
+      "exit_date": "2025-12-29",
+      "exit_price": 215.61,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 0.721,
+      "gross_return_pct": 1.021,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-01-12",
+      "entry_price": 207.69,
+      "exit_date": "2026-01-20",
+      "exit_price": 231.92,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 11.366,
+      "gross_return_pct": 11.666,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-02-24",
+      "entry_price": 213.84,
+      "exit_date": "2026-02-25",
+      "exit_price": 210.86,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": -1.694,
+      "gross_return_pct": -1.394,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-03-04",
+      "entry_price": 202.07,
+      "exit_date": "2026-03-26",
+      "exit_price": 203.77,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 0.541,
+      "gross_return_pct": 0.841,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-05-20",
+      "entry_price": 447.58,
+      "exit_date": "2026-05-29",
+      "exit_price": 516.1,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 15.009,
+      "gross_return_pct": 15.309,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-06-11",
+      "entry_price": 488.45,
+      "exit_date": "2026-06-23",
+      "exit_price": 519.85,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 6.128,
+      "gross_return_pct": 6.428,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-07-10",
+      "entry_price": 557.89,
+      "exit_date": "2026-07-13",
+      "exit_price": 534.39,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": -4.512,
+      "gross_return_pct": -4.212,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-07-30",
+      "entry_price": 485.39,
+      "exit_date": "2026-08-10",
+      "exit_price": 469.56,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": -3.561,
+      "gross_return_pct": -3.261,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-08-21",
+      "entry_price": 473.25,
+      "exit_date": "2026-08-24",
+      "exit_price": 456.75,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": -3.787,
+      "gross_return_pct": -3.487,
+      "cost_pct": -0.3
+    },
+    {
+      "entry_date": "2026-09-04",
+      "entry_price": 477.57,
+      "exit_date": "2026-09-14",
+      "exit_price": 493.41,
+      "side": "long",
+      "exit_reason": "support_break",
+      "strategy": "sloped_lines",
+      "return_pct": 3.017,
+      "gross_return_pct": 3.317,
+      "cost_pct": -0.3
+    }
+  ],
+  "data_source": "Yahoo Finance",
+  "disclaimer": "Past performance does not guarantee future results. For educational use only.",
+  "timestamp": "2026-09-22T21:59:54.394941+00:00"
+}

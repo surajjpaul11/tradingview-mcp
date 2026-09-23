@@ -344,25 +344,20 @@ Repeat.
 ### How It Works
 
 **Phase 1 — Waiting for Buy (out of market):**
-1. Detect swing highs using pivot logic (5 bars left/right)
-2. Find two consecutive swing highs where `high₂ < high₁` (lower highs → descending)
+1. Detect swing highs or candle tops
+2. Find candidate resistance anchors where `high₂ < high₁` (lower highs → descending)
 3. Validate: no candle close breaks above the line between the two anchor points
-4. Extend the line forward and watch for a break
+4. Optional filters: Confirmation Candles, Inverse Color Trigger (Red to Green), Line Angle threshold
 5. When price **closes above** the projected resistance → **BUY**
+6. Alternatively, if `stop_loss_mode` is `exit_peak_reclaim`, re-enter immediately if price clears the prior sell candle high
 
 **Phase 2 — Holding (long position):**
-1. Detect swing lows that form after the buy
-2. Find two consecutive swing lows where `low₂ > low₁` (higher lows → ascending)
+1. Buy candle low forms Anchor 1 immediately
+2. Subsequent higher lows or candle bottoms form Anchor 2
 3. Validate: no candle close breaks below the line between the two anchor points
-4. Extend the line forward and watch for a break
-5. When price **closes below** the projected support → **SELL**
+4. When price **closes below** the projected support → **SELL**
+5. Fallback stop: initial stop below entry low (buffered by ATR if `atr_stop_buffer` is active)
 6. Return to Phase 1
-
-**Key Differences from Straight Line:**
-- Only 2 anchor points needed (vs 4-point confirmation in Straight Line)
-- Validates line integrity (no close violates the line between anchors)
-- Always alternates between descending resistance and ascending support
-- Simpler state machine: just `waiting_for_buy` ↔ `holding`
 
 ### Default Parameters
 
@@ -371,52 +366,14 @@ Repeat.
 | `pivot_lookback` | 5 | Bars left/right for swing point detection |
 | `trendline_tolerance` | 0.015 | 1.5% tolerance for line validation |
 | `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
+| `confirm_candles` | 0 | Additional supporting confirmation candles required |
+| `line_angle` | 3.0 | Minimum slope angle percentage between anchors |
+| `min_anchor_bars` | 2 | Minimum bar distance between anchors (0-5) |
+| `inverse_color_trigger` | false | Ascending support green->red, descending resistance red->green, triggers green/red |
+| `stop_loss_mode` | exit_peak_reclaim | Stop loss mode: none, exit_peak_reclaim, barrier_trap_reentry, atr_stop_buffer |
 | `enable_short` | false | Enable short positions on support break |
-| `interval` | 1h | Hourly candles |
-| `period` | 2y | Data lookback |
-
-### Usage
-
-```bash
-# Default (SPY, 2y, 1h, long-only)
-python strategies/sloped_lines/sloped_lines_strategy.py
-
-# Different symbol
-python strategies/sloped_lines/sloped_lines_strategy.py --symbol AAPL --period 2y
-
-# Enable short selling
-python strategies/sloped_lines/sloped_lines_strategy.py --symbol QQQ --enable-short
-
-# Tighter tolerance
-python strategies/sloped_lines/sloped_lines_strategy.py --symbol NVDA --trendline-tolerance 0.01
-```
-
-### Visual Example
-
-```
-Phase 1: Descending Resistance (Green line — lower highs)
-
-     Price
-     |*
-     | * LH₁
-     |   *-----------
-     |  LH₂ *        ---- line projected forward
-     |     *    *
-     |       *    *       * ← close above line = BUY
-     |         *
-     +---------------------- Time
-
-Phase 2: Ascending Support (Blue line — higher lows)
-
-     Price
-     |                *
-     |              *   *
-     |            *       *     * ← close below line = SELL
-     |         *  HL₂      *  /
-     |       * HL₁      ----*--- line projected forward
-     |     *-----------
-     +---------------------- Time
-```
+| `interval` | 1d | Daily candles (or 1h) |
+| `period` | 1y | Data lookback |
 
 ---
 
@@ -583,3 +540,64 @@ python strategies/volatility_harvester_strategy.py --symbol UUUU --no-volume-fil
 # Wider entry threshold (fewer but higher-conviction trades)
 python strategies/volatility_harvester_strategy.py --symbol VXX --deviation-mult 2.5
 ```
+
+---
+
+## Resistance Lines Strategy
+
+Horizontal support/resistance **bounce** strategy, long only. Files: `strategies/resistance_lines/resistance_lines_strategy.py` (backtester), `resistance_lines_strategy.pine` (TradingView v6), `compare_resistance_lines.py` (variant comparison). MCP key: `resistance_lines`.
+
+How it differs from its neighbours: `straight_line` trades **breaks** of sloped trendlines; `enhanced_lines` trades **bounces** inside a sloped channel; `resistance_lines` trades **bounces** off **horizontal** price levels.
+
+### Logic
+
+**Levels (no lookahead):**
+1. Swing highs and lows via pivots (`pivot_lookback` bars each side); a pivot is usable only once confirmed.
+2. All confirmed pivots (highs and lows together) from the last `level_lookback` bars are clustered by price; a pivot joins a cluster if within `zone_atr_mult` × ATR of the cluster mean.
+3. Clusters with ≥ `min_touches` pivots become levels, each with a zone of ± `zone_atr_mult` × ATR. Levels below price = support, above = resistance, so a broken support becomes resistance automatically.
+
+**Buy (support bounce):** the bar (or the previous bar) dips into a support zone, the previous close was above the level, the bar closes above the level, and the bar is a **hammer** or **bullish engulfing** candle. Reward/risk must be ≥ `min_rr`. Signal on close, fill at next open.
+
+**Exits:**
+
+| Exit | Rule |
+|---|---|
+| Stop loss | level − `stop_atr_mult` × ATR, frozen at entry (gap-through fills at open) |
+| Target | bottom of the next resistance zone above entry |
+| Resistance bounce (sell) | bar touches a resistance zone from below and prints a **shooting star** or **bearish engulfing**; exit at next open |
+| End of data | close at last price |
+
+If a bar hits both stop and target, the stop is assumed first (conservative).
+
+### Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `interval` / `period` | 1d / 5y | Daily bars (see test results — 1h is not viable after costs) |
+| `pivot_lookback` | 5 | Bars left/right for swing detection |
+| `level_lookback` | 500 | Bars of pivots used to build levels |
+| `min_touches` | 2 | Pivots required to form a level |
+| `zone_atr_mult` | 0.75 | Zone half-width and cluster radius, in ATR |
+| `stop_atr_mult` | 1.0 | Stop distance beyond the level, in ATR |
+| `min_rr` | 1.5 | Minimum reward/risk (0 disables; trades with no resistance above skip the check) |
+| `atr_period` | 14 | Wilder ATR |
+| `hammer_wick_ratio` | 2.0 | Hammer / shooting star: long wick ≥ ratio × body |
+
+### Variant test (2026-09-21, 23 symbols, 0.30% round-trip costs)
+
+Daily, 5y:
+
+| Variant | Avg ret | Median ret | Beat B&H | Trades | Win rate | Avg PF | Avg DD |
+|---|---|---|---|---|---|---|---|
+| stop 0.5, zone 0.5 | +39.8% | +4.4% | 2/23 | 248 | 26.1% | 2.29 | −24.4% |
+| stop 1.0, zone 0.5 | +42.0% | −2.8% | 3/23 | 164 | 30.4% | 2.57 | −21.7% |
+| stop 1.5, zone 0.5 | +45.3% | −2.7% | 1/23 | 134 | 33.2% | 2.86 | −23.3% |
+| stop 1.0, zone 0.5, touches 3 | +41.7% | +3.9% | 3/23 | 152 | 28.2% | 2.25 | −22.1% |
+| stop 1.0, zone 0.5, RR 1.0 | +41.9% | −5.3% | 1/23 | 236 | 35.6% | 2.33 | −25.9% |
+| stop 1.0, zone 0.5, RR 2.0 | +40.7% | −9.7% | 1/23 | 139 | 26.7% | 2.50 | −21.4% |
+| **stop 1.0, zone 0.75 (default)** | **+70.0%** | **+2.3%** | **3/23** | **196** | **34.8%** | **3.13** | **−23.3%** |
+| stop 1.0, zone 1.0 | +56.8% | +5.8% | 2/23 | 213 | 33.8% | 2.55 | −26.2% |
+
+Buy & hold averaged +343.6% over the same window. Hourly (2y) variants averaged between −1.7% and +13.7% with medians of −4% to −8.5%: bounce moves on 1h bars are about the size of the round-trip cost.
+
+**Caveats:** averages are driven by a few outliers (MU +841%, STX +338%, META +166%); the median is near zero. Long-only and flat most of the time, it lags buy & hold badly in a bull market; it helped on flat/down names (VXX +20.5% vs −96.2%, SMR +1.8% vs −11.8%). The default was chosen on this single sample — treat it as a starting point, and validate with `walk_forward_backtest_strategy` before relying on it.

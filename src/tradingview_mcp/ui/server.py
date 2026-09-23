@@ -1,10 +1,11 @@
 import sqlite3
+import asyncio
 import os
 import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import yfinance as yf
@@ -13,6 +14,7 @@ import yfinance as yf
 from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_summary, _get_db_path, _get_connection, init_db
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
 from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
+from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST, scan_opportunities
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
@@ -101,6 +103,21 @@ async def read_root():
     html_file = static_path / "index.html"
     return html_file.read_text()
 
+
+@app.get("/opportunities", response_class=HTMLResponse)
+async def read_opportunities():
+    """Show the research-only, cross-stock signal scanner."""
+    return (static_path / "opportunities.html").read_text()
+
+
+@app.get("/api/opportunities")
+async def api_opportunities(symbols: str = ",".join(DEFAULT_WATCHLIST)):
+    """Scan completed daily bars without placing trades or asserting probabilities."""
+    try:
+        return await asyncio.to_thread(scan_opportunities, symbols.split(","))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 @app.get("/api/filters")
 async def get_filters():
     """Returns available symbols and strategies dynamically from DB and strategy registry."""
@@ -126,11 +143,118 @@ async def get_filters():
     
     return {"symbols": symbols, "strategies": all_strategies}
 
+def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y") -> tuple[list[dict], str, str]:
+    """
+    Fetch OHLCV candles via yfinance with automatic range clamping & resampling:
+      - 30m: max 60d
+      - 1h, 4h, 12h: max 2y
+      - 12h: resampled from 1h
+      - 1d, 5d: up to max
+    Returns (candles, actual_timeframe, actual_period)
+    """
+    import math
+    tf = timeframe.lower().strip()
+    if tf in ("daily", "1day"):
+        tf = "1d"
+    elif tf in ("weekly", "1week"):
+        tf = "5d"
+    elif tf in ("hourly", "60m"):
+        tf = "1h"
+
+    req_period = period.lower().strip()
+    actual_period = req_period
+
+    if tf == "30m" and req_period in ("3mo", "6mo", "1y", "2y", "5y", "max"):
+        actual_period = "60d"
+    elif tf in ("1h", "4h", "12h") and req_period in ("5y", "max"):
+        actual_period = "2y"
+
+    fetch_tf = "1h" if tf == "12h" else tf
+
+    candles = []
+    try:
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period=actual_period, interval=fetch_tf)
+        if df is not None and not df.empty:
+            if tf == "12h":
+                df = df.resample("12h").agg({
+                    "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"
+                }).dropna()
+
+            fmt = "%Y-%m-%d %H:%M" if tf in ("30m", "1h", "4h", "12h") else "%Y-%m-%d"
+            for date, row in df.iterrows():
+                o = float(row["Open"])
+                h = float(row["High"])
+                l = float(row["Low"])
+                c = float(row["Close"])
+                v = float(row.get("Volume", 0.0))
+                if any(math.isnan(x) for x in (o, h, l, c)):
+                    continue
+                candles.append({
+                    "time": int(date.timestamp()),
+                    "date": date.strftime(fmt),
+                    "open": round(o, 4),
+                    "high": round(h, 4),
+                    "low": round(l, 4),
+                    "close": round(c, 4),
+                    "volume": round(v, 2),
+                })
+    except Exception as e:
+        print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}): {e}")
+
+    return candles, tf, actual_period
+
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", period: str = "5y"):
+async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
+
+    if strategy in ("sloped_lines", "slope_lines"):
+        try:
+            base_dir = Path(__file__).resolve().parents[3]
+            strategy_dir = base_dir / "strategies" / "sloped_lines"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from sloped_lines_strategy import run_backtest as run_sl_backtest
+
+            clean_sym = symbol.strip().upper()
+            if clean_sym in ("PORTFOLIO", "TOTAL"):
+                clean_sym = "SPY"
+            yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+
+            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars, candles=candles)
+            trades = []
+            for t in res.get("trade_log", []):
+                entry_d = t.get("entry_date", "")
+                exit_d = t.get("exit_date", "")
+                created_at = _format_iso_datetime(entry_d, "09:30:00")
+                closed_at = _format_iso_datetime(exit_d, "16:00:00") if exit_d else None
+                entry_p = float(t.get("entry_price", 0))
+                exit_p = float(t.get("exit_price", entry_p)) if exit_d else None
+                ret_pct = float(t.get("return_pct", 0.0))
+                side_raw = (t.get("side") or "long").lower()
+                side = "buy" if side_raw in ("long", "buy") else "sell"
+                pnl_u = round((exit_p - entry_p) * (1000.0 / entry_p), 2) if (exit_p and entry_p > 0) else 0.0
+                trades.append({
+                    "trade_id": str(uuid.uuid4()),
+                    "symbol": clean_sym,
+                    "side": side,
+                    "strategy": "sloped_lines",
+                    "status": "closed" if exit_d else "open",
+                    "entry_price": entry_p,
+                    "exit_price": exit_p,
+                    "exit_reason": t.get("exit_reason", ""),
+                    "entry_reason": "breakout",
+                    "pnl_usd": pnl_u,
+                    "pnl_pct": ret_pct,
+                    "created_at": created_at,
+                    "closed_at": closed_at,
+                })
+            return {"trades": trades, "timeframe": actual_tf, "period": actual_period}
+        except Exception as e:
+            print(f"On-the-fly sloped_lines trades error for {symbol}: {e}")
 
     # If enhanced_channel with custom parameters is requested, recalculate on the fly!
     if strategy == "enhanced_channel":
@@ -214,10 +338,41 @@ async def api_trades(symbol: str, strategy: str = None, channel_mult: float = No
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", period: str = "5y"):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
+
+    if strategy in ("sloped_lines", "slope_lines"):
+        try:
+            base_dir = Path(__file__).resolve().parents[3]
+            strategy_dir = base_dir / "strategies" / "sloped_lines"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from sloped_lines_strategy import run_backtest as run_sl_backtest
+
+            clean_sym = symbol.strip().upper()
+            if clean_sym in ("PORTFOLIO", "TOTAL"):
+                clean_sym = "SPY"
+            yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+
+            res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars, candles=candles)
+            tot_trades = res.get("total_trades", 0)
+            tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
+            wr = res.get("win_rate_pct", 0.0)
+            return {
+                "total_trades": tot_trades,
+                "total_pnl_usd": tot_pnl_usd,
+                "total_pnl_pct": res.get("total_return_pct", 0.0),
+                "buy_and_hold_pct": res.get("buy_and_hold_return_pct", 0.0),
+                "win_rate_pct": wr,
+                "winning_trades": int(tot_trades * (wr / 100.0)),
+                "losing_trades": tot_trades - int(tot_trades * (wr / 100.0)),
+                "filters": {"strategy": "sloped_lines", "symbol": clean_sym, "full_candle": full_candle, "use_wick": use_wick, "confirm_candles": confirm_candles, "inverse_color_trigger": inverse_color_trigger, "line_angle": line_angle, "stop_loss_mode": stop_loss_mode, "min_anchor_bars": min_anchor_bars, "timeframe": actual_tf, "period": actual_period},
+            }
+        except Exception as e:
+            print(f"On-the-fly sloped_lines stats error for {symbol}: {e}")
 
     # If enhanced_channel with custom parameters is requested, recalculate stats on the fly!
     if strategy == "enhanced_channel":
@@ -231,52 +386,42 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mul
         is_mid_cross = midline_cross or midline_reentry
         if is_mid_cross is not None:
             ec_kwargs["midline_cross"] = is_mid_cross
-            ec_kwargs["midline_reentry"] = is_mid_cross
         if lower_reclaim is not None:
             ec_kwargs["lower_reclaim"] = lower_reclaim
-        if channel_curl_mode is not None:
-            ec_kwargs["channel_curl_mode"] = channel_curl_mode
+        if channel_curl_mode:
+            ec_kwargs["curl_mode"] = channel_curl_mode
         elif channel_inflection is not None:
-            ec_kwargs["channel_inflection"] = channel_inflection
+            ec_kwargs["curl_mode"] = "both" if channel_inflection else "none"
 
-        if ec_kwargs:
-            try:
-                base_dir = Path(__file__).resolve().parents[3]
-                strategy_dir = base_dir / "strategies" / "enhanced_channel"
-                if str(strategy_dir) not in sys.path:
-                    sys.path.insert(0, str(strategy_dir))
-                from enhanced_channel_strategy import run_backtest as run_ec_backtest
+        try:
+            base_dir = Path(__file__).resolve().parents[3]
+            strategy_dir = base_dir / "strategies" / "enhanced_channel"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from enhanced_channel_strategy import run_backtest as run_ec_backtest
 
-                clean_sym = symbol.strip().upper()
-                if clean_sym in ("PORTFOLIO", "TOTAL"):
-                    clean_sym = "SPY"
-                res = run_ec_backtest(symbol=clean_sym, period=period, **ec_kwargs)
-                tot_trades = res.get("total_trades", 0)
-                tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
-                wr = res.get("win_rate_pct", 0.0)
-                filter_dict = {"strategy": "enhanced_channel", "symbol": clean_sym}
-                if "channel_mult" in ec_kwargs:
-                    filter_dict["channel_mult"] = ec_kwargs["channel_mult"]
-                if "tactical_lookback" in ec_kwargs:
-                    filter_dict["lookback"] = ec_kwargs["tactical_lookback"]
-                filter_dict["use_stop_loss"] = ec_kwargs.get("use_stop_loss", True)
-                filter_dict["midline_reentry"] = ec_kwargs.get("midline_reentry", False)
-                filter_dict["midline_cross"] = ec_kwargs.get("midline_cross", False)
-                filter_dict["lower_reclaim"] = ec_kwargs.get("lower_reclaim", True)
-                filter_dict["channel_curl_mode"] = ec_kwargs.get("channel_curl_mode", "both")
-                return {
-                    "total_trades": tot_trades,
-                    "total_pnl_usd": tot_pnl_usd,
-                    "total_pnl_pct": res.get("total_return_pct", 0.0),
-                    "buy_and_hold_pct": res.get("buy_and_hold_return_pct", 0.0),
-                    "win_rate_pct": wr,
-                    "winning_trades": int(tot_trades * (wr / 100.0)),
-                    "losing_trades": tot_trades - int(tot_trades * (wr / 100.0)),
-                    "filters": filter_dict,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            except Exception as e:
-                print(f"On-the-fly enhanced_channel stats error: {e}")
+            clean_sym = symbol.strip().upper()
+            if clean_sym in ("PORTFOLIO", "TOTAL"):
+                clean_sym = "SPY"
+            yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+
+            res = run_ec_backtest(clean_sym, period=actual_period, interval=actual_tf, candles=candles, **ec_kwargs)
+            tot_trades = res.get("total_trades", 0)
+            tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
+            wr = res.get("win_rate_pct", 0.0)
+            return {
+                "total_trades": tot_trades,
+                "total_pnl_usd": tot_pnl_usd,
+                "total_pnl_pct": res.get("total_return_pct", 0.0),
+                "buy_and_hold_pct": res.get("buy_and_hold_return_pct", 0.0),
+                "win_rate_pct": wr,
+                "winning_trades": int(tot_trades * (wr / 100.0)),
+                "losing_trades": tot_trades - int(tot_trades * (wr / 100.0)),
+                "filters": {"strategy": "enhanced_channel", "symbol": clean_sym, "channel_mult": channel_mult, "timeframe": actual_tf, "period": actual_period},
+            }
+        except Exception as e:
+            print(f"On-the-fly EC stats error for {symbol}: {e}")
 
     stats = get_pnl_summary(symbol=symbol, strategy=strategy)
     if not stats or stats.get("total_trades", 0) == 0:
@@ -287,12 +432,12 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, channel_mul
     return stats
 
 @app.get("/api/candles")
-async def api_candles(symbol: str, timeframe: str = "1d", period: str = "5y"):
-    """Fetch OHLCV data directly via yfinance covering the backtest lookback."""
+async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: str = "1y"):
+    """Fetch raw candle data for TradingView chart using yfinance."""
     clean_sym = symbol.strip().upper()
     if clean_sym in ("PORTFOLIO", "TOTAL"):
         clean_sym = "SPY"
-        
+
     yf_symbol = (
         clean_sym.replace("/USDT", "-USD")
         .replace("/USD", "-USD")
@@ -302,43 +447,22 @@ async def api_candles(symbol: str, timeframe: str = "1d", period: str = "5y"):
         .replace("_", "-")
     )
     
-    candles = []
-    try:
-        ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period=period, interval=timeframe)
-        if df is not None and not df.empty:
-            import math
-            for date, row in df.iterrows():
-                o = float(row["Open"])
-                h = float(row["High"])
-                l = float(row["Low"])
-                c = float(row["Close"])
-                v = float(row.get("Volume", 0.0))
-                if any(math.isnan(x) for x in (o, h, l, c)):
-                    continue
-                candles.append({
-                    "time": int(date.timestamp()),
-                    "open": o,
-                    "high": h,
-                    "low": l,
-                    "close": c,
-                    "volume": v
-                })
-    except Exception as e:
-        print(f"Candle fetch error for {symbol} ({yf_symbol}): {e}")
-        
-    return {"candles": candles}
+    candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period)
+    return {"candles": candles, "timeframe": actual_tf, "period": actual_period}
 
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str):
+async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = False, use_wick: bool = False, confirm_candles: int = 0, inverse_color_trigger: bool = False, line_angle: float = 3.0, stop_loss_mode: str = "exit_peak_reclaim", min_anchor_bars: int = 2):
     """
-    Run the enhanced_lines strategy on OHLCV data and return trendline segments
-    (support/resistance channels) for chart overlay.
+    Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
+    and return trendline segments for chart overlay.
     """
     import sys
     from pathlib import Path as PurePath
 
     clean_sym = symbol.strip().upper()
+    if clean_sym in ("PORTFOLIO", "TOTAL"):
+        clean_sym = "SPY"
+
     yf_symbol = (
         clean_sym.replace("/USDT", "-USD")
         .replace("/USD", "-USD")
@@ -348,48 +472,32 @@ async def api_trendlines(symbol: str):
         .replace("_", "-")
     )
 
+    base_dir = Path(__file__).resolve().parents[3]
+
     try:
-        # Fetch OHLCV candles (1h for 2y — matches how the strategy was designed)
-        ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period="2y", interval="1h")
-        if df is None or df.empty:
+        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period)
+        if not candles:
             return {"trendlines": [], "error": "No candle data available"}
 
-        import math
-        candles = []
-        for date, row in df.iterrows():
-            o = float(row["Open"])
-            h = float(row["High"])
-            l = float(row["Low"])
-            c = float(row["Close"])
-            v = float(row.get("Volume", 0.0))
-            if any(math.isnan(x) for x in (o, h, l, c)):
-                continue
-            candles.append({
-                "date": date.strftime("%Y-%m-%d %H:%M"),
-                "open": round(o, 4),
-                "high": round(h, 4),
-                "low": round(l, 4),
-                "close": round(c, 4),
-                "volume": v or 0,
-            })
+        if strategy in ("sloped_lines", "slope_lines"):
+            strategy_dir = base_dir / "strategies" / "sloped_lines"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
+            from sloped_lines_strategy import run_sloped_lines_with_trendlines
+            result = run_sloped_lines_with_trendlines(candles, full_candle=full_candle, use_wick=use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars)
+            return {"trendlines": result.get("trendlines", []), "timeframe": actual_tf, "period": actual_period}
 
-        if not candles:
-            return {"trendlines": []}
+        else:
+            strategy_dir = base_dir / "strategies" / "enhanced_lines"
+            if str(strategy_dir) not in sys.path:
+                sys.path.insert(0, str(strategy_dir))
 
-        # Dynamically import enhanced_lines strategy
-        base_dir = Path(__file__).resolve().parents[3]
-        strategy_dir = base_dir / "strategies" / "enhanced_lines"
-        if str(strategy_dir) not in sys.path:
-            sys.path.insert(0, str(strategy_dir))
-
-        from enhanced_lines_strategy import run_enhanced_lines_with_trendlines
-        result = run_enhanced_lines_with_trendlines(candles)
-
-        return {"trendlines": result.get("trendlines", [])}
+            from enhanced_lines_strategy import run_enhanced_lines_with_trendlines
+            result = run_enhanced_lines_with_trendlines(candles)
+            return {"trendlines": result.get("trendlines", []), "timeframe": actual_tf, "period": actual_period}
 
     except Exception as e:
-        print(f"Trendlines error for {symbol}: {e}")
+        print(f"Trendlines error for {symbol} ({strategy}): {e}")
         import traceback
         traceback.print_exc()
         return {"trendlines": [], "error": str(e)}
@@ -440,7 +548,10 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", c
                 if not t_str:
                     continue
                 try:
-                    dt = datetime.strptime(t_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    if " " in t_str:
+                        dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+                    else:
+                        dt = datetime.strptime(t_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                     pts.append({"time": int(dt.timestamp()), "value": round(float(p["value"]), 2)})
                 except Exception:
                     continue
@@ -491,5 +602,5 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", c
         return {"overlays": [], "error": str(e)}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("tradingview_mcp.ui.server:app", host="127.0.0.1", port=8000, reload=True)
+    from tradingview_mcp.ui.launcher import main
+    main()

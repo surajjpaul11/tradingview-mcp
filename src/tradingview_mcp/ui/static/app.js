@@ -59,22 +59,82 @@ function getChannelCurlEnabled() {
     return mode !== 'none';
 }
 
+const slopedFullCandleGroup = document.getElementById('sloped-full-candle-group');
+const slopedFullCandleCheckbox = document.getElementById('sloped-full-candle-checkbox');
+const slopedWickGroup = document.getElementById('sloped-wick-group');
+const slopedWickCheckbox = document.getElementById('sloped-wick-checkbox');
+const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candles-group');
+const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
+const slopedInverseColorGroup = document.getElementById('sloped-inverse-color-group');
+const slopedInverseColorCheckbox = document.getElementById('sloped-inverse-color-checkbox');
+const slopedLineAngleGroup = document.getElementById('sloped-line-angle-group');
+const slopedLineAngleSelect = document.getElementById('sloped-line-angle-select');
+const slopedStopLossGroup = document.getElementById('sloped-stop-loss-group');
+const slopedStopLossSelect = document.getElementById('sloped-stop-loss-select');
+const slopedAnchorBarsGroup = document.getElementById('sloped-anchor-bars-group');
+const slopedAnchorBarsSelect = document.getElementById('sloped-anchor-bars-select');
+
+function getFullCandleEnabled() {
+    if (!slopedFullCandleCheckbox) return false;
+    return slopedFullCandleCheckbox.checked;
+}
+
+function getWickEnabled() {
+    if (!slopedWickCheckbox) return false;
+    return slopedWickCheckbox.checked;
+}
+
+function getConfirmCandles() {
+    if (!slopedConfirmCandlesSelect) return 0;
+    return parseInt(slopedConfirmCandlesSelect.value, 10) || 0;
+}
+
+function getInverseColorTriggerEnabled() {
+    if (!slopedInverseColorCheckbox) return false;
+    return slopedInverseColorCheckbox.checked;
+}
+
+function getLineAngle() {
+    if (!slopedLineAngleSelect) return 3.0;
+    const val = parseFloat(slopedLineAngleSelect.value);
+    return isNaN(val) ? 3.0 : val;
+}
+
+function getStopLossMode() {
+    if (!slopedStopLossSelect) return 'exit_peak_reclaim';
+    return slopedStopLossSelect.value || 'exit_peak_reclaim';
+}
+
+function getMinAnchorBars() {
+    if (!slopedAnchorBarsSelect) return 2;
+    const val = parseInt(slopedAnchorBarsSelect.value, 10);
+    return isNaN(val) ? 2 : val;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
+    const isSloped = (currentStrat === 'sloped_lines' || currentStrat === 'slope_lines');
     if (channelMultGroup) channelMultGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLookbackGroup) channelLookbackGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelStoplossGroup) channelStoplossGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLowerReclaimGroup) channelLowerReclaimGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
+    if (slopedFullCandleGroup) slopedFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedInverseColorGroup) slopedInverseColorGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedAnchorBarsGroup) slopedAnchorBarsGroup.style.display = isSloped ? 'flex' : 'none';
 }
 
 // ----- Chart Globals (Regular Tab) -----
 let chart = null;
 let candlestickSeries = null;
-let currentCandles = [];
-let activeRange = '5y'; // Default: 5-Year view
+let activeResolution = '1d'; // Default: 1D candles
+let activeTimeframe = '1y';  // Default: 1-Year range
 let trendlineSeries = []; // LineSeries for trendline overlays
 
 // ----- Chart Globals (Advanced Tab) -----
@@ -269,79 +329,57 @@ function initAdvChart() {
 }
 
 // ============================================================
-// STEP 2: Timeframe / Range Selector Handling (Regular Tab)
+// STEP 2: Candle Resolution & Timeframe / Range Handling (Regular Tab)
 // ============================================================
-function applyTimeframeRange(range) {
-    activeRange = range;
-
-    // Update active button state
-    document.querySelectorAll('#timeframe-btn-group .tf-btn').forEach(btn => {
-        if (btn.dataset.range === range) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+function setResolution(res) {
+    activeResolution = res;
+    document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.res === res);
     });
-
-    // Update hint label
-    const hintEl = document.getElementById('active-range-hint');
-    const labels = {
-        '1d': 'Daily (1D) View',
-        '1m': 'Monthly (1M) View',
-        'ytd': 'Year-to-Date (YTD) View',
-        '1y': '1-Year (1Y) View',
-        '5y': '5-Year (5Y) View'
+    const resLabels = {
+        '30m': '30 Minutes (30m)',
+        '1h': '1 Hour (1H)',
+        '4h': '4 Hours (4H)',
+        '12h': '12 Hours (12H)',
+        '1d': 'Daily (1D)',
+        '5d': '5 Days (5D)'
     };
-    if (hintEl) hintEl.textContent = labels[range] || `${range.toUpperCase()} View`;
+    const hintEl = document.getElementById('active-res-hint');
+    if (hintEl) hintEl.textContent = resLabels[res] || res;
+    updateDashboard();
+}
 
-    if (!chart || !currentCandles || currentCandles.length === 0) return;
-
-    if (range === '5y') {
-        chart.timeScale().fitContent();
-        return;
-    }
-
-    const lastBar = currentCandles[currentCandles.length - 1];
-    const lastTime = lastBar.time;
-    const nowObj = new Date(lastTime * 1000);
-
-    let fromTime;
-    if (range === '1d') {
-        // High-zoom view on the latest 2-3 trading sessions
-        fromTime = lastTime - (2 * 86400);
-    } else if (range === '1m') {
-        // Last 30 calendar days
-        fromTime = lastTime - (30 * 86400);
-    } else if (range === 'ytd') {
-        // Jan 1 of the last bar's current year
-        fromTime = Math.floor(new Date(nowObj.getFullYear(), 0, 1).getTime() / 1000);
-    } else if (range === '1y') {
-        // Last 365 calendar days
-        fromTime = lastTime - (365 * 86400);
-    }
-
-    try {
-        chart.timeScale().setVisibleRange({
-            from: fromTime,
-            to: lastTime + 86400
-        });
-    } catch (e) {
-        console.warn('[TV] setVisibleRange fallback:', e);
-        chart.timeScale().fitContent();
-    }
+function setTimeframe(range) {
+    activeTimeframe = range;
+    document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.range === range);
+    });
+    const rangeLabels = {
+        '3mo': '3 Months (3M)',
+        '1y': '1-Year (1Y)',
+        '5y': '5-Year (5Y)',
+        'max': 'Max History (MAX)'
+    };
+    const hintEl = document.getElementById('active-range-hint');
+    if (hintEl) hintEl.textContent = rangeLabels[range] || range;
+    updateDashboard();
 }
 
 function initTimeframeButtons() {
-    document.querySelectorAll('#timeframe-btn-group .tf-btn').forEach(btn => {
+    document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const res = e.currentTarget.dataset.res;
+            if (res && res !== activeResolution) {
+                setResolution(res);
+            }
+        });
+    });
+
+    document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const range = e.currentTarget.dataset.range;
-            if (range) {
-                const prevRange = activeRange;
-                activeRange = range;
-                applyTimeframeRange(range);
-                if (range !== prevRange && (range === '1y' || range === '5y')) {
-                    updateDashboard();
-                }
+            if (range && range !== activeTimeframe) {
+                setTimeframe(range);
             }
         });
     });
@@ -412,12 +450,13 @@ async function loadFilters() {
             });
         }
 
-        // Default to enhanced_channel strategy if available
-        const defaultStrategy = 'enhanced_channel';
+        // Default to sloped_lines strategy if available
+        const defaultStrategy = 'sloped_lines';
         const hasDefault = data.strategies && data.strategies.includes(defaultStrategy);
         if (hasDefault) {
             strategySelect.value = defaultStrategy;
         }
+        syncChannelMultVisibility(strategySelect.value);
 
         // Wire up change listeners — update both tabs
         tickerSelect.onchange = () => {
@@ -461,6 +500,48 @@ async function loadFilters() {
         }
         if (channelCurlSelect) {
             channelCurlSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedFullCandleCheckbox) {
+            slopedFullCandleCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedWickCheckbox) {
+            slopedWickCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedConfirmCandlesSelect) {
+            slopedConfirmCandlesSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedInverseColorCheckbox) {
+            slopedInverseColorCheckbox.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedLineAngleSelect) {
+            slopedLineAngleSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedStopLossSelect) {
+            slopedStopLossSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        if (slopedAnchorBarsSelect) {
+            slopedAnchorBarsSelect.onchange = () => {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
@@ -553,12 +634,13 @@ function buildMarkers(tradesData, sorted, strategy) {
             const sideStr = (trade.side || '').toLowerCase();
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+            const isSlopedBreakout = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
             const isMidlineCross = (trade.entry_reason === 'midline_cross') || (trade.notes && trade.notes.includes('midline_cross'));
             const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
             const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : ''))));
+            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))));
             const entryColor = isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B'))));
 
             // 1. Entry Marker
@@ -582,13 +664,15 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const pnlPct = Number(trade.pnl_pct || 0);
                 const pnlSign = pnlPct >= 0 ? '+' : '';
                 const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+                const isSupportBreak = (trade.exit_reason === 'support_break');
+                const isResistanceBreak = (trade.exit_reason === 'resistance_break');
                 const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
                 const isMidlineCrossExit = (trade.exit_reason === 'midline_cross_exit') || (trade.notes && trade.notes.includes('midline_cross_exit'));
                 const isMidStop = (trade.exit_reason === 'midline_stop_exit') || (trade.notes && trade.notes.includes('midline_stop'));
                 const isChannelCurlExit = (trade.exit_reason === 'channel_curl_exit') || (trade.notes && trade.notes.includes('channel_curl_exit')) || (trade.exit_reason === 'channel_curl_sell');
-                const exitPrefix = isChannelCurlExit ? 'CHANNEL CURL ' : (isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '')));
+                const exitPrefix = isSupportBreak ? 'SUPPORT BREAK ' : (isResistanceBreak ? 'RESISTANCE BREAK ' : (isChannelCurlExit ? 'CHANNEL CURL ' : (isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '')))));
                 const action = isLong ? 'SELL' : 'COVER';
-                const exitColor = isChannelCurlExit ? '#EC4899' : ((isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'));
+                const exitColor = isSupportBreak ? '#3B82F6' : (isChannelCurlExit ? '#EC4899' : ((isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444')));
 
                 markers.push({
                     time: snappedExit,
@@ -688,7 +772,7 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2) {
     // Remove previous trendline series
     existingSeriesList.forEach(s => {
         try { chartInstance.removeSeries(s); } catch (_) {}
@@ -696,47 +780,66 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
     existingSeriesList.length = 0;
 
     try {
-        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}`);
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}${fullCandleParam}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data.trendlines || data.trendlines.length === 0) return;
 
+        if (candleData.length === 0) return;
+        const firstCandle = candleData[0].time;
+        const lastCandle = candleData[candleData.length - 1].time;
+
         data.trendlines.forEach(tl => {
-            const startTime = toChartTime(tl.start_date);
-            const endTime = toChartTime(tl.end_date);
+            const startTime = tl.start_time || toChartTime(tl.start_date);
+            const endTime = tl.end_time || toChartTime(tl.end_date);
 
             // Only render lines that overlap with visible candle data
-            if (candleData.length === 0) return;
-            const firstCandle = candleData[0].time;
-            const lastCandle = candleData[candleData.length - 1].time;
             if (endTime < firstCandle || startTime > lastCandle) return;
 
-            const color = tl.type === 'support' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)';
+            let color;
+            let lineStyle = 2; // default dashed
+            if (strategy === 'sloped_lines') {
+                // Descending resistance = green (breakout = buy)
+                // Ascending support = blue (breakdown = sell)
+                color = tl.color || (tl.type === 'resistance' ? '#10B981' : '#3B82F6');
+                lineStyle = 0; // Solid line for sloped lines
+            } else {
+                color = tl.color || (tl.type === 'support' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)');
+                lineStyle = 2; // Dashed for enhanced_lines
+            }
+
+            const snappedStart = findNearestCandleTime(startTime, candleData);
+            let snappedEnd = findNearestCandleTime(endTime, candleData);
+
+            if (snappedEnd <= snappedStart) {
+                // Ensure strictly ascending time for Lightweight Charts
+                const startIdx = candleData.findIndex(c => c.time === snappedStart);
+                if (startIdx !== -1 && startIdx + 1 < candleData.length) {
+                    snappedEnd = candleData[startIdx + 1].time;
+                } else {
+                    return;
+                }
+            }
+
+            const seriesOptions = {
+                color: color,
+                lineWidth: 2,
+                lineStyle: lineStyle,
+                crosshairMarkerVisible: false,
+                lastValueVisible: false,
+                priceLineVisible: false,
+                title: tl.label || '',
+            };
 
             let lineSeries;
             if (typeof chartInstance.addLineSeries === 'function') {
-                lineSeries = chartInstance.addLineSeries({
-                    color: color,
-                    lineWidth: 2,
-                    lineStyle: 2, // Dashed
-                    crosshairMarkerVisible: false,
-                    lastValueVisible: false,
-                    priceLineVisible: false,
-                });
+                lineSeries = chartInstance.addLineSeries(seriesOptions);
             } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
-                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, {
-                    color: color,
-                    lineWidth: 2,
-                    lineStyle: 2,
-                    crosshairMarkerVisible: false,
-                    lastValueVisible: false,
-                    priceLineVisible: false,
-                });
+                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
             }
 
             if (lineSeries) {
-                const snappedStart = findNearestCandleTime(startTime, candleData);
-                const snappedEnd = findNearestCandleTime(endTime, candleData);
                 lineSeries.setData([
                     { time: snappedStart, value: tl.start_price },
                     { time: snappedEnd, value: tl.end_price },
@@ -755,7 +858,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 const channelSeries = [];
 const advChannelSeries = [];
 
-function updateChannelLegend(containerId, isVisible) {
+function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channel') {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (!isVisible) {
@@ -764,13 +867,25 @@ function updateChannelLegend(containerId, isVisible) {
         return;
     }
     el.style.display = 'flex';
-    el.innerHTML = `
-        <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Tactical Lower (Buy Zone)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #EF4444;"></span>Tactical Upper (Take Profit)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Tactical Mid (50b)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Intermediate Mid (200b)</div>
-        <div class="channel-pill"><span class="channel-dot" style="background: #A855F7;"></span>Macro Mid (1000b)</div>
-    `;
+    if (strategy === 'sloped_lines') {
+        el.innerHTML = `
+            <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
+        `;
+    } else if (strategy === 'enhanced_lines') {
+        el.innerHTML = `
+            <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Support Trendline</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Resistance Trendline</div>
+        `;
+    } else {
+        el.innerHTML = `
+            <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Tactical Lower (Buy Zone)</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #EF4444;"></span>Tactical Upper (Take Profit)</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Tactical Mid (50b)</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #F59E0B;"></span>Intermediate Mid (200b)</div>
+            <div class="channel-pill"><span class="channel-dot" style="background: #A855F7;"></span>Macro Mid (1000b)</div>
+        `;
+    }
 }
 
 async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y') {
@@ -850,19 +965,31 @@ async function updateDashboard() {
     setLoading(true, 'loading');
 
     try {
-        const reqPeriod = (activeRange === '1y' || activeRange === '5y') ? activeRange : '5y';
-        const multParam = (strategy === 'enhanced_channel') 
-            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${reqPeriod}` 
+        const reqResolution = activeResolution || '1d';
+        const reqPeriod = activeTimeframe || '1y';
+
+        const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
+        const multParam = (strategy === 'enhanced_channel') 
+            ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}` 
+            : slopedParam;
+
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&period=5y`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`)
+            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}`),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
+
+        // Update range hint if actual period was clamped by Yahoo Finance (e.g. 30m max 60d)
+        if (candlesData.period && candlesData.period !== reqPeriod) {
+            const hintEl = document.getElementById('active-range-hint');
+            if (hintEl) hintEl.textContent = `${reqPeriod.toUpperCase()} (${candlesData.period} Max Intraday)`;
+        }
 
         // -- Candles --
         const rawCandles = candlesData.candles || [];
@@ -891,17 +1018,17 @@ async function updateDashboard() {
             candlestickSeries.setMarkers([]);
         }
 
-        // -- Overlays (enhanced_lines trendlines or enhanced_channel regression channels) --
-        if (chart && strategy === 'enhanced_lines' && sorted.length > 0) {
-            updateChannelLegend('channel-legend', false);
+        // -- Overlays (enhanced_lines, sloped_lines, or enhanced_channel regression channels) --
+        if (chart && (strategy === 'enhanced_lines' || strategy === 'sloped_lines') && sorted.length > 0) {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
-            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries);
+            updateChannelLegend('channel-legend', true, strategy);
+            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
-            updateChannelLegend('channel-legend', true);
-            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries);
+            updateChannelLegend('channel-legend', true, strategy);
+            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries, reqResolution, reqPeriod);
         } else {
             updateChannelLegend('channel-legend', false);
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
@@ -910,8 +1037,9 @@ async function updateDashboard() {
             channelSeries.length = 0;
         }
 
-        // Apply active timeframe zoom (preserves user selection across dropdown changes)
-        applyTimeframeRange(activeRange);
+        if (chart) {
+            chart.timeScale().fitContent();
+        }
 
         // -- Stats --
         const pnl = statsData.total_pnl_usd || 0;
@@ -968,9 +1096,12 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
+        const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            : '';
         const multParam = (strategy === 'enhanced_channel') 
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}&period=${encodeURIComponent(config.period)}` 
-            : '';
+            : slopedAdvParam;
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}${multParam}`),
@@ -1005,16 +1136,16 @@ async function updateAdvDashboard() {
             advCandlestickSeries.setMarkers([]);
         }
 
-        // -- Overlays on Advanced (enhanced_lines or enhanced_channel) --
-        if (strategy === 'enhanced_lines' && sorted.length > 0) {
-            updateChannelLegend('adv-channel-legend', false);
+        // -- Overlays on Advanced (enhanced_lines, sloped_lines, or enhanced_channel) --
+        if ((strategy === 'enhanced_lines' || strategy === 'sloped_lines') && sorted.length > 0) {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries);
+            updateChannelLegend('adv-channel-legend', true, strategy);
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
-            updateChannelLegend('adv-channel-legend', true);
+            updateChannelLegend('adv-channel-legend', true, strategy);
             await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries, config.interval, config.period);
         } else {
             updateChannelLegend('adv-channel-legend', false);

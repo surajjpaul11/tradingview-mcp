@@ -9,853 +9,1127 @@
     "enable_short": false
   },
   "period": "2y",
-  "interval": "1h",
-  "candles_analyzed": 3477,
-  "date_from": "2024-09-23 13:30",
-  "date_to": "2026-09-21 20:00",
+  "interval": "1d",
+  "candles_analyzed": 501,
+  "date_from": "2024-09-23",
+  "date_to": "2026-09-22",
   "initial_capital": 10000.0,
   "commission_pct": 0.1,
   "slippage_pct": 0.05,
-  "total_trades": 24,
-  "winning_trades": 11,
-  "losing_trades": 13,
-  "long_trades": 24,
+  "total_trades": 16,
+  "winning_trades": 6,
+  "losing_trades": 10,
+  "long_trades": 16,
   "short_trades": 0,
-  "support_break_exits": 23,
+  "support_break_exits": 16,
   "resistance_break_exits": 0,
-  "end_of_data_exits": 1,
-  "win_rate_pct": 45.8,
-  "final_capital": 8133.37,
-  "total_return_pct": -18.67,
-  "avg_gain_pct": 2.94,
-  "avg_loss_pct": -3.89,
-  "max_drawdown_pct": -19.77,
-  "profit_factor": 0.64,
-  "sharpe_ratio": -6.59,
-  "expectancy_pct": -0.76,
-  "buy_and_hold_return_pct": 48.67,
-  "vs_buy_and_hold_pct": -67.34,
+  "end_of_data_exits": 0,
+  "win_rate_pct": 37.5,
+  "final_capital": 10588.01,
+  "total_return_pct": 5.88,
+  "avg_gain_pct": 3.29,
+  "avg_loss_pct": -1.33,
+  "max_drawdown_pct": -6.01,
+  "profit_factor": 1.48,
+  "sharpe_ratio": 1.98,
+  "expectancy_pct": 0.4,
+  "buy_and_hold_return_pct": 50.24,
+  "vs_buy_and_hold_pct": -44.36,
   "trendlines": [
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 7,
-      "anchor1_price": 229.35,
-      "anchor2_bar": 22,
-      "anchor2_price": 228.5,
-      "break_bar": 28,
-      "break_price": 228.9509,
-      "break_date": "2024-09-27 13:30"
+      "anchor1_bar": 66,
+      "anchor1_price": 259.02,
+      "anchor2_bar": 89,
+      "anchor2_price": 247.19,
+      "break_bar": 99,
+      "break_price": 244.6,
+      "break_date": "2025-02-14"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 49,
-      "anchor1_price": 223.03,
-      "anchor2_bar": 59,
-      "anchor2_price": 223.3239,
-      "break_bar": 74,
-      "break_price": 223.7499,
-      "break_date": "2024-10-07 17:30"
+      "anchor1_bar": 99,
+      "anchor1_price": 241.25,
+      "anchor2_bar": 103,
+      "anchor2_price": 245.55,
+      "break_bar": 105,
+      "break_price": 247.04,
+      "break_date": "2025-02-25"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 90,
-      "anchor1_price": 229.75,
-      "anchor2_bar": 97,
-      "anchor2_price": 229.5,
-      "break_bar": 105,
-      "break_price": 230.685,
-      "break_date": "2024-10-14 13:30"
+      "anchor1_bar": 105,
+      "anchor1_price": 248.0,
+      "anchor2_bar": 109,
+      "anchor2_price": 241.79,
+      "break_bar": 113,
+      "break_price": 239.07,
+      "break_date": "2025-03-07"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 113,
+      "anchor1_price": 235.11,
+      "anchor2_bar": 114,
+      "anchor2_price": 235.11,
+      "break_bar": 114,
+      "break_price": 227.48,
+      "break_date": "2025-03-10"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 114,
+      "anchor1_price": 235.54,
+      "anchor2_bar": 118,
+      "anchor2_price": 213.49,
+      "break_bar": 119,
+      "break_price": 214.0,
+      "break_date": "2025-03-17"
     },
     {
       "type": "support",
       "direction": "ascending",
       "anchor1_bar": 119,
-      "anchor1_price": 229.85,
-      "anchor2_bar": 140,
-      "anchor2_price": 234.45,
-      "break_bar": 147,
-      "break_price": 233.91,
-      "break_date": "2024-10-22 13:30"
+      "anchor1_price": 213.31,
+      "anchor2_bar": 120,
+      "anchor2_price": 213.31,
+      "break_bar": 120,
+      "break_price": 212.69,
+      "break_date": "2025-03-18"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 153,
-      "anchor1_price": 236.19,
-      "anchor2_bar": 169,
-      "anchor2_price": 233.2,
+      "anchor1_bar": 131,
+      "anchor1_price": 223.89,
+      "anchor2_bar": 139,
+      "anchor2_price": 211.44,
+      "break_bar": 145,
+      "break_price": 204.6,
+      "break_date": "2025-04-23"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 145,
+      "anchor1_price": 204.6,
+      "anchor2_bar": 149,
+      "anchor2_price": 208.69,
+      "break_bar": 152,
+      "break_price": 205.35,
+      "break_date": "2025-05-02"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 152,
+      "anchor1_price": 206.09,
+      "anchor2_bar": 156,
+      "anchor2_price": 197.72,
+      "break_bar": 157,
+      "break_price": 198.53,
+      "break_date": "2025-05-09"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 157,
+      "anchor1_price": 198.53,
+      "anchor2_bar": 161,
+      "anchor2_price": 210.95,
+      "break_bar": 162,
+      "break_price": 211.26,
+      "break_date": "2025-05-16"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 162,
+      "anchor1_price": 212.36,
+      "anchor2_bar": 166,
+      "anchor2_price": 201.36,
+      "break_bar": 168,
+      "break_price": 200.21,
+      "break_date": "2025-05-27"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 168,
+      "anchor1_price": 198.3,
+      "anchor2_bar": 172,
+      "anchor2_price": 200.28,
       "break_bar": 175,
-      "break_price": 233.6346,
-      "break_date": "2024-10-28 13:30"
-    },
-    {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 210,
-      "anchor1_price": 219.71,
-      "anchor2_bar": 224,
-      "anchor2_price": 221.225,
-      "break_bar": 245,
-      "break_price": 222.805,
-      "break_date": "2024-11-11 14:30"
+      "break_price": 200.63,
+      "break_date": "2025-06-05"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 290,
-      "anchor1_price": 230.16,
-      "anchor2_bar": 304,
-      "anchor2_price": 230.15,
-      "break_bar": 311,
-      "break_price": 230.18,
-      "break_date": "2024-11-22 17:30"
+      "anchor1_bar": 175,
+      "anchor1_price": 203.5,
+      "anchor2_bar": 180,
+      "anchor2_price": 199.2,
+      "break_bar": 182,
+      "break_price": 198.42,
+      "break_date": "2025-06-16"
     },
     {
       "type": "support",
       "direction": "ascending",
+      "anchor1_bar": 182,
+      "anchor1_price": 197.3,
+      "anchor2_bar": 183,
+      "anchor2_price": 197.3,
+      "break_bar": 183,
+      "break_price": 195.64,
+      "break_date": "2025-06-17"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 278,
+      "anchor1_price": 276.99,
+      "anchor2_bar": 285,
+      "anchor2_price": 275.25,
+      "break_bar": 294,
+      "break_price": 275.92,
+      "break_date": "2025-11-24"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 294,
+      "anchor1_price": 270.9,
+      "anchor2_bar": 298,
+      "anchor2_price": 278.01,
+      "break_bar": 301,
+      "break_price": 280.7,
+      "break_date": "2025-12-04"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 301,
+      "anchor1_price": 284.1,
+      "anchor2_bar": 305,
+      "anchor2_price": 278.78,
+      "break_bar": 306,
+      "break_price": 278.03,
+      "break_date": "2025-12-11"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 307,
+      "anchor1_price": 277.9,
+      "anchor2_bar": 308,
+      "anchor2_price": 277.9,
+      "break_bar": 308,
+      "break_price": 274.11,
+      "break_date": "2025-12-15"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 308,
+      "anchor1_price": 280.15,
+      "anchor2_bar": 312,
+      "anchor2_price": 273.67,
+      "break_bar": 314,
+      "break_price": 272.36,
+      "break_date": "2025-12-23"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 314,
+      "anchor1_price": 270.84,
+      "anchor2_bar": 318,
+      "anchor2_price": 272.81,
+      "break_bar": 319,
+      "break_price": 271.86,
+      "break_date": "2025-12-31"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
+      "anchor1_bar": 319,
+      "anchor1_price": 273.06,
+      "anchor2_bar": 323,
+      "anchor2_price": 263.2,
+      "break_bar": 325,
+      "break_price": 259.37,
+      "break_date": "2026-01-09"
+    },
+    {
+      "type": "support",
+      "direction": "ascending",
+      "anchor1_bar": 327,
+      "anchor1_price": 258.72,
+      "anchor2_bar": 329,
+      "anchor2_price": 258.72,
+      "break_bar": 329,
+      "break_price": 258.21,
+      "break_date": "2026-01-15"
+    },
+    {
+      "type": "resistance",
+      "direction": "descending",
       "anchor1_bar": 329,
-      "anchor1_price": 233.8101,
-      "anchor2_bar": 336,
-      "anchor2_price": 233.97,
-      "break_bar": 519,
-      "break_price": 237.425,
-      "break_date": "2025-01-10 14:30"
-    },
-    {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 541,
-      "anchor1_price": 238.54,
-      "anchor2_bar": 554,
-      "anchor2_price": 232.29,
-      "break_bar": 560,
-      "break_price": 229.99,
-      "break_date": "2025-01-17 20:30"
+      "anchor1_price": 260.65,
+      "anchor2_bar": 333,
+      "anchor2_price": 249.2,
+      "break_bar": 334,
+      "break_price": 248.04,
+      "break_date": "2026-01-23"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 563,
-      "anchor1_price": 219.38,
-      "anchor2_bar": 587,
-      "anchor2_price": 221.41,
-      "break_bar": 664,
-      "break_price": 227.69,
-      "break_date": "2025-02-10 19:30"
+      "anchor1_bar": 334,
+      "anchor1_price": 247.32,
+      "anchor2_bar": 338,
+      "anchor2_price": 258.0,
+      "break_bar": 339,
+      "break_price": 259.48,
+      "break_date": "2026-01-30"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 731,
-      "anchor1_price": 249.98,
-      "anchor2_bar": 757,
-      "anchor2_price": 244.0272,
-      "break_bar": 785,
-      "break_price": 238.31,
-      "break_date": "2025-03-07 14:30"
+      "anchor1_bar": 343,
+      "anchor1_price": 278.13,
+      "anchor2_bar": 357,
+      "anchor2_price": 274.95,
+      "break_bar": 392,
+      "break_price": 270.23,
+      "break_date": "2026-04-17"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 819,
-      "anchor1_price": 208.42,
-      "anchor2_bar": 829,
-      "anchor2_price": 209.98,
-      "break_bar": 851,
-      "break_price": 213.23,
-      "break_date": "2025-03-20 16:30"
+      "anchor1_bar": 392,
+      "anchor1_price": 266.96,
+      "anchor2_bar": 394,
+      "anchor2_price": 266.96,
+      "break_bar": 394,
+      "break_price": 266.17,
+      "break_date": "2026-04-21"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 876,
-      "anchor1_price": 225.02,
-      "anchor2_bar": 888,
-      "anchor2_price": 224.99,
-      "break_bar": 1525,
-      "break_price": 224.36,
-      "break_date": "2025-08-08 14:30"
+      "anchor1_bar": 394,
+      "anchor1_price": 271.5,
+      "anchor2_bar": 398,
+      "anchor2_price": 267.61,
+      "break_bar": 399,
+      "break_price": 270.71,
+      "break_date": "2026-04-28"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 1563,
-      "anchor1_price": 229.36,
-      "anchor2_bar": 1569,
-      "anchor2_price": 230.11,
-      "break_bar": 1576,
-      "break_price": 230.625,
-      "break_date": "2025-08-19 16:30"
+      "anchor1_bar": 399,
+      "anchor1_price": 270.71,
+      "anchor2_bar": 400,
+      "anchor2_price": 270.71,
+      "break_bar": 400,
+      "break_price": 270.17,
+      "break_date": "2026-04-29"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 1657,
-      "anchor1_price": 241.32,
-      "anchor2_bar": 1674,
-      "anchor2_price": 238.7805,
-      "break_bar": 1699,
-      "break_price": 236.215,
-      "break_date": "2025-09-15 13:30"
+      "anchor1_bar": 423,
+      "anchor1_price": 315.2,
+      "anchor2_bar": 434,
+      "anchor2_price": 300.85,
+      "break_bar": 443,
+      "break_price": 294.38,
+      "break_date": "2026-07-01"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 1720,
-      "anchor1_price": 236.65,
-      "anchor2_bar": 1750,
-      "anchor2_price": 251.04,
-      "break_bar": 1756,
-      "break_price": 253.5001,
-      "break_date": "2025-09-25 14:30"
+      "anchor1_bar": 443,
+      "anchor1_price": 293.44,
+      "anchor2_bar": 447,
+      "anchor2_price": 311.91,
+      "break_bar": 448,
+      "break_price": 316.22,
+      "break_date": "2026-07-09"
     },
     {
       "type": "resistance",
       "direction": "descending",
-      "anchor1_bar": 1766,
-      "anchor1_price": 257.36,
-      "anchor2_bar": 1776,
-      "anchor2_price": 255.919,
-      "break_bar": 1783,
-      "break_price": 256.1614,
-      "break_date": "2025-10-01 13:30"
+      "anchor1_bar": 461,
+      "anchor1_price": 340.08,
+      "anchor2_bar": 478,
+      "anchor2_price": 317.46,
+      "break_bar": 484,
+      "break_price": 319.7,
+      "break_date": "2026-08-28"
     },
     {
       "type": "support",
       "direction": "ascending",
-      "anchor1_bar": 1797,
-      "anchor1_price": 253.96,
-      "anchor2_bar": 1804,
-      "anchor2_price": 255.05,
-      "break_bar": 1813,
-      "break_price": 256.3384,
-      "break_date": "2025-10-07 15:30"
+      "anchor1_bar": 484,
+      "anchor1_price": 316.85,
+      "anchor2_bar": 488,
+      "anchor2_price": 324.87,
+      "break_bar": 489,
+      "break_price": 319.97,
+      "break_date": "2026-09-04"
+    }
+  ],
+  "overlays": [
+    {
+      "label": "\u25bc Resistance (lower highs)",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2024-12-26",
+          "value": 259.02
+        },
+        {
+          "time": "2025-02-18",
+          "value": 241.5322
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 1820,
-      "anchor1_price": 258.52,
-      "anchor2_bar": 1832,
-      "anchor2_price": 256.38,
-      "break_bar": 1869,
-      "break_price": 250.2965,
-      "break_date": "2025-10-17 15:30"
+      "label": "\u25b2 Support (higher lows)",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-02-14",
+          "value": 241.25
+        },
+        {
+          "time": "2025-02-26",
+          "value": 248.775
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 1892,
-      "anchor1_price": 255.43,
-      "anchor2_bar": 1925,
-      "anchor2_price": 267.11,
-      "break_bar": 1937,
-      "break_price": 270.38,
-      "break_date": "2025-10-31 13:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-02-25",
+          "value": 248.0
+        },
+        {
+          "time": "2025-03-10",
+          "value": 234.0275
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 1937,
-      "anchor1_price": 277.32,
-      "anchor2_bar": 1953,
-      "anchor2_price": 271.486,
-      "break_bar": 1959,
-      "break_price": 270.29,
-      "break_date": "2025-11-05 15:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-03-07",
+          "value": 235.11
+        },
+        {
+          "time": "2025-03-11",
+          "value": 235.11
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 1977,
-      "anchor1_price": 266.78,
-      "anchor2_bar": 1983,
-      "anchor2_price": 267.455,
-      "break_bar": 2014,
-      "break_price": 269.28,
-      "break_date": "2025-11-17 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-03-10",
+          "value": 235.54
+        },
+        {
+          "time": "2025-03-18",
+          "value": 202.465
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2056,
-      "anchor1_price": 280.38,
-      "anchor2_bar": 2065,
-      "anchor2_price": 279.53,
-      "break_bar": 2076,
-      "break_price": 279.7705,
-      "break_date": "2025-12-01 16:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-03-17",
+          "value": 213.31
+        },
+        {
+          "time": "2025-03-19",
+          "value": 213.31
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2114,
-      "anchor1_price": 276.15,
-      "anchor2_bar": 2124,
-      "anchor2_price": 276.44,
-      "break_bar": 2130,
-      "break_price": 276.12,
-      "break_date": "2025-12-11 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-04-02",
+          "value": 223.89
+        },
+        {
+          "time": "2025-04-24",
+          "value": 200.5463
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2144,
-      "anchor1_price": 279.7917,
-      "anchor2_bar": 2158,
-      "anchor2_price": 276.16,
-      "break_bar": 2178,
-      "break_price": 273.67,
-      "break_date": "2025-12-19 20:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-04-23",
+          "value": 204.6
+        },
+        {
+          "time": "2025-05-05",
+          "value": 212.78
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2186,
-      "anchor1_price": 269.56,
-      "anchor2_bar": 2204,
-      "anchor2_price": 272.39,
-      "break_bar": 2211,
-      "break_price": 272.59,
-      "break_date": "2025-12-30 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-05-02",
+          "value": 206.09
+        },
+        {
+          "time": "2025-05-12",
+          "value": 193.535
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2211,
-      "anchor1_price": 274.07,
-      "anchor2_bar": 2218,
-      "anchor2_price": 273.68,
-      "break_bar": 2225,
-      "break_price": 273.39,
-      "break_date": "2026-01-02 14:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-05-09",
+          "value": 198.53
+        },
+        {
+          "time": "2025-05-19",
+          "value": 217.16
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2253,
-      "anchor1_price": 255.7,
-      "anchor2_bar": 2274,
-      "anchor2_price": 258.39,
-      "break_bar": 2282,
-      "break_price": 258.74,
-      "break_date": "2026-01-14 15:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-05-16",
+          "value": 212.36
+        },
+        {
+          "time": "2025-05-28",
+          "value": 193.11
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2288,
-      "anchor1_price": 261.03,
-      "anchor2_bar": 2314,
-      "anchor2_price": 251.56,
-      "break_bar": 2320,
-      "break_price": 250.52,
-      "break_date": "2026-01-22 18:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-05-27",
+          "value": 198.3
+        },
+        {
+          "time": "2025-06-06",
+          "value": 202.26
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2323,
-      "anchor1_price": 244.68,
-      "anchor2_bar": 2352,
-      "anchor2_price": 254.41,
-      "break_bar": 2358,
-      "break_price": 254.0,
-      "break_date": "2026-01-30 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-06-05",
+          "value": 203.5
+        },
+        {
+          "time": "2025-06-17",
+          "value": 196.62
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2384,
-      "anchor1_price": 280.905,
-      "anchor2_bar": 2398,
-      "anchor2_price": 275.36,
-      "break_bar": 2404,
-      "break_price": 273.79,
-      "break_date": "2026-02-10 20:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-06-16",
+          "value": 197.3
+        },
+        {
+          "time": "2025-06-18",
+          "value": 197.3
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2425,
-      "anchor1_price": 255.45,
-      "anchor2_bar": 2447,
-      "anchor2_price": 258.16,
-      "break_bar": 2496,
-      "break_price": 262.26,
-      "break_date": "2026-03-03 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-10-31",
+          "value": 276.99
+        },
+        {
+          "time": "2025-11-25",
+          "value": 272.7643
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2503,
-      "anchor1_price": 266.15,
-      "anchor2_bar": 2534,
-      "anchor2_price": 262.48,
-      "break_bar": 2603,
-      "break_price": 254.59,
-      "break_date": "2026-03-24 15:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-11-24",
+          "value": 270.9
+        },
+        {
+          "time": "2025-12-05",
+          "value": 285.12
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2635,
-      "anchor1_price": 245.51,
-      "anchor2_bar": 2650,
-      "anchor2_price": 250.65,
-      "break_bar": 2664,
-      "break_price": 247.67,
-      "break_date": "2026-04-07 13:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-04",
+          "value": 284.1
+        },
+        {
+          "time": "2025-12-12",
+          "value": 276.12
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2686,
-      "anchor1_price": 262.19,
-      "anchor2_bar": 2699,
-      "anchor2_price": 261.93,
-      "break_bar": 2707,
-      "break_price": 263.18,
-      "break_date": "2026-04-15 14:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-12",
+          "value": 277.9
+        },
+        {
+          "time": "2025-12-16",
+          "value": 277.9
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2714,
-      "anchor1_price": 261.27,
-      "anchor2_bar": 2737,
-      "anchor2_price": 265.4,
-      "break_bar": 2762,
-      "break_price": 267.36,
-      "break_date": "2026-04-27 13:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-15",
+          "value": 280.15
+        },
+        {
+          "time": "2025-12-24",
+          "value": 268.81
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2863,
-      "anchor1_price": 303.2,
-      "anchor2_bar": 2874,
-      "anchor2_price": 300.51,
-      "break_bar": 2881,
-      "break_price": 299.52,
-      "break_date": "2026-05-20 13:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-23",
+          "value": 270.84
+        },
+        {
+          "time": "2026-01-02",
+          "value": 273.795
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2908,
-      "anchor1_price": 307.67,
-      "anchor2_bar": 2915,
-      "anchor2_price": 309.52,
-      "break_bar": 2924,
-      "break_price": 311.8,
-      "break_date": "2026-05-29 14:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2025-12-31",
+          "value": 273.06
+        },
+        {
+          "time": "2026-01-12",
+          "value": 255.805
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 2944,
-      "anchor1_price": 316.94,
-      "anchor2_bar": 2951,
-      "anchor2_price": 313.54,
-      "break_bar": 2957,
-      "break_price": 311.16,
-      "break_date": "2026-06-04 19:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-13",
+          "value": 258.72
+        },
+        {
+          "time": "2026-01-16",
+          "value": 258.72
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 2979,
-      "anchor1_price": 287.38,
-      "anchor2_bar": 2987,
-      "anchor2_price": 289.6,
-      "break_bar": 2995,
-      "break_price": 291.58,
-      "break_date": "2026-06-12 15:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-15",
+          "value": 260.65
+        },
+        {
+          "time": "2026-01-26",
+          "value": 243.475
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 3014,
-      "anchor1_price": 302.07,
-      "anchor2_bar": 3022,
-      "anchor2_price": 300.57,
-      "break_bar": 3028,
-      "break_price": 301.2,
-      "break_date": "2026-06-22 13:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-01-23",
+          "value": 247.32
+        },
+        {
+          "time": "2026-02-02",
+          "value": 263.34
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 3052,
-      "anchor1_price": 273.75,
-      "anchor2_bar": 3105,
-      "anchor2_price": 307.0515,
-      "break_bar": 3119,
-      "break_price": 313.13,
-      "break_date": "2026-07-10 13:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-02-05",
+          "value": 278.13
+        },
+        {
+          "time": "2026-04-20",
+          "value": 266.7729
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 3154,
-      "anchor1_price": 334.98,
-      "anchor2_bar": 3167,
-      "anchor2_price": 329.76,
-      "break_bar": 3173,
-      "break_price": 327.935,
-      "break_date": "2026-07-21 18:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-04-17",
+          "value": 266.96
+        },
+        {
+          "time": "2026-04-22",
+          "value": 266.96
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 3182,
-      "anchor1_price": 319.35,
-      "anchor2_bar": 3218,
-      "anchor2_price": 329.59,
-      "break_bar": 3224,
-      "break_price": 302.74,
-      "break_date": "2026-07-31 13:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-04-21",
+          "value": 271.5
+        },
+        {
+          "time": "2026-04-29",
+          "value": 265.665
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 3252,
-      "anchor1_price": 316.2894,
-      "anchor2_bar": 3260,
-      "anchor2_price": 314.81,
-      "break_bar": 3308,
-      "break_price": 309.6599,
-      "break_date": "2026-08-18 13:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-04-28",
+          "value": 270.71
+        },
+        {
+          "time": "2026-04-30",
+          "value": 270.71
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 3329,
-      "anchor1_price": 307.01,
-      "anchor2_bar": 3348,
-      "anchor2_price": 308.21,
-      "break_bar": 3416,
-      "break_price": 311.705,
-      "break_date": "2026-09-09 16:30"
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-06-02",
+          "value": 315.2
+        },
+        {
+          "time": "2026-07-02",
+          "value": 287.8045
+        }
+      ]
     },
     {
-      "type": "resistance",
-      "direction": "descending",
-      "anchor1_bar": 3428,
-      "anchor1_price": 336.22,
-      "anchor2_bar": 3436,
-      "anchor2_price": 335.5,
-      "break_bar": 3452,
-      "break_price": 334.59,
-      "break_date": "2026-09-16 17:30"
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-07-01",
+          "value": 293.44
+        },
+        {
+          "time": "2026-07-10",
+          "value": 321.145
+        }
+      ]
     },
     {
-      "type": "support",
-      "direction": "ascending",
-      "anchor1_bar": 3455,
-      "anchor1_price": 330.1937,
-      "anchor2_bar": 3463,
-      "anchor2_price": 332.53,
-      "break_bar": null,
-      "break_price": null,
-      "break_date": null
+      "label": "",
+      "color": "#3fb950",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-07-28",
+          "value": 340.08
+        },
+        {
+          "time": "2026-08-31",
+          "value": 308.1459
+        }
+      ]
+    },
+    {
+      "label": "",
+      "color": "#58a6ff",
+      "type": "line",
+      "lineWidth": 2,
+      "lineStyle": 0,
+      "points": [
+        {
+          "time": "2026-08-28",
+          "value": 316.85
+        },
+        {
+          "time": "2026-09-08",
+          "value": 328.88
+        }
+      ]
     }
   ],
   "trade_log": [
     {
-      "entry_date": "2024-09-27 13:30",
-      "entry_price": 228.9509,
-      "exit_date": "2024-10-07 17:30",
-      "exit_price": 223.7499,
+      "entry_date": "2025-02-14",
+      "entry_price": 244.6,
+      "exit_date": "2025-02-25",
+      "exit_price": 247.04,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -2.572,
-      "gross_return_pct": -2.272,
+      "return_pct": 0.698,
+      "gross_return_pct": 0.998,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2024-10-14 13:30",
-      "entry_price": 230.685,
-      "exit_date": "2024-10-22 13:30",
-      "exit_price": 233.91,
+      "entry_date": "2025-03-07",
+      "entry_price": 239.07,
+      "exit_date": "2025-03-10",
+      "exit_price": 227.48,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 1.098,
-      "gross_return_pct": 1.398,
+      "return_pct": -5.148,
+      "gross_return_pct": -4.848,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2024-10-28 13:30",
-      "entry_price": 233.6346,
-      "exit_date": "2024-11-11 14:30",
-      "exit_price": 222.805,
+      "entry_date": "2025-03-17",
+      "entry_price": 214.0,
+      "exit_date": "2025-03-18",
+      "exit_price": 212.69,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -4.935,
-      "gross_return_pct": -4.635,
+      "return_pct": -0.912,
+      "gross_return_pct": -0.612,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2024-11-22 17:30",
-      "entry_price": 230.18,
-      "exit_date": "2025-01-10 14:30",
-      "exit_price": 237.425,
+      "entry_date": "2025-04-23",
+      "entry_price": 204.6,
+      "exit_date": "2025-05-02",
+      "exit_price": 205.35,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 2.848,
-      "gross_return_pct": 3.148,
+      "return_pct": 0.067,
+      "gross_return_pct": 0.367,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-01-17 20:30",
-      "entry_price": 229.99,
-      "exit_date": "2025-02-10 19:30",
-      "exit_price": 227.69,
+      "entry_date": "2025-05-09",
+      "entry_price": 198.53,
+      "exit_date": "2025-05-16",
+      "exit_price": 211.26,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -1.3,
-      "gross_return_pct": -1.0,
+      "return_pct": 6.112,
+      "gross_return_pct": 6.412,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-03-07 14:30",
-      "entry_price": 238.31,
-      "exit_date": "2025-03-20 16:30",
-      "exit_price": 213.23,
+      "entry_date": "2025-05-27",
+      "entry_price": 200.21,
+      "exit_date": "2025-06-05",
+      "exit_price": 200.63,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -10.824,
-      "gross_return_pct": -10.524,
+      "return_pct": -0.09,
+      "gross_return_pct": 0.21,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-08-08 14:30",
-      "entry_price": 224.36,
-      "exit_date": "2025-08-19 16:30",
-      "exit_price": 230.625,
+      "entry_date": "2025-06-16",
+      "entry_price": 198.42,
+      "exit_date": "2025-06-17",
+      "exit_price": 195.64,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 2.492,
-      "gross_return_pct": 2.792,
+      "return_pct": -1.701,
+      "gross_return_pct": -1.401,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-09-15 13:30",
-      "entry_price": 236.215,
-      "exit_date": "2025-09-25 14:30",
-      "exit_price": 253.5001,
+      "entry_date": "2025-11-24",
+      "entry_price": 275.92,
+      "exit_date": "2025-12-04",
+      "exit_price": 280.7,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 7.018,
-      "gross_return_pct": 7.318,
+      "return_pct": 1.432,
+      "gross_return_pct": 1.732,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-10-01 13:30",
-      "entry_price": 256.1614,
-      "exit_date": "2025-10-07 15:30",
-      "exit_price": 256.3384,
+      "entry_date": "2025-12-11",
+      "entry_price": 278.03,
+      "exit_date": "2025-12-15",
+      "exit_price": 274.11,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -0.231,
-      "gross_return_pct": 0.069,
+      "return_pct": -1.71,
+      "gross_return_pct": -1.41,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-10-17 15:30",
-      "entry_price": 250.2965,
-      "exit_date": "2025-10-31 13:30",
-      "exit_price": 270.38,
+      "entry_date": "2025-12-23",
+      "entry_price": 272.36,
+      "exit_date": "2025-12-31",
+      "exit_price": 271.86,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 7.724,
-      "gross_return_pct": 8.024,
+      "return_pct": -0.484,
+      "gross_return_pct": -0.184,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-11-05 15:30",
-      "entry_price": 270.29,
-      "exit_date": "2025-11-17 14:30",
-      "exit_price": 269.28,
+      "entry_date": "2026-01-09",
+      "entry_price": 259.37,
+      "exit_date": "2026-01-15",
+      "exit_price": 258.21,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -0.674,
-      "gross_return_pct": -0.374,
+      "return_pct": -0.747,
+      "gross_return_pct": -0.447,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-12-01 16:30",
-      "entry_price": 279.7705,
-      "exit_date": "2025-12-11 14:30",
-      "exit_price": 276.12,
+      "entry_date": "2026-01-23",
+      "entry_price": 248.04,
+      "exit_date": "2026-01-30",
+      "exit_price": 259.48,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -1.605,
-      "gross_return_pct": -1.305,
+      "return_pct": 4.312,
+      "gross_return_pct": 4.612,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2025-12-19 20:30",
-      "entry_price": 273.67,
-      "exit_date": "2025-12-30 14:30",
-      "exit_price": 272.59,
+      "entry_date": "2026-04-17",
+      "entry_price": 270.23,
+      "exit_date": "2026-04-21",
+      "exit_price": 266.17,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -0.695,
-      "gross_return_pct": -0.395,
+      "return_pct": -1.802,
+      "gross_return_pct": -1.502,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2026-01-02 14:30",
-      "entry_price": 273.39,
-      "exit_date": "2026-01-14 15:30",
-      "exit_price": 258.74,
+      "entry_date": "2026-04-28",
+      "entry_price": 270.71,
+      "exit_date": "2026-04-29",
+      "exit_price": 270.17,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -5.659,
-      "gross_return_pct": -5.359,
+      "return_pct": -0.499,
+      "gross_return_pct": -0.199,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2026-01-22 18:30",
-      "entry_price": 250.52,
-      "exit_date": "2026-01-30 14:30",
-      "exit_price": 254.0,
+      "entry_date": "2026-07-01",
+      "entry_price": 294.38,
+      "exit_date": "2026-07-09",
+      "exit_price": 316.22,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": 1.089,
-      "gross_return_pct": 1.389,
+      "return_pct": 7.119,
+      "gross_return_pct": 7.419,
       "cost_pct": -0.3
     },
     {
-      "entry_date": "2026-02-10 20:30",
-      "entry_price": 273.79,
-      "exit_date": "2026-03-03 14:30",
-      "exit_price": 262.26,
+      "entry_date": "2026-08-28",
+      "entry_price": 319.7,
+      "exit_date": "2026-09-04",
+      "exit_price": 319.97,
       "side": "long",
       "exit_reason": "support_break",
       "strategy": "sloped_lines",
-      "return_pct": -4.511,
-      "gross_return_pct": -4.211,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-03-24 15:30",
-      "entry_price": 254.59,
-      "exit_date": "2026-04-07 13:30",
-      "exit_price": 247.67,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": -3.018,
-      "gross_return_pct": -2.718,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-04-15 14:30",
-      "entry_price": 263.18,
-      "exit_date": "2026-04-27 13:30",
-      "exit_price": 267.36,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": 1.288,
-      "gross_return_pct": 1.588,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-05-20 13:30",
-      "entry_price": 299.52,
-      "exit_date": "2026-05-29 14:30",
-      "exit_price": 311.8,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": 3.8,
-      "gross_return_pct": 4.1,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-06-04 19:30",
-      "entry_price": 311.16,
-      "exit_date": "2026-06-12 15:30",
-      "exit_price": 291.58,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": -6.593,
-      "gross_return_pct": -6.293,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-06-22 13:30",
-      "entry_price": 301.2,
-      "exit_date": "2026-07-10 13:30",
-      "exit_price": 313.13,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": 3.661,
-      "gross_return_pct": 3.961,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-07-21 18:30",
-      "entry_price": 327.935,
-      "exit_date": "2026-07-31 13:30",
-      "exit_price": 302.74,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": -7.983,
-      "gross_return_pct": -7.683,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-08-18 13:30",
-      "entry_price": 309.6599,
-      "exit_date": "2026-09-09 16:30",
-      "exit_price": 311.705,
-      "side": "long",
-      "exit_reason": "support_break",
-      "strategy": "sloped_lines",
-      "return_pct": 0.36,
-      "gross_return_pct": 0.66,
-      "cost_pct": -0.3
-    },
-    {
-      "entry_date": "2026-09-16 17:30",
-      "entry_price": 334.59,
-      "exit_date": "2026-09-21 20:00",
-      "exit_price": 338.98,
-      "side": "long",
-      "exit_reason": "end_of_data",
-      "strategy": "sloped_lines",
-      "return_pct": 1.012,
-      "gross_return_pct": 1.312,
+      "return_pct": -0.216,
+      "gross_return_pct": 0.084,
       "cost_pct": -0.3
     }
   ],
   "data_source": "Yahoo Finance",
   "disclaimer": "Past performance does not guarantee future results. For educational use only.",
-  "timestamp": "2026-09-22T07:13:46.975772+00:00"
+  "timestamp": "2026-09-22T19:25:50.550283+00:00"
 }

@@ -20,6 +20,7 @@ A fully customized, high-performance HTML/JS/FastAPI dashboard was engineered to
     - Includes `index.html`, `style.css` (premium dark mode aesthetics), and `app.js` (native vanilla JS with dynamic UI state handling).
     - Lightweight charts automatically pull historical candles and sequentially plot explicit **buy (green upward arrows)** and **sell (red downward arrows)** markers at their exact historical execution times.
     - Statistics Cards dynamically rerender their contents strictly based on the currently filtered strategy and ticker.
+    - **Advanced** keeps the regular chart, candle-resolution controls, and timeframe controls, then adds optional synchronized Volume and RSI (14) panes below it. Both panes follow the main chart whenever its range is changed or zoomed.
 
 ## 2. Running the UI Dashboard
 

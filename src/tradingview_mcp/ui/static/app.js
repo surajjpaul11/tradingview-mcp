@@ -25,6 +25,11 @@ const bnhVal = document.getElementById('bnh-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
+const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
+const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
+const indicatorStack = document.getElementById('indicator-stack');
+const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
+const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
 let lastDataRefreshAt = 0;
 let marketStatusTimer = null;
 let autoRefreshInFlight = false;
@@ -282,6 +287,13 @@ let candlestickSeries = null;
 let activeResolution = '1d'; // Default: 1D candles
 let activeTimeframe = '1y';  // Default: 1-Year range
 let trendlineSeries = []; // LineSeries for trendline overlays
+let volumeChart = null;
+let volumeSeries = null;
+let rsiChart = null;
+let rsiSeries = null;
+let rsiUpperGuide = null;
+let rsiLowerGuide = null;
+let rsiBoundsSeries = null;
 
 // ----- Chart Globals (Advanced Tab) -----
 let advChart = null;
@@ -314,34 +326,17 @@ function switchTab(tab) {
         btn.classList.toggle('active', btn.dataset.tab === tab);
     });
 
-    // Update tab panels
-    document.querySelectorAll('.tab-panel').forEach(panel => {
-        const isActive = panel.id === `panel-${tab}`;
-        panel.classList.toggle('active', isActive);
-    });
+    const sidebar = document.querySelector('.tab-sidebar');
+    sidebar?.classList.toggle('advanced-mode', tab === 'advanced');
+    document.getElementById('panel-regular')?.classList.add('active');
+    updateIndicatorVisibility();
 
-    if (tab === 'advanced') {
-        if (!advChart) {
-            initAdvChart();
-        } else {
-            const container = document.getElementById('adv-chart');
-            if (container && advChart) {
-                advChart.applyOptions({
-                    width: container.clientWidth || 800,
-                    height: container.clientHeight || 500,
-                });
-            }
-        }
-        updateAdvDashboard();
-    } else if (tab === 'regular') {
-        const container = document.getElementById('tv-chart');
-        if (container && chart) {
-            chart.applyOptions({
-                width: container.clientWidth || 800,
-                height: container.clientHeight || 500,
-            });
-        }
-        updateDashboard();
+    const container = document.getElementById('tv-chart');
+    if (container && chart) {
+        chart.applyOptions({
+            width: container.clientWidth || 800,
+            height: container.clientHeight || 500,
+        });
     }
 }
 
@@ -411,6 +406,186 @@ function initChart() {
             }
         }
     }).observe(container);
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(range => {
+        if (!range || activeTab !== 'advanced') return;
+        if (volumeChart && volumeIndicatorCheckbox?.checked) {
+            volumeChart.timeScale().setVisibleRange(range);
+        }
+        if (rsiChart && rsiIndicatorCheckbox?.checked) {
+            rsiChart.timeScale().setVisibleRange(range);
+        }
+    });
+}
+
+function createIndicatorChart(container, height) {
+    const indicatorChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth || 800,
+        height,
+        layout: {
+            background: { type: 'solid', color: 'transparent' },
+            textColor: '#94A3B8',
+        },
+        grid: {
+            vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+            horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
+        },
+        timeScale: {
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        rightPriceScale: {
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            scaleMargins: { top: 0.12, bottom: 0.12 },
+        },
+        crosshair: {
+            mode: 1,
+            vertLine: { color: '#3B82F6', labelBackgroundColor: '#3B82F6' },
+            horzLine: { color: '#3B82F6', labelBackgroundColor: '#3B82F6' },
+        },
+        handleScroll: false,
+        handleScale: false,
+    });
+
+    new ResizeObserver(entries => {
+        const width = container.clientWidth || entries[0]?.contentRect?.width || 800;
+        if (width > 50) indicatorChart.applyOptions({ width, height });
+    }).observe(container);
+    return indicatorChart;
+}
+
+function addLineSeriesCompat(targetChart, options) {
+    if (typeof targetChart.addLineSeries === 'function') return targetChart.addLineSeries(options);
+    if (typeof targetChart.addSeries === 'function' && LightweightCharts.LineSeries) {
+        return targetChart.addSeries(LightweightCharts.LineSeries, options);
+    }
+    return null;
+}
+
+function initIndicatorCharts() {
+    const volumeContainer = document.getElementById('volume-chart');
+    if (!volumeChart && volumeContainer) {
+        volumeChart = createIndicatorChart(volumeContainer, 138);
+        const options = {
+            priceFormat: { type: 'volume' },
+            priceLineVisible: false,
+            lastValueVisible: true,
+        };
+        if (typeof volumeChart.addHistogramSeries === 'function') {
+            volumeSeries = volumeChart.addHistogramSeries(options);
+        } else if (typeof volumeChart.addSeries === 'function' && LightweightCharts.HistogramSeries) {
+            volumeSeries = volumeChart.addSeries(LightweightCharts.HistogramSeries, options);
+        }
+    }
+
+    const rsiContainer = document.getElementById('rsi-chart');
+    if (!rsiChart && rsiContainer) {
+        rsiChart = createIndicatorChart(rsiContainer, 138);
+        rsiSeries = addLineSeriesCompat(rsiChart, {
+            color: '#A78BFA',
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+        });
+        rsiUpperGuide = addLineSeriesCompat(rsiChart, {
+            color: 'rgba(239, 68, 68, 0.55)',
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+        rsiLowerGuide = addLineSeriesCompat(rsiChart, {
+            color: 'rgba(16, 185, 129, 0.55)',
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+        rsiBoundsSeries = addLineSeriesCompat(rsiChart, {
+            color: 'rgba(0, 0, 0, 0)',
+            lineWidth: 1,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+    }
+}
+
+function calculateRSI(candles, period = 14) {
+    if (!candles || candles.length <= period) return [];
+    let gains = 0;
+    let losses = 0;
+    for (let i = 1; i <= period; i += 1) {
+        const change = candles[i].close - candles[i - 1].close;
+        gains += Math.max(change, 0);
+        losses += Math.max(-change, 0);
+    }
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    const values = [];
+    const rsiValue = () => avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss)));
+    values.push({ time: candles[period].time, value: Number(rsiValue().toFixed(2)) });
+
+    for (let i = period + 1; i < candles.length; i += 1) {
+        const change = candles[i].close - candles[i - 1].close;
+        avgGain = ((avgGain * (period - 1)) + Math.max(change, 0)) / period;
+        avgLoss = ((avgLoss * (period - 1)) + Math.max(-change, 0)) / period;
+        values.push({ time: candles[i].time, value: Number(rsiValue().toFixed(2)) });
+    }
+    return values;
+}
+
+function syncIndicatorRanges() {
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleRange();
+    if (!range) return;
+    if (volumeChart && volumeIndicatorCheckbox?.checked) volumeChart.timeScale().setVisibleRange(range);
+    if (rsiChart && rsiIndicatorCheckbox?.checked) rsiChart.timeScale().setVisibleRange(range);
+}
+
+function renderAdvancedIndicators(candles) {
+    if (!candles || activeTab !== 'advanced') return;
+    initIndicatorCharts();
+
+    if (volumeSeries) {
+        const volumeData = candles.map(candle => ({
+            time: candle.time,
+            value: Number(candle.volume || 0),
+            color: candle.close >= candle.open ? 'rgba(16, 185, 129, 0.65)' : 'rgba(239, 68, 68, 0.65)',
+        }));
+        volumeSeries.setData(volumeData);
+        const latestVolume = volumeData.at(-1)?.value;
+        const value = document.getElementById('volume-indicator-value');
+        if (value) value.textContent = latestVolume == null ? '—' : Intl.NumberFormat(undefined, { notation: 'compact' }).format(latestVolume);
+    }
+
+    const rsiData = calculateRSI(candles);
+    if (rsiSeries) rsiSeries.setData(rsiData);
+    if (rsiData.length > 0) {
+        const firstTime = rsiData[0].time;
+        const lastTime = rsiData[rsiData.length - 1].time;
+        rsiUpperGuide?.setData([{ time: firstTime, value: 70 }, { time: lastTime, value: 70 }]);
+        rsiLowerGuide?.setData([{ time: firstTime, value: 30 }, { time: lastTime, value: 30 }]);
+        rsiBoundsSeries?.setData([{ time: firstTime, value: 0 }, { time: lastTime, value: 100 }]);
+    }
+    const rsiValue = document.getElementById('rsi-indicator-value');
+    if (rsiValue) rsiValue.textContent = rsiData.length ? rsiData[rsiData.length - 1].value.toFixed(2) : '—';
+    requestAnimationFrame(syncIndicatorRanges);
+}
+
+function updateIndicatorVisibility() {
+    const advanced = activeTab === 'advanced';
+    const showVolume = advanced && Boolean(volumeIndicatorCheckbox?.checked);
+    const showRsi = advanced && Boolean(rsiIndicatorCheckbox?.checked);
+    indicatorStack?.classList.toggle('active', advanced && (showVolume || showRsi));
+    volumeIndicatorPane?.classList.toggle('active', showVolume);
+    rsiIndicatorPane?.classList.toggle('active', showRsi);
+    if (advanced) {
+        requestAnimationFrame(() => {
+            renderAdvancedIndicators(currentCandles);
+            syncIndicatorRanges();
+        });
+    }
 }
 
 // ============================================================
@@ -1254,6 +1429,7 @@ async function updateDashboard() {
         if (candlestickSeries) {
             candlestickSeries.setData(sorted);
         }
+        renderAdvancedIndicators(sorted);
 
         // -- Trade Markers --
         if (candlestickSeries && tradesData.trades && sorted.length > 0) {
@@ -1290,6 +1466,7 @@ async function updateDashboard() {
 
         if (chart) {
             chart.timeScale().fitContent();
+            requestAnimationFrame(syncIndicatorRanges);
         }
 
         // -- Stats --
@@ -1473,6 +1650,7 @@ async function updateAdvDashboard() {
     }
     initTabs();
     initTimeframeButtons();
-    initAdvTimeframeButtons();
+    volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     loadFilters().finally(startMarketRefresh);
 })();

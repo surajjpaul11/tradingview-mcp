@@ -1,5 +1,6 @@
 import sqlite3
 import asyncio
+import json
 import os
 import sys
 import threading
@@ -17,12 +18,19 @@ from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_su
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
 from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
 from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST, scan_opportunities
-from tradingview_mcp.core.services.market_hours import get_market_status, load_market_config
+from tradingview_mcp.core.services.market_hours import (
+    get_market_status,
+    load_market_config,
+    market_config_path,
+    normalize_trading_window,
+    timestamp_in_trading_window,
+)
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
-_yahoo_candle_cache: dict[tuple[str, str, str], tuple[float, tuple[list[dict], str, str]]] = {}
+_yahoo_candle_cache: dict[tuple[str, str, str, str], tuple[float, tuple[list[dict], str, str]]] = {}
 _yahoo_cache_lock = threading.Lock()
+_market_config_lock = threading.Lock()
 
 # Mount static directory directly
 static_path = Path(__file__).parent / "static"
@@ -163,15 +171,33 @@ async def api_best_parameters(strategy: str = None, symbol: str = None):
 
 
 @app.get("/api/market-status")
-async def api_market_status():
+async def api_market_status(trading_window: str = None):
     """Return the configured market session and automatic refresh state."""
     try:
-        return get_market_status()
+        return get_market_status(trading_window=trading_window)
     except (OSError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=500, detail=f"Invalid market-hours configuration: {exc}") from exc
 
 
-def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y") -> tuple[list[dict], str, str]:
+@app.post("/api/trading-window")
+async def api_set_trading_window(trading_window: str):
+    """Persist the dashboard's selected trading window as the server default."""
+    try:
+        with _market_config_lock:
+            config = load_market_config()
+            selected_window = normalize_trading_window(trading_window, config)
+            config["active_trading_window"] = selected_window
+            config_path = market_config_path()
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        with _yahoo_cache_lock:
+            _yahoo_candle_cache.clear()
+        return get_market_status(config=config, trading_window=selected_window)
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y", trading_window: str = None) -> tuple[list[dict], str, str]:
     """
     Fetch OHLCV candles via yfinance with automatic range clamping & resampling:
       - 30m: max 60d
@@ -199,11 +225,10 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
 
     fetch_tf = "1h" if tf in ("4h", "12h") else tf
 
-    cache_key = (yf_symbol.upper(), tf, actual_period)
-    try:
-        cache_seconds = int(load_market_config()["yahoo_cache_seconds"])
-    except (OSError, ValueError, KeyError):
-        cache_seconds = 60
+    market_config = load_market_config()
+    selected_window = normalize_trading_window(trading_window, market_config)
+    cache_seconds = int(market_config.get("yahoo_cache_seconds", 60))
+    cache_key = (yf_symbol.upper(), tf, actual_period, selected_window)
     now = time.monotonic()
     with _yahoo_cache_lock:
         cached = _yahoo_candle_cache.get(cache_key)
@@ -213,7 +238,8 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     candles = []
     try:
         ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period=actual_period, interval=fetch_tf)
+        include_extended_hours = selected_window != "regular market"
+        df = ticker.history(period=actual_period, interval=fetch_tf, prepost=include_extended_hours)
         if df is not None and not df.empty:
             if tf in ("4h", "12h"):
                 df = df.resample(tf).agg({
@@ -222,6 +248,10 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
 
             fmt = "%Y-%m-%d %H:%M" if tf in ("30m", "1h", "4h", "12h") else "%Y-%m-%d"
             for date, row in df.iterrows():
+                if tf in ("30m", "1h", "4h", "12h"):
+                    candle_time = date.to_pydatetime() if hasattr(date, "to_pydatetime") else date
+                    if not timestamp_in_trading_window(candle_time, selected_window, market_config):
+                        continue
                 o = float(row["Open"])
                 h = float(row["High"])
                 l = float(row["Low"])
@@ -239,7 +269,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
                     "volume": round(v, 2),
                 })
     except Exception as e:
-        print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}): {e}")
+        print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}, {selected_window}): {e}")
 
     result = (candles, tf, actual_period)
     if candles and cache_seconds > 0:
@@ -267,7 +297,7 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
 
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
+async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -284,7 +314,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
 
             p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=p["full_candle"], use_wick=p["use_wick"], confirm_candles=p["confirm_candles"], inverse_color_trigger=p["inverse_color_trigger"], line_angle=p["line_angle"], stop_loss_mode=p["stop_loss_mode"], min_anchor_bars=p["min_anchor_bars"], candles=candles)
@@ -351,7 +381,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
                 if clean_sym in ("PORTFOLIO", "TOTAL"):
                     clean_sym = "SPY"
                 yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-                candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+                candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
                 res = run_ec_backtest(
                     symbol=clean_sym,
                     period=actual_period,
@@ -409,7 +439,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
+async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -426,7 +456,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
 
             p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, full_candle=p["full_candle"], use_wick=p["use_wick"], confirm_candles=p["confirm_candles"], inverse_color_trigger=p["inverse_color_trigger"], line_angle=p["line_angle"], stop_loss_mode=p["stop_loss_mode"], min_anchor_bars=p["min_anchor_bars"], candles=candles)
@@ -478,7 +508,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period)
+            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
 
             res = run_ec_backtest(
                 symbol=clean_sym,
@@ -525,7 +555,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
     return stats
 
 @app.get("/api/candles")
-async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: str = "1y"):
+async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: str = "1y", trading_window: str = None):
     """Fetch raw candle data for TradingView chart using yfinance."""
     clean_sym = symbol.strip().upper()
     if clean_sym in ("PORTFOLIO", "TOTAL"):
@@ -540,11 +570,12 @@ async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: 
         .replace("_", "-")
     )
     
-    candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period)
-    return {"candles": candles, "timeframe": actual_tf, "period": actual_period}
+    candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
+    return {"candles": candles, "timeframe": actual_tf, "period": actual_period,
+            "trading_window": normalize_trading_window(trading_window, load_market_config())}
 
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
+async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", trading_window: str = None, full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None):
     """
     Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
     and return trendline segments for chart overlay.
@@ -568,7 +599,7 @@ async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timefram
     base_dir = Path(__file__).resolve().parents[3]
 
     try:
-        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period)
+        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
         if not candles:
             return {"trendlines": [], "error": "No candle data available"}
 
@@ -597,7 +628,7 @@ async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timefram
         return {"trendlines": [], "error": str(e)}
 
 @app.get("/api/channels")
-async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", channel_mult: float = 1.7, lookback: int = 50):
+async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", trading_window: str = None, channel_mult: float = 1.7, lookback: int = 50):
     """
     Run the enhanced_channel strategy on OHLCV data and return channel overlays
     (Tactical Upper, Tactical Lower, Tactical Mid, Intermediate Mid, Macro Mid)
@@ -622,8 +653,8 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", c
         if str(strategy_dir) not in sys.path:
             sys.path.insert(0, str(strategy_dir))
 
-        from enhanced_channel_strategy import fetch_ohlcv, run_enhanced_channel
-        candles = fetch_ohlcv(yf_symbol, period=period, interval=timeframe)
+        from enhanced_channel_strategy import run_enhanced_channel
+        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
         if not candles:
             return {"overlays": [], "error": "No candle data available"}
 
@@ -689,7 +720,7 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", c
                 "points": pts,
             })
 
-        return {"overlays": formatted_overlays}
+        return {"overlays": formatted_overlays, "timeframe": actual_tf, "period": actual_period}
 
     except Exception as e:
         print(f"Channels error for {symbol}: {e}")

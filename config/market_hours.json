@@ -4,6 +4,13 @@
   "weekdays": [0, 1, 2, 3, 4],
   "open_time": "09:30",
   "close_time": "16:00",
+  "active_trading_window": "regular market",
+  "trading_windows": {
+    "regular market": {"start_time": "09:30", "end_time": "16:00"},
+    "pre-market": {"start_time": "04:00", "end_time": "16:00"},
+    "after hours": {"start_time": "09:30", "end_time": "20:00"},
+    "overnight": {"start_time": "00:00", "end_time": "24:00"}
+  },
   "refresh_minutes": 30,
   "yahoo_cache_seconds": 60,
   "calendar_source": "https://www.nyse.com/trade/hours-calendars",

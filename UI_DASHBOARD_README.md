@@ -52,6 +52,8 @@ The dashboard loads Yahoo Finance data when it first opens and whenever the tick
 Edit `config/market_hours.json` to change the schedule:
 
 - `timezone`, `open_time`, and `close_time` define the regular session.
+- `active_trading_window` stores the home-page selection. Its default is `regular market`.
+- `trading_windows` defines the selectable sessions: regular market (9:30 a.m.–4:00 p.m.), pre-market plus regular (4:00 a.m.–4:00 p.m.), regular plus after hours (9:30 a.m.–8:00 p.m.), and overnight/all sessions (midnight–midnight).
 - `weekdays` uses Python weekday numbers (`0` is Monday and `6` is Sunday).
 - `refresh_minutes` controls the live dashboard interval.
 - `holidays` accepts closed dates such as `"2026-12-25"`.
@@ -61,6 +63,10 @@ Edit `config/market_hours.json` to change the schedule:
 The checked-in holiday and early-close dates cover the NYSE calendar through 2028 and should be updated when NYSE publishes later years. The `calendar_source` field records the official schedule used.
 
 Set `MARKET_HOURS_CONFIG` to use a different JSON file. The schedule is reread by the server, so a restart is not normally required after editing it.
+
+The **Trading Window** selector on the home page persists `active_trading_window`, changes the automatic-refresh session, and is sent to the candle, trade, statistics, trendline, and channel APIs. Extended windows request Yahoo pre/post-market data and filter intraday candles before a strategy runs. Because daily candles do not preserve session boundaries, choosing an extended window automatically changes the regular chart to 30-minute candles and the advanced chart to its one-day intraday view. Yahoo may not supply every overnight equity print, so the overnight option uses all intraday data Yahoo returns rather than filling missing intervals.
+
+The live signal service also reads the persisted window when requesting intraday Yahoo candles. Live Alpaca execution is blocked while the selected stock-trading window is closed; crypto execution remains independent because crypto markets run continuously.
 
 The scanner includes [Volume-Confirmed Price Breakout](docs/VOLUME_PRICE_BREAKOUT.md), which checks for a new price high with an unusually large price gain and volume surge. Its pending signals and earlier closed trades appear alongside the other supported strategies.
 

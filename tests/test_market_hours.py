@@ -2,7 +2,11 @@ import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from tradingview_mcp.core.services.market_hours import DEFAULT_CONFIG, get_market_status
+from tradingview_mcp.core.services.market_hours import (
+    DEFAULT_CONFIG,
+    get_market_status,
+    timestamp_in_trading_window,
+)
 
 
 EASTERN = ZoneInfo("America/New_York")
@@ -48,6 +52,26 @@ class MarketHoursTests(unittest.TestCase):
         self.assertTrue(before_close["is_open"])
         self.assertEqual(before_close["session_close"], "2026-11-27T13:00:00-05:00")
         self.assertFalse(after_close["is_open"])
+
+    def test_each_trading_window_expands_the_active_session(self):
+        at_five_am = datetime(2026, 9, 23, 5, 0, tzinfo=EASTERN)
+        at_six_pm = datetime(2026, 9, 23, 18, 0, tzinfo=EASTERN)
+        at_two_am = datetime(2026, 9, 23, 2, 0, tzinfo=EASTERN)
+
+        self.assertFalse(get_market_status(at_five_am, config(), "regular market")["is_open"])
+        self.assertTrue(get_market_status(at_five_am, config(), "pre-market")["is_open"])
+        self.assertTrue(get_market_status(at_six_pm, config(), "after hours")["is_open"])
+        self.assertTrue(get_market_status(at_two_am, config(), "overnight")["is_open"])
+
+    def test_intraday_candles_are_filtered_by_selected_window(self):
+        premarket = datetime(2026, 9, 23, 8, 0, tzinfo=EASTERN)
+        after_hours = datetime(2026, 9, 23, 18, 0, tzinfo=EASTERN)
+
+        self.assertFalse(timestamp_in_trading_window(premarket, "regular market", config()))
+        self.assertTrue(timestamp_in_trading_window(premarket, "pre-market", config()))
+        self.assertFalse(timestamp_in_trading_window(after_hours, "pre-market", config()))
+        self.assertTrue(timestamp_in_trading_window(after_hours, "after hours", config()))
+        self.assertTrue(timestamp_in_trading_window(after_hours, "overnight", config()))
 
 
 if __name__ == "__main__":

@@ -3198,6 +3198,21 @@ def execute_trade(
     Returns:
         Combined signal check + order result (or simulation).
     """
+    if broker.lower() == "alpaca":
+        from tradingview_mcp.core.services.market_hours import get_market_status
+        market_status = get_market_status()
+        if not market_status["is_open"]:
+            return {
+                "signal_check": None,
+                "order": None,
+                "executed": False,
+                "reason": (
+                    f"The configured {market_status['active_trading_window']} window is closed. "
+                    f"Next active session: {market_status['next_refresh_at']}."
+                ),
+                "market_status": market_status,
+            }
+
     # Step 1: Check for a live signal
     signal = get_live_signal(symbol, strategy, interval)
 

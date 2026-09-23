@@ -34,6 +34,7 @@ def get_live_signal(
     symbol: str,
     strategy: str,
     interval: str = "1d",
+    trading_window: str | None = None,
 ) -> dict:
     """
     Run a strategy on recent data and detect whether the latest bar triggers
@@ -68,11 +69,15 @@ def get_live_signal(
     if interval not in _VALID_INTERVALS:
         return {"error": f"Invalid interval '{interval}'. Choose: {', '.join(_VALID_INTERVALS)}"}
 
+    from tradingview_mcp.core.services.market_hours import load_market_config, normalize_trading_window
+    market_config = load_market_config()
+    selected_window = normalize_trading_window(trading_window, market_config)
+
     # Fetch enough bars for indicator warm-up (300 daily bars, more for intraday)
     warmup_period = "2y" if interval == "1d" else "3mo"
     try:
         candles = _completed_candles(
-            _fetch_ohlcv(symbol, warmup_period, interval), symbol, interval
+            _fetch_ohlcv(symbol, warmup_period, interval, selected_window), symbol, interval
         )
     except Exception as e:
         return {"error": f"Failed to fetch data for '{symbol}': {e}"}
@@ -151,6 +156,7 @@ def get_live_signal(
         "exit_reason": exit_reason,
         "signal_context": signal_context,
         "interval": interval,
+        "trading_window": selected_window,
         "candles_fetched": len(candles),
         "latest_bar_date": latest_date,
         "timestamp": datetime.now(timezone.utc).isoformat(),

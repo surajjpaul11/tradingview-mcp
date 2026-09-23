@@ -109,6 +109,21 @@ class BacktestRegressions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "one value per candle"):
             runner(series, long_entry_mask=[True])
 
+    def test_enhanced_channel_backtest_accepts_shared_candles(self):
+        import json
+        from importlib.util import module_from_spec, spec_from_file_location
+        snapshot = Path(__file__).resolve().parents[1] / "docs/returns_baseline_completed_2026-09-18.json"
+        series = json.loads(snapshot.read_text())["data"]["AAPL"]["candles"]
+        path = Path(__file__).resolve().parents[1] / "strategies/enhanced_channel/enhanced_channel_strategy.py"
+        spec = spec_from_file_location("enhanced_channel_shared_candles_test", path)
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.object(module, "fetch_ohlcv", side_effect=AssertionError("must use supplied candles")):
+            result = module.run_backtest("AAPL", period="1y", interval="1d",
+                                         channel_curl_mode="none", candles=series)
+        self.assertEqual(result["candles_analyzed"], len(series))
+        self.assertEqual(result["parameters"]["channel_curl_mode"], "none")
+
 
 class BrokerRegressions(unittest.TestCase):
     def test_bitget_rejects_unlinked_protection_before_entry(self):

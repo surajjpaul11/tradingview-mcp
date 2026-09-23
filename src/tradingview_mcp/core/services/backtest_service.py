@@ -54,6 +54,7 @@ _STRATEGY_LABELS = {
     "volatility_harvester": "Volatility Harvester (Multi-Indicator Expansion)",
     "ema21":        "EMA 21 Price Crossover (Long + Short)",
     "enhanced_channel": "Enhanced Channel (MTF Regression Channel Bounce)",
+    "sloped_lines": "Sloped Lines (Alternating Trendline Breakout)",
     "volume_price_breakout": "Volume-Confirmed Price Breakout",
     "resistance_lines": "Resistance Lines (Horizontal S/R Bounce, Long Only)",
 }
@@ -648,6 +649,7 @@ _STRATEGY_MAP = {
     "volatility_harvester": _get_dynamic_runner("volatility_harvester_strategy.py", "run_volatility_harvester"),
     "ema21":        _run_ema21,
     "enhanced_channel": _get_dynamic_runner("enhanced_channel_strategy.py", "run_enhanced_channel_trades"),
+    "sloped_lines": _get_dynamic_runner("sloped_lines_strategy.py", "run_sloped_lines_trades"),
     "volume_price_breakout": run_volume_price_breakout,
     "resistance_lines": _get_dynamic_runner("resistance_lines_strategy.py", "run_resistance_lines"),
 }
@@ -843,7 +845,21 @@ def run_backtest(
     if len(candles) < min_bars:
         return {"error": f"Not enough data ({len(candles)} bars). Try a longer period."}
 
-    raw_trades = _STRATEGY_MAP[strategy](candles)
+    # Automatically resolve best parameter defaults for strategy-ticker combination
+    strat_kwargs = {}
+    try:
+        from tradingview_mcp.core.services.strategy_config import get_best_parameters
+        best_cfg = get_best_parameters(strategy, symbol)
+        if best_cfg and "parameters" in best_cfg:
+            strat_kwargs.update(best_cfg["parameters"])
+    except Exception:
+        pass
+
+    try:
+        raw_trades = _STRATEGY_MAP[strategy](candles, **strat_kwargs)
+    except TypeError:
+        raw_trades = _STRATEGY_MAP[strategy](candles)
+
     trades     = _apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics    = _calc_metrics(trades, initial_capital, interval)
     bnh        = _buy_and_hold_return(candles)

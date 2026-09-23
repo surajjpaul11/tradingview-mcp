@@ -329,6 +329,54 @@ Downtrend resistance trendline (buy when price closes above):
 
 ---
 
+## Sloped Lines Strategy
+
+**Files:** `strategies/sloped_lines/sloped_lines_strategy.py` | `strategies/sloped_lines/sloped_lines_visual.html`
+**Type:** Alternating trendline breakout | **Sides:** Long only (short optional via `--enable-short`) | **MCP key:** `sloped_lines`
+
+### Overview
+
+An alternating trendline breakout strategy. While price is falling, draw a descending resistance line
+connecting two lower swing highs (green lines). When price breaks above → BUY. While holding, draw an
+ascending support line connecting two higher swing lows (blue lines). When price breaks below → SELL.
+Repeat.
+
+### How It Works
+
+**Phase 1 — Waiting for Buy (out of market):**
+1. Detect swing highs or candle tops
+2. Find candidate resistance anchors where `high₂ < high₁` (lower highs → descending)
+3. Validate: no candle close breaks above the line between the two anchor points
+4. Optional filters: Confirmation Candles, Inverse Color Trigger (Red to Green), Line Angle threshold
+5. When price **closes above** the projected resistance → **BUY**
+6. Alternatively, if `stop_loss_mode` is `exit_peak_reclaim`, re-enter immediately if price clears the prior sell candle high
+
+**Phase 2 — Holding (long position):**
+1. Buy candle low forms Anchor 1 immediately
+2. Subsequent higher lows or candle bottoms form Anchor 2
+3. Validate: no candle close breaks below the line between the two anchor points
+4. When price **closes below** the projected support → **SELL**
+5. Fallback stop: initial stop below entry low (buffered by ATR if `atr_stop_buffer` is active)
+6. Return to Phase 1
+
+### Default Parameters
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `pivot_lookback` | 5 | Bars left/right for swing point detection |
+| `trendline_tolerance` | 0.015 | 1.5% tolerance for line validation |
+| `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
+| `confirm_candles` | 0 | Additional supporting confirmation candles required |
+| `line_angle` | 3.0 | Minimum slope angle percentage between anchors |
+| `min_anchor_bars` | 2 | Minimum bar distance between anchors (0-5) |
+| `inverse_color_trigger` | false | Ascending support green->red, descending resistance red->green, triggers green/red |
+| `stop_loss_mode` | exit_peak_reclaim | Stop loss mode: none, exit_peak_reclaim, barrier_trap_reentry, atr_stop_buffer |
+| `enable_short` | false | Enable short positions on support break |
+| `interval` | 1d | Daily candles (or 1h) |
+| `period` | 1y | Data lookback |
+
+---
+
 ## Enhanced Straight Lines Strategy
 
 **Files:** `strategies/enhanced_lines_strategy.py` | `strategies/enhanced_lines_strategy.html`
@@ -553,3 +601,62 @@ Daily, 5y:
 Buy & hold averaged +343.6% over the same window. Hourly (2y) variants averaged between −1.7% and +13.7% with medians of −4% to −8.5%: bounce moves on 1h bars are about the size of the round-trip cost.
 
 **Caveats:** averages are driven by a few outliers (MU +841%, STX +338%, META +166%); the median is near zero. Long-only and flat most of the time, it lags buy & hold badly in a bull market; it helped on flat/down names (VXX +20.5% vs −96.2%, SMR +1.8% vs −11.8%). The default was chosen on this single sample — treat it as a starting point, and validate with `walk_forward_backtest_strategy` before relying on it.
+
+---
+
+## Strategy Best Parameters Configuration (`best_parameters.json`)
+
+To track the optimal parameter combinations for each strategy and ticker (yielding maximum profit or optimal risk-adjusted returns), parameter profiles are tracked in [`strategies/best_parameters.json`](file:///Users/spaul11/Projects/tradingview-mcp/strategies/best_parameters.json).
+
+### Format & Schema
+
+Each entry maps `strategy` -> `ticker` -> parameters and performance metrics (including Buy & Hold comparison):
+
+```json
+{
+  "strategies": {
+    "sloped_lines": {
+      "name": "Sloped Lines Strategy",
+      "tickers": {
+        "AAPL": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 0,
+            "inverse_color_trigger": false,
+            "line_angle": 3.0,
+            "stop_loss_mode": "exit_peak_reclaim",
+            "min_anchor_bars": 2
+          },
+          "performance": {
+            "total_pnl": 4670.62,
+            "total_pnl_pct": 46.71,
+            "buy_and_hold_pct": 33.72,
+            "beats_bnh_pct": 12.99,
+            "win_rate_pct": 42.1,
+            "total_trades": 38
+          },
+          "notes": "Optimal parameter set yielding +46.71% return, beating buy & hold (+33.72%) by +12.99%.",
+          "last_updated": "2026-09-23"
+        }
+      }
+    }
+  }
+}
+```
+
+### Sloped Lines Current Tracked Best Parameters (1Y Daily)
+
+| Ticker | PnL (%) | Buy & Hold (%) | Beats B&H (%) | Win Rate | Trades | Key Parameters |
+|---|---|---|---|---|---|---|
+| **AMD** | **+384.75%** | +282.55% | **+102.20%** | 45.5% | 22 | Angle 0%, Stop: Barrier Trap, Conf: 1, Anchor: 4 |
+| **NVDA** | **+55.77%** | +27.74% | **+28.03%** | 37.0% | 27 | Angle 3%, Stop: Barrier Trap, Inverse Color: Yes, Anchor: 3 |
+| **AAPL** | **+46.71%** | +33.72% | **+12.99%** | 42.1% | 38 | Angle 3%, Stop: Exit Peak Reclaim, Anchor: 2 |
+| **SPY** | **+17.07%** | +17.89% | **-0.82%** | 72.7% | 11 | Angle 0%, Stop: ATR Buffer, Conf: 1, Anchor: 2 |
+
+### Programmatic Access
+
+- **Python**: Use `tradingview_mcp.core.services.strategy_config.get_best_parameters(strategy, symbol)`
+- **REST API**: Query `GET /api/best-parameters?strategy=sloped_lines&symbol=NVDA`

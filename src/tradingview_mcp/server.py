@@ -20,7 +20,11 @@ from tradingview_mcp.core.services.news_service import fetch_news_summary
 from tradingview_mcp.core.services.yahoo_finance_service import get_price, get_prices_bulk, get_market_snapshot
 from tradingview_mcp.core.services.backtest_service import run_backtest, compare_strategies as _compare_strategies, walk_forward_backtest
 from tradingview_mcp.core.services.signal_service import get_live_signal, check_all_strategies as _check_all_strategies
-from tradingview_mcp.core.services.execution_service import execute_order as _execute_order
+from tradingview_mcp.core.services.execution_service import (
+    execute_order as _execute_order,
+    close_position as _close_position,
+    sync_broker_trades as _sync_broker_trades,
+)
 from tradingview_mcp.core.services.trade_db import (
     close_trade as _close_trade,
     get_trade_history as _get_trade_history,
@@ -3174,6 +3178,7 @@ def execute_trade(
     broker: str = "bitget",
     interval: str = "1d",
     dry_run: bool = True,
+    allow_closed_market: bool = False,
 ) -> dict:
     """Check for a strategy signal and execute a trade if one is active.
 
@@ -3193,6 +3198,8 @@ def execute_trade(
         broker:      "bitget" (crypto) or "alpaca" (stocks)
         interval:    Candle interval for signal detection (1d, 1h, 30m)
         dry_run:     If True (default), simulate without placing a real order.
+        allow_closed_market: If True, queue a stock order while the market is closed
+                     instead of refusing it (Alpaca only; default False).
                      Set to False for live execution.
 
     Returns:
@@ -3239,6 +3246,7 @@ def execute_trade(
         broker=broker,
         dry_run=dry_run,
         strategy=strategy,
+        allow_closed_market=allow_closed_market,
     )
 
     return {
@@ -3354,6 +3362,49 @@ def close_open_trade(
         exit_reason:  Why it was closed ("manual", "stop_loss", "take_profit", "signal_flip")
     """
     return _close_trade(trade_id, exit_price, exit_reason)
+
+
+@mcp.tool()
+def close_position(
+    symbol: str,
+    broker: str = "alpaca",
+    reason: str = "manual",
+    trade_id: str = None,
+    dry_run: bool = True,
+) -> dict:
+    """Sell a real broker position and record the exit in the trade database.
+
+    Unlike close_open_trade (which only writes the database row), this places the
+    closing order at the broker: it cancels the symbol's resting stop/target orders,
+    flattens the position at market, waits for the fill, and logs the exit.
+
+    SAFETY: dry_run=True by default — it reports the position without selling.
+
+    Args:
+        symbol:    Ticker at the broker (e.g. "AAPL")
+        broker:    "alpaca" (Bitget position closing is not implemented)
+        reason:    Exit reason recorded in the database
+        trade_id:  Specific trade row to close; defaults to the newest open row for this symbol
+        dry_run:   If True (default), show the position without placing an order
+    """
+    return _close_position(symbol=symbol, broker=broker, reason=reason,
+                           trade_id=trade_id, dry_run=dry_run)
+
+
+@mcp.tool()
+def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dict:
+    """Reconcile open trades in the database against the broker's actual state.
+
+    Catches the two cases the database cannot see on its own: entries still holding a
+    pre-trade quote instead of the real fill price, and positions closed outside this
+    app (a stop or target that triggered, or a manual sale) that are still marked open.
+
+    Args:
+        broker:       "alpaca" or "bitget"
+        record_exits: If True (default), close database rows whose position is gone at
+                      the broker, using the last trade price as an approximate exit.
+    """
+    return _sync_broker_trades(broker=broker, record_exits=record_exits)
 
 
 if __name__ == "__main__":

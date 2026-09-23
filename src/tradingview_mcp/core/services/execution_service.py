@@ -11,11 +11,17 @@ Usage:
 from __future__ import annotations
 
 import os
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional
 
-from tradingview_mcp.core.services.trade_db import log_trade as _log_trade
+from tradingview_mcp.core.services.trade_db import (
+    init_db as _init_db,
+    log_trade as _log_trade,
+    close_trade as _close_trade,
+    get_trade_history as _get_trade_history,
+)
 
 
 # ─── Broker Adapter Protocol ─────────────────────────────────────────────────
@@ -86,6 +92,21 @@ class BitgetAdapter(BrokerAdapter):
         })
 
         self._sandbox = sandbox
+
+    def market_status(self) -> dict:
+        """{"is_open": bool, "next_open": str|None, "next_close": str|None}.
+
+        Brokers that trade around the clock report is_open=True.
+        """
+        return {"is_open": True, "next_open": None, "next_close": None}
+
+    def get_order(self, order_id: str) -> dict:
+        """Current state of a previously placed order (status/filled price/qty)."""
+        return {"order_id": order_id, "status": "unknown"}
+
+    def close_position(self, symbol: str) -> dict:
+        """Flatten the whole position in `symbol` at market, cancelling its open orders."""
+        raise NotImplementedError(f"{self.broker_name} adapter cannot close positions yet")
 
     @property
     def broker_name(self) -> str:
@@ -187,6 +208,70 @@ class AlpacaAdapter(BrokerAdapter):
             "paper": self._paper,
         }
 
+    def market_status(self) -> dict:
+        clock = self._api.get_clock()
+        return {
+            "is_open": bool(clock.is_open),
+            "next_open": str(clock.next_open),
+            "next_close": str(clock.next_close),
+        }
+
+    def get_order(self, order_id: str) -> dict:
+        o = self._api.get_order(order_id)
+        return {
+            "order_id": o.id,
+            "status": o.status,
+            "filled_price": float(o.filled_avg_price) if o.filled_avg_price else None,
+            "filled_quantity": float(o.filled_qty) if o.filled_qty else 0.0,
+            "symbol": o.symbol,
+            "side": o.side,
+        }
+
+    def _await_fill(self, order_id: str, timeout_s: float = 5.0, interval_s: float = 0.5) -> dict:
+        """Poll briefly for a terminal state so the recorded price is the real fill."""
+        deadline = time.monotonic() + timeout_s
+        state = self.get_order(order_id)
+        while time.monotonic() < deadline and state.get("status") not in (
+                "filled", "canceled", "expired", "rejected"):
+            time.sleep(interval_s)
+            state = self.get_order(order_id)
+        return state
+
+    def get_position(self, symbol: str) -> Optional[dict]:
+        try:
+            p = self._api.get_position(symbol)
+        except Exception:
+            return None
+        return {
+            "symbol": p.symbol,
+            "quantity": float(p.qty),
+            "avg_entry_price": float(p.avg_entry_price),
+            "market_value_usd": float(p.market_value),
+            "unrealized_pl_usd": float(p.unrealized_pl),
+            "unrealized_pl_pct": float(p.unrealized_plpc) * 100,
+        }
+
+    def close_position(self, symbol: str) -> dict:
+        """Cancel the symbol's resting orders (stop/target legs), then flatten at market."""
+        position = self.get_position(symbol)
+        if position is None:
+            return {"error": f"No open Alpaca position in {symbol}"}
+        for o in self._api.list_orders(status="open", symbols=[symbol]):
+            try:
+                self._api.cancel_order(o.id)
+            except Exception:
+                pass
+        order = self._api.close_position(symbol)
+        state = self._await_fill(order.id)
+        return {
+            "order_id": order.id,
+            "symbol": symbol,
+            "quantity_closed": position["quantity"],
+            "status": state.get("status", order.status),
+            "exit_price": state.get("filled_price"),
+            "broker": "alpaca",
+        }
+
     def place_market_order(
         self,
         symbol: str,
@@ -214,12 +299,13 @@ class AlpacaAdapter(BrokerAdapter):
                 order_params["take_profit"] = {"limit_price": str(round(take_profit, 2))}
 
         order = self._api.submit_order(**order_params)
+        state = self._await_fill(order.id)
 
         return {
             "order_id": order.id,
-            "status": order.status,
-            "filled_price": float(order.filled_avg_price) if order.filled_avg_price else None,
-            "filled_quantity": float(order.filled_qty) if order.filled_qty else quantity,
+            "status": state.get("status", order.status),
+            "filled_price": state.get("filled_price"),
+            "filled_quantity": state.get("filled_quantity") or quantity,
             "sl_order": "included_in_bracket" if stop_loss else None,
             "tp_order": "included_in_bracket" if take_profit else None,
         }
@@ -269,6 +355,24 @@ def _simulate_order(
     }
 
 
+def _alpaca_quantity(capital_usd: float, price: float, protected: bool) -> tuple[float, Optional[str]]:
+    """
+    Size an Alpaca order. Alpaca rejects fractional quantities on bracket/OTO orders,
+    so an order carrying a stop or target is rounded DOWN to whole shares.
+    Returns (quantity, error).
+    """
+    raw = capital_usd / price
+    if protected:
+        qty = float(int(raw))
+        if qty < 1:
+            return 0.0, (f"capital_usd ${capital_usd:,.2f} buys {raw:.2f} shares at ${price:,.2f}; "
+                         f"Alpaca needs whole shares when a stop-loss or take-profit is attached. "
+                         f"Raise capital_usd to at least ${price:,.2f}, or drop the stop/target "
+                         f"to trade fractionally.")
+        return qty, None
+    return round(raw, 2), None
+
+
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 def execute_order(
@@ -280,6 +384,7 @@ def execute_order(
     broker: str = "bitget",
     dry_run: bool = True,
     strategy: str = "manual",
+    allow_closed_market: bool = False,
 ) -> dict:
     """
     Execute a trade on the specified broker.
@@ -292,6 +397,8 @@ def execute_order(
         take_profit:  Take-profit price level
         broker:       "bitget" or "alpaca"
         dry_run:      If True, simulate without placing a real order
+        allow_closed_market: If True, queue the order while the market is closed
+                      instead of refusing it (Alpaca only)
 
     Returns:
         Order confirmation dict with:
@@ -324,18 +431,34 @@ def execute_order(
     else:
         try:
             adapter = _get_adapter(broker)
-            price = adapter.get_current_price(symbol)
         except Exception as e:
             return {"error": f"Failed to connect to {broker}: {e}"}
 
-    # ── Calculate position size ──
-    quantity = capital_usd / price
+        # ── Market-hours gate: a closed market queues the order and the price is stale ──
+        try:
+            market = adapter.market_status()
+        except Exception as e:
+            return {"error": f"Failed to read {broker} market status: {e}"}
+        if not market["is_open"] and not allow_closed_market:
+            return {
+                "error": f"{broker} market is closed — no order placed.",
+                "market": market,
+                "hint": "Pass allow_closed_market=True to queue it for the next session.",
+            }
 
-    # For stocks (Alpaca), round to whole shares unless fractional enabled
+        try:
+            price = adapter.get_current_price(symbol)
+        except Exception as e:
+            return {"error": f"Failed to fetch {broker} price for '{symbol}': {e}"}
+
+    # ── Calculate position size ──
     if broker == "alpaca":
-        quantity = round(quantity, 2)  # Alpaca supports fractional
+        protected = stop_loss is not None or take_profit is not None
+        quantity, size_error = _alpaca_quantity(capital_usd, price, protected)
+        if size_error:
+            return {"error": size_error}
     else:
-        quantity = round(quantity, 8)  # Crypto: 8 decimal precision
+        quantity = round(capital_usd / price, 8)  # Crypto: 8 decimal precision
 
     # ── Execute or simulate ──
     if dry_run:
@@ -346,8 +469,12 @@ def execute_order(
             result = adapter.place_market_order(symbol, side, quantity, stop_loss, take_profit)
             result["broker"] = broker
             result["mode"] = "live"
-            result["entry_price"] = result.get("filled_price", price)
-            result["quantity"] = result.get("filled_quantity", quantity)
+            result["entry_price"] = result.get("filled_price") or price
+            result["quantity"] = result.get("filled_quantity") or quantity
+            result["quoted_price"] = price
+            if result.get("filled_price") is None:
+                result["note"] = ("Order not filled yet — entry_price is the pre-trade quote. "
+                                  "Run sync_broker_trades to record the actual fill.")
         except Exception as e:
             return {"error": f"Order execution failed: {e}"}
 
@@ -362,7 +489,7 @@ def execute_order(
             strategy=strategy,
             broker=broker,
             quantity=quantity,
-            entry_price=price,
+            entry_price=result.get("entry_price", price),
             capital_usd=capital_usd,
             mode="dry_run" if dry_run else "live",
             stop_loss=stop_loss,
@@ -374,3 +501,127 @@ def execute_order(
         result["trade_id"] = None  # DB logging failed but order succeeded
 
     return result
+
+
+# ─── Closing and reconciliation ───────────────────────────────────────────────
+
+def close_position(symbol: str, broker: str = "alpaca", reason: str = "manual",
+                   trade_id: Optional[str] = None, dry_run: bool = True) -> dict:
+    """
+    Flatten a real broker position AND record the exit in trades.db.
+
+    `close_open_trade` only writes the database row; this places the closing order.
+    With dry_run=True the position is reported but nothing is sold.
+    """
+    broker = broker.lower().strip()
+    symbol = symbol.upper().strip()
+    if broker not in _SUPPORTED_BROKERS:
+        return {"error": f"Unsupported broker '{broker}'. Choose: {', '.join(_SUPPORTED_BROKERS)}"}
+
+    try:
+        adapter = _get_adapter(broker)
+    except Exception as e:
+        return {"error": f"Failed to connect to {broker}: {e}"}
+
+    position = getattr(adapter, "get_position", lambda _s: None)(symbol)
+    if position is None:
+        return {"error": f"No open {broker} position in {symbol}", "dry_run": dry_run}
+
+    if dry_run:
+        return {"dry_run": True, "symbol": symbol, "broker": broker, "position": position,
+                "message": "No order placed. Set dry_run=False to close this position."}
+
+    try:
+        market = adapter.market_status()
+    except Exception as e:
+        return {"error": f"Failed to read {broker} market status: {e}"}
+    if not market["is_open"]:
+        return {"error": f"{broker} market is closed — position not closed.", "market": market}
+
+    result = adapter.close_position(symbol)
+    if "error" in result:
+        return result
+    result["dry_run"] = False
+    result["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+    exit_price = result.get("exit_price")
+    target_id = trade_id or _find_open_trade_id(symbol, broker)
+    if target_id and exit_price:
+        result["trade_record"] = _close_trade(target_id, float(exit_price), reason)
+        result["trade_id"] = target_id
+    elif target_id:
+        result["trade_record"] = {"warning": "Closing order placed but no fill price yet; "
+                                             "run sync_broker_trades to record the exit."}
+    return result
+
+
+def _find_open_trade_id(symbol: str, broker: str) -> Optional[str]:
+    """Most recent open trade in trades.db for this symbol+broker."""
+    _init_db()
+    for t in _get_trade_history(symbol=symbol, broker=broker, status="open", limit=50):
+        return t.get("trade_id")
+    return None
+
+
+def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dict:
+    """
+    Reconcile open trades.db rows against the broker.
+
+    Fixes two blind spots: entries still holding a pre-trade quote instead of the real
+    fill, and positions closed outside this app (a stop/target that triggered, or a
+    manual sale in the broker UI) that the database still shows as open.
+    """
+    broker = broker.lower().strip()
+    if broker not in _SUPPORTED_BROKERS:
+        return {"error": f"Unsupported broker '{broker}'. Choose: {', '.join(_SUPPORTED_BROKERS)}"}
+    _init_db()
+    try:
+        adapter = _get_adapter(broker)
+    except Exception as e:
+        return {"error": f"Failed to connect to {broker}: {e}"}
+
+    open_trades = [t for t in _get_trade_history(broker=broker, status="open", limit=500)
+                   if t.get("mode") == "live"]
+    checked, updated_fills, closed, unresolved = 0, [], [], []
+
+    for t in open_trades:
+        checked += 1
+        symbol = (t.get("symbol") or "").upper()
+        order_id = t.get("order_id")
+
+        # 1. Fill price for the entry order
+        if order_id and order_id not in ("AUTO_BACKTEST", "DRY_RUN_SIM"):
+            try:
+                state = adapter.get_order(order_id)
+                if state.get("filled_price") and abs(float(state["filled_price"]) - float(t["entry_price"])) > 1e-9:
+                    updated_fills.append({"trade_id": t["trade_id"], "symbol": symbol,
+                                          "recorded_entry": t["entry_price"],
+                                          "actual_fill": state["filled_price"]})
+            except Exception as e:
+                unresolved.append({"trade_id": t["trade_id"], "reason": f"order lookup failed: {e}"})
+
+        # 2. Position gone at the broker → the trade is closed in reality
+        position = getattr(adapter, "get_position", lambda _s: None)(symbol)
+        if position is None:
+            try:
+                last = adapter.get_current_price(symbol)
+            except Exception as e:
+                unresolved.append({"trade_id": t["trade_id"], "reason": f"price lookup failed: {e}"})
+                continue
+            entry = {"trade_id": t["trade_id"], "symbol": symbol, "exit_price": last,
+                     "exit_reason": "closed_at_broker"}
+            if record_exits:
+                entry["record"] = _close_trade(t["trade_id"], float(last), "closed_at_broker")
+            closed.append(entry)
+
+    return {
+        "broker": broker,
+        "open_trades_checked": checked,
+        "closed_at_broker": closed,
+        "entry_price_mismatches": updated_fills,
+        "unresolved": unresolved,
+        "record_exits": record_exits,
+        "note": ("Exit prices for positions closed at the broker use the last trade price, "
+                 "not the actual fill; treat them as approximate."),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

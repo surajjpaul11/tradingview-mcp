@@ -368,6 +368,8 @@ Repeat.
 | `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
 | `confirm_candles` | 0 | Additional supporting confirmation candles required |
 | `line_angle` | 3.0 | Minimum slope angle percentage between anchors |
+| `min_anchor_bars` | 2 | Minimum bar distance between anchors (0-5) |
+| `inverse_color_trigger` | false | Ascending support green->red, descending resistance red->green, triggers green/red |
 | `stop_loss_mode` | exit_peak_reclaim | Stop loss mode: none, exit_peak_reclaim, barrier_trap_reentry, atr_stop_buffer |
 | `enable_short` | false | Enable short positions on support break |
 | `interval` | 1d | Daily candles (or 1h) |

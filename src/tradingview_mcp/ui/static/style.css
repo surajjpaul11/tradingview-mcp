@@ -99,6 +99,33 @@ body {
     border-color: var(--accent-blue);
 }
 
+.market-refresh-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+.market-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+}
+
+.market-refresh-status.open .market-status-dot {
+    background: var(--profit-green);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+.market-refresh-status.error .market-status-dot {
+    background: var(--loss-red);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+}
+
 .logo {
     width: 24px;
     height: 24px;
@@ -262,6 +289,7 @@ select:focus {
     .header-left {
         width: 100%;
         justify-content: space-between;
+        flex-wrap: wrap;
     }
     .brand-divider {
         display: none;

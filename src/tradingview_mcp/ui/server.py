@@ -2,6 +2,8 @@ import sqlite3
 import asyncio
 import os
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
@@ -15,8 +17,12 @@ from tradingview_mcp.core.services.trade_db import get_trade_history, get_pnl_su
 from tradingview_mcp.core.services.backtest_service import run_backtest, _STRATEGY_MAP
 from tradingview_mcp.core.services.seed_backtests import seed_backtest_data, _format_iso_datetime
 from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST, scan_opportunities
+from tradingview_mcp.core.services.market_hours import get_market_status, load_market_config
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
+
+_yahoo_candle_cache: dict[tuple[str, str, str], tuple[float, tuple[list[dict], str, str]]] = {}
+_yahoo_cache_lock = threading.Lock()
 
 # Mount static directory directly
 static_path = Path(__file__).parent / "static"
@@ -156,6 +162,15 @@ async def api_best_parameters(strategy: str = None, symbol: str = None):
     return load_best_parameters()
 
 
+@app.get("/api/market-status")
+async def api_market_status():
+    """Return the configured market session and automatic refresh state."""
+    try:
+        return get_market_status()
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=500, detail=f"Invalid market-hours configuration: {exc}") from exc
+
+
 def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y") -> tuple[list[dict], str, str]:
     """
     Fetch OHLCV candles via yfinance with automatic range clamping & resampling:
@@ -183,6 +198,17 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
         actual_period = "2y"
 
     fetch_tf = "1h" if tf in ("4h", "12h") else tf
+
+    cache_key = (yf_symbol.upper(), tf, actual_period)
+    try:
+        cache_seconds = int(load_market_config()["yahoo_cache_seconds"])
+    except (OSError, ValueError, KeyError):
+        cache_seconds = 60
+    now = time.monotonic()
+    with _yahoo_cache_lock:
+        cached = _yahoo_candle_cache.get(cache_key)
+        if cached and now - cached[0] < cache_seconds:
+            return cached[1]
 
     candles = []
     try:
@@ -215,7 +241,14 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     except Exception as e:
         print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}): {e}")
 
-    return candles, tf, actual_period
+    result = (candles, tf, actual_period)
+    if candles and cache_seconds > 0:
+        with _yahoo_cache_lock:
+            _yahoo_candle_cache[cache_key] = (time.monotonic(), result)
+            expired = [key for key, value in _yahoo_candle_cache.items() if now - value[0] >= cache_seconds]
+            for key in expired:
+                _yahoo_candle_cache.pop(key, None)
+    return result
 
 
 def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm_candles=None, inverse_color_trigger=None, line_angle=None, stop_loss_mode=None, min_anchor_bars=None):

@@ -45,6 +45,23 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
 
 The dashboard's **Opportunity research** link opens an editable cross-stock watchlist scanner. It highlights current completed-bar buys and their historical long-trade outcomes. The displayed win rates are not calibrated probabilities; see [the scanner groundwork](docs/OPPORTUNITY_SCANNER.md) for its present limits.
 
+### Yahoo Finance refresh schedule
+
+The dashboard loads Yahoo Finance data when it first opens and whenever the ticker, strategy, or chart range changes. While the configured market session is open, it also refreshes the visible chart every 30 minutes. A header indicator shows whether the market is open and when automatic refresh will resume.
+
+Edit `config/market_hours.json` to change the schedule:
+
+- `timezone`, `open_time`, and `close_time` define the regular session.
+- `weekdays` uses Python weekday numbers (`0` is Monday and `6` is Sunday).
+- `refresh_minutes` controls the live dashboard interval.
+- `holidays` accepts closed dates such as `"2026-12-25"`.
+- `early_closes` maps a date to its close time, such as `"2026-11-27": "13:00"`.
+- `yahoo_cache_seconds` prevents the dashboard's candle, trade, stats, and overlay requests from downloading the same Yahoo data repeatedly during one refresh.
+
+The checked-in holiday and early-close dates cover the NYSE calendar through 2028 and should be updated when NYSE publishes later years. The `calendar_source` field records the official schedule used.
+
+Set `MARKET_HOURS_CONFIG` to use a different JSON file. The schedule is reread by the server, so a restart is not normally required after editing it.
+
 The scanner includes [Volume-Confirmed Price Breakout](docs/VOLUME_PRICE_BREAKOUT.md), which checks for a new price high with an unusually large price gain and volume surge. Its pending signals and earlier closed trades appear alongside the other supported strategies.
 
 *(The server will stay active until manually killed with `Ctrl + C` in the shell).*

@@ -23,6 +23,10 @@ const pnlPctVal = document.getElementById('pnl-pct-val');
 const bnhVal = document.getElementById('bnh-val');
 const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
+const marketRefreshStatus = document.getElementById('market-refresh-status');
+let lastDataRefreshAt = 0;
+let marketStatusTimer = null;
+let autoRefreshInFlight = false;
 
 function getSelectedChannelMult() {
     if (!channelMultSelect) return 1.7;
@@ -673,6 +677,81 @@ async function loadFilters() {
 }
 
 // ============================================================
+// Yahoo Finance auto-refresh during the configured market session
+// ============================================================
+function formatMarketTime(isoValue) {
+    if (!isoValue) return '';
+    const value = new Date(isoValue);
+    if (Number.isNaN(value.getTime())) return '';
+    return value.toLocaleString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+    });
+}
+
+function renderMarketStatus(status, failed = false) {
+    if (!marketRefreshStatus) return;
+    const text = marketRefreshStatus.querySelector('.market-status-text');
+    marketRefreshStatus.classList.toggle('open', Boolean(status?.is_open));
+    marketRefreshStatus.classList.toggle('error', failed);
+    if (failed) {
+        if (text) text.textContent = 'Yahoo refresh status unavailable';
+        return;
+    }
+    if (status.is_open) {
+        const last = lastDataRefreshAt
+            ? ` · updated ${new Date(lastDataRefreshAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+            : '';
+        if (text) text.textContent = `Market open · Yahoo every ${status.refresh_minutes} min${last}`;
+    } else {
+        const next = formatMarketTime(status.next_refresh_at);
+        if (text) text.textContent = next ? `Market closed · resumes ${next}` : 'Market closed';
+    }
+    marketRefreshStatus.title = `${status.market} · ${status.timezone}`;
+}
+
+async function checkMarketAndRefresh() {
+    try {
+        const response = await fetch('/api/market-status', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const status = await response.json();
+        renderMarketStatus(status);
+
+        const refreshMs = Number(status.refresh_minutes) * 60 * 1000;
+        const refreshDue = !lastDataRefreshAt || Date.now() - lastDataRefreshAt >= refreshMs;
+        if (!status.is_open || !refreshDue || autoRefreshInFlight) return;
+
+        autoRefreshInFlight = true;
+        try {
+            if (activeTab === 'advanced' && advChart) {
+                await updateAdvDashboard();
+            } else {
+                await updateDashboard();
+            }
+            renderMarketStatus(status);
+        } finally {
+            autoRefreshInFlight = false;
+        }
+    } catch (err) {
+        console.warn('[TV] Market refresh check failed:', err);
+        renderMarketStatus(null, true);
+    }
+}
+
+function startMarketRefresh() {
+    if (marketStatusTimer) clearInterval(marketStatusTimer);
+    checkMarketAndRefresh();
+    marketStatusTimer = setInterval(checkMarketAndRefresh, 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkMarketAndRefresh();
+    });
+}
+
+// ============================================================
 // Helpers
 // ============================================================
 function setLoading(active, overlayId = 'loading') {
@@ -1187,6 +1266,7 @@ async function updateDashboard() {
 
         winrateVal.textContent = `${statsData.win_rate_pct || 0}%`;
         totalTradesVal.textContent = (tradesData.trades ? tradesData.trades.length : statsData.total_trades) || 0;
+        lastDataRefreshAt = Date.now();
 
     } catch (err) {
         console.error('[TV] updateDashboard failed:', err);
@@ -1300,6 +1380,7 @@ async function updateAdvDashboard() {
 
         winrateVal.textContent = `${statsData.win_rate_pct || 0}%`;
         totalTradesVal.textContent = (tradesData.trades ? tradesData.trades.length : statsData.total_trades) || 0;
+        lastDataRefreshAt = Date.now();
 
         // Fit content
         advChart.timeScale().fitContent();
@@ -1323,7 +1404,7 @@ async function updateAdvDashboard() {
                 tvContainer.innerHTML =
                     '<p style="color:#EF4444;padding:2rem;text-align:center;">Chart library failed to load from CDN.<br>Check your internet connection and reload the page.</p>';
             }
-            loadFilters();
+            loadFilters().finally(startMarketRefresh);
             return;
         }
         initChart();
@@ -1333,5 +1414,5 @@ async function updateAdvDashboard() {
     initTabs();
     initTimeframeButtons();
     initAdvTimeframeButtons();
-    loadFilters();
+    loadFilters().finally(startMarketRefresh);
 })();

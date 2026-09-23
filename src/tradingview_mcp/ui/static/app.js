@@ -130,6 +130,116 @@ function syncChannelMultVisibility(strategy) {
     if (slopedAnchorBarsGroup) slopedAnchorBarsGroup.style.display = isSloped ? 'flex' : 'none';
 }
 
+const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
+const bestParamsBadge = document.getElementById('best-params-badge');
+
+async function applyBestParametersIfAvailable(strategy, symbol) {
+    if (!strategy || !symbol || strategy === 'all') {
+        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+        return;
+    }
+    try {
+        const res = await fetch(`/api/best-parameters?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) {
+            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+            return;
+        }
+        const result = await res.json();
+        if (!result.found || !result.data || !result.data.parameters) {
+            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+            return;
+        }
+
+        const p = result.data.parameters;
+
+        // Sloped Lines strategy controls
+        if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
+            if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
+                slopedFullCandleCheckbox.checked = p.full_candle;
+            }
+            if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
+                slopedWickCheckbox.checked = p.use_wick;
+            }
+            if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
+                slopedConfirmCandlesSelect.value = String(p.confirm_candles);
+            }
+            if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
+                slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
+            }
+            if (p.line_angle !== undefined && slopedLineAngleSelect) {
+                const angleTarget = parseFloat(p.line_angle);
+                for (const opt of slopedLineAngleSelect.options) {
+                    if (parseFloat(opt.value) === angleTarget) {
+                        slopedLineAngleSelect.value = opt.value;
+                        break;
+                    }
+                }
+            }
+            if (p.stop_loss_mode && slopedStopLossSelect) {
+                slopedStopLossSelect.value = p.stop_loss_mode;
+            }
+            if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
+                slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
+            }
+        }
+
+        // Enhanced Channel strategy controls
+        if (strategy === 'enhanced_channel') {
+            if (p.channel_multiplier !== undefined && channelMultSelect) {
+                channelMultSelect.value = String(p.channel_multiplier);
+            } else if (p.channel_mult !== undefined && channelMultSelect) {
+                channelMultSelect.value = String(p.channel_mult);
+            }
+            if (p.lookback !== undefined && channelLookbackSelect) {
+                channelLookbackSelect.value = String(p.lookback);
+            }
+            if (typeof p.use_stop_loss === 'boolean' && channelStoplossCheckbox) {
+                channelStoplossCheckbox.checked = p.use_stop_loss;
+            }
+            if (typeof p.midline_cross === 'boolean' && channelMidlineCheckbox) {
+                channelMidlineCheckbox.checked = p.midline_cross;
+            }
+            if (typeof p.lower_reclaim === 'boolean' && channelLowerReclaimCheckbox) {
+                channelLowerReclaimCheckbox.checked = p.lower_reclaim;
+            }
+            if (p.channel_curl_mode && channelCurlSelect) {
+                channelCurlSelect.value = p.channel_curl_mode;
+            }
+        }
+
+        // Timeframe & Resolution if specified in config
+        if (result.data.timeframe && result.data.timeframe !== activeResolution) {
+            activeResolution = result.data.timeframe;
+            document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.res === activeResolution);
+            });
+        }
+        if (result.data.period && result.data.period !== activeTimeframe) {
+            activeTimeframe = result.data.period;
+            document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
+            });
+        }
+
+        // Display Best Params badge
+        if (bestParamsBadgeGroup && bestParamsBadge) {
+            const perf = result.data.performance || {};
+            const pnlText = perf.total_pnl_pct !== undefined
+                ? ` (${perf.total_pnl_pct >= 0 ? '+' : ''}${perf.total_pnl_pct}%)`
+                : '';
+            const beatsText = perf.beats_bnh_pct !== undefined
+                ? ` · ${perf.beats_bnh_pct >= 0 ? '+' : ''}${perf.beats_bnh_pct}% vs B&H (B&H: ${perf.buy_and_hold_pct}%)`
+                : '';
+            bestParamsBadge.innerHTML = `<span class="star-icon">★</span> Best Params${pnlText}`;
+            bestParamsBadge.title = `Configured optimal parameters for ${symbol} · ${strategy}${beatsText}`;
+            bestParamsBadgeGroup.style.display = 'flex';
+        }
+    } catch (e) {
+        console.warn('[TV] Error applying best parameters:', e);
+        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+    }
+}
+
 // ----- Chart Globals (Regular Tab) -----
 let chart = null;
 let candlestickSeries = null;
@@ -459,12 +569,14 @@ async function loadFilters() {
         syncChannelMultVisibility(strategySelect.value);
 
         // Wire up change listeners — update both tabs
-        tickerSelect.onchange = () => {
+        tickerSelect.onchange = async () => {
+            await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
-        strategySelect.onchange = () => {
+        strategySelect.onchange = async () => {
             syncChannelMultVisibility(strategySelect.value);
+            await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
@@ -548,8 +660,9 @@ async function loadFilters() {
         }
         syncChannelMultVisibility(strategySelect.value);
 
-        // Trigger initial data load
+        // Trigger initial data load with best parameters if combination exists
         if (data.symbols && data.symbols.length > 0) {
+            await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             await updateDashboard();
         }
 

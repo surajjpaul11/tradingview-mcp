@@ -43,6 +43,7 @@ def reserve_port(host: str, preferred_port: int, attempts: int = DEFAULT_MAX_TRI
     ports = [0] if preferred_port == 0 else range(preferred_port, min(preferred_port + attempts, 65536))
     for port in ports:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
             sock.listen(socket.SOMAXCONN)

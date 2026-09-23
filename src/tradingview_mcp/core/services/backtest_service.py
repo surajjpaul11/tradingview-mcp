@@ -845,7 +845,21 @@ def run_backtest(
     if len(candles) < min_bars:
         return {"error": f"Not enough data ({len(candles)} bars). Try a longer period."}
 
-    raw_trades = _STRATEGY_MAP[strategy](candles)
+    # Automatically resolve best parameter defaults for strategy-ticker combination
+    strat_kwargs = {}
+    try:
+        from tradingview_mcp.core.services.strategy_config import get_best_parameters
+        best_cfg = get_best_parameters(strategy, symbol)
+        if best_cfg and "parameters" in best_cfg:
+            strat_kwargs.update(best_cfg["parameters"])
+    except Exception:
+        pass
+
+    try:
+        raw_trades = _STRATEGY_MAP[strategy](candles, **strat_kwargs)
+    except TypeError:
+        raw_trades = _STRATEGY_MAP[strategy](candles)
+
     trades     = _apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics    = _calc_metrics(trades, initial_capital, interval)
     bnh        = _buy_and_hold_return(candles)

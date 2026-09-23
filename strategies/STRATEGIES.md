@@ -601,3 +601,64 @@ Daily, 5y:
 Buy & hold averaged +343.6% over the same window. Hourly (2y) variants averaged between −1.7% and +13.7% with medians of −4% to −8.5%: bounce moves on 1h bars are about the size of the round-trip cost.
 
 **Caveats:** averages are driven by a few outliers (MU +841%, STX +338%, META +166%); the median is near zero. Long-only and flat most of the time, it lags buy & hold badly in a bull market; it helped on flat/down names (VXX +20.5% vs −96.2%, SMR +1.8% vs −11.8%). The default was chosen on this single sample — treat it as a starting point, and validate with `walk_forward_backtest_strategy` before relying on it.
+
+---
+
+## Strategy Best Parameters Configuration (`best_parameters.json`)
+
+To track the optimal parameter combinations for each strategy and ticker (yielding maximum profit or optimal risk-adjusted returns), parameter profiles are tracked in [`strategies/best_parameters.json`](file:///Users/spaul11/Projects/tradingview-mcp/strategies/best_parameters.json).
+
+### Format & Schema
+
+Each entry maps `strategy` -> `ticker` -> parameters and performance metrics (including Buy & Hold comparison):
+
+```json
+{
+  "strategies": {
+    "sloped_lines": {
+      "name": "Sloped Lines Strategy",
+      "tickers": {
+        "AAPL": {
+          "timeframe": "1d",
+          "period": "1y",
+          "parameters": {
+            "full_candle": false,
+            "use_wick": false,
+            "confirm_candles": 0,
+            "inverse_color_trigger": false,
+            "line_angle": 3.0,
+            "stop_loss_mode": "exit_peak_reclaim",
+            "min_anchor_bars": 2
+          },
+          "performance": {
+            "total_pnl": 4670.62,
+            "total_pnl_pct": 46.71,
+            "buy_and_hold_pct": 33.72,
+            "beats_bnh_pct": 12.99,
+            "win_rate_pct": 42.1,
+            "total_trades": 38
+          },
+          "notes": "Optimal parameter set yielding +46.71% return, beating buy & hold (+33.72%) by +12.99%.",
+          "last_updated": "2026-09-23"
+        }
+      }
+    }
+  }
+}
+```
+
+### Sloped Lines Current Tracked Best Parameters (1Y Daily)
+
+| Ticker | PnL (%) | Buy & Hold (%) | Beats B&H (%) | Win Rate | Trades | Key Parameters |
+|---|---|---|---|---|---|---|
+| **AMD** | **+384.75%** | +282.55% | **+102.20%** | 45.5% | 22 | Angle 0%, Stop: Barrier Trap, Conf: 1, Anchor: 4 |
+| **NVDA** | **+55.77%** | +27.74% | **+28.03%** | 37.0% | 27 | Angle 3%, Stop: Barrier Trap, Inverse Color: Yes, Anchor: 3 |
+| **AAPL** | **+46.71%** | +33.72% | **+12.99%** | 42.1% | 38 | Angle 3%, Stop: Exit Peak Reclaim, Anchor: 2 |
+| **SPY** | **+17.07%** | +17.89% | **-0.82%** | 72.7% | 11 | Angle 0%, Stop: ATR Buffer, Conf: 1, Anchor: 2 |
+
+### Programmatic Access
+
+- **Python**: Use `tradingview_mcp.core.services.strategy_config.get_best_parameters(strategy, symbol)`
+- **REST API**: Query `GET /api/best-parameters?strategy=sloped_lines&symbol=NVDA`
+
+

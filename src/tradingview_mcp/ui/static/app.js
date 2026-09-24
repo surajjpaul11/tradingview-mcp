@@ -35,13 +35,45 @@ const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
 let lastDataRefreshAt = 0;
 let marketStatusTimer = null;
 let autoRefreshInFlight = false;
+let filtersLoaded = false;
+const ACTIVE_TAB_STORAGE_KEY = 'trade-visualizer-active-tab';
+const BEFORE_HOURS_STORAGE_KEY = 'trade-visualizer-before-hours';
+const AFTER_HOURS_STORAGE_KEY = 'trade-visualizer-after-hours';
 
 function getSelectedTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
 
+function getDisplayTradingWindow() {
+    if (activeTab !== 'advanced') return getSelectedTradingWindow();
+    const beforeHours = Boolean(beforeHoursCheckbox?.checked);
+    const afterHours = Boolean(afterHoursCheckbox?.checked);
+    if (beforeHours && afterHours) return 'overnight';
+    if (beforeHours) return 'pre-market';
+    if (afterHours) return 'after hours';
+    return 'regular market';
+}
+
+function filterCandlesForVisibleSessions(candles) {
+    if (activeTab !== 'advanced') return candles;
+    return candles.filter(candle => {
+        const session = sessionLabelForCandle(candle);
+        if (session === 'regular market') return true;
+        if (session === 'pre-market') return Boolean(beforeHoursCheckbox?.checked);
+        if (session === 'after hours') return Boolean(afterHoursCheckbox?.checked);
+        return false;
+    });
+}
+
+function restoreUiPreferences() {
+    const savedBeforeHours = localStorage.getItem(BEFORE_HOURS_STORAGE_KEY);
+    const savedAfterHours = localStorage.getItem(AFTER_HOURS_STORAGE_KEY);
+    if (beforeHoursCheckbox && savedBeforeHours !== null) beforeHoursCheckbox.checked = savedBeforeHours === 'true';
+    if (afterHoursCheckbox && savedAfterHours !== null) afterHoursCheckbox.checked = savedAfterHours === 'true';
+}
+
 function ensureIntradayResolutionForExtendedWindow() {
-    const extended = getSelectedTradingWindow() !== 'regular market';
+    const extended = getDisplayTradingWindow() !== 'regular market';
     if (!extended) return;
     if (!['30m', '1h', '4h', '12h'].includes(activeResolution)) {
         activeResolution = '30m';
@@ -419,6 +451,7 @@ function initTabs() {
 
 function switchTab(tab) {
     activeTab = tab;
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab);
 
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -438,6 +471,10 @@ function switchTab(tab) {
         });
     }
     scheduleSessionZoneRender();
+    if (filtersLoaded) {
+        ensureIntradayResolutionForExtendedWindow();
+        updateDashboard();
+    }
 }
 
 // ============================================================
@@ -898,12 +935,14 @@ async function loadFilters() {
         // Wire up change listeners — update both tabs
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
@@ -1001,10 +1040,13 @@ async function loadFilters() {
             };
         }
         syncChannelMultVisibility(strategySelect.value);
+        filtersLoaded = true;
+        ensureIntradayResolutionForExtendedWindow();
 
         // Trigger initial data load with best parameters if combination exists
         if (data.symbols && data.symbols.length > 0) {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             await updateDashboard();
         }
 
@@ -1500,7 +1542,8 @@ async function updateDashboard() {
     try {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
-        const windowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
+        const tradingWindowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
+        const candleWindowParam = `&trading_window=${encodeURIComponent(getDisplayTradingWindow())}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
@@ -1510,9 +1553,9 @@ async function updateDashboard() {
             : slopedParam;
 
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}${multParam}`)
+            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${candleWindowParam}`),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${tradingWindowParam}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${tradingWindowParam}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
@@ -1526,7 +1569,7 @@ async function updateDashboard() {
         }
 
         // -- Candles --
-        const rawCandles = candlesData.candles || [];
+        const rawCandles = filterCandlesForVisibleSessions(candlesData.candles || []);
         const sorted = rawCandles
             .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
             .sort((a, b) => a.time - b.time)
@@ -1577,6 +1620,7 @@ async function updateDashboard() {
             requestAnimationFrame(() => {
                 syncIndicatorRanges();
                 scheduleSessionZoneRender();
+                setTimeout(scheduleSessionZoneRender, 250);
             });
         }
 
@@ -1763,7 +1807,17 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
-    beforeHoursCheckbox?.addEventListener('change', scheduleSessionZoneRender);
-    afterHoursCheckbox?.addEventListener('change', scheduleSessionZoneRender);
+    const handleSessionVisibilityChange = () => {
+        localStorage.setItem(BEFORE_HOURS_STORAGE_KEY, String(Boolean(beforeHoursCheckbox?.checked)));
+        localStorage.setItem(AFTER_HOURS_STORAGE_KEY, String(Boolean(afterHoursCheckbox?.checked)));
+        ensureIntradayResolutionForExtendedWindow();
+        if (filtersLoaded) updateDashboard();
+        else scheduleSessionZoneRender();
+    };
+    beforeHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
+    afterHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
+    restoreUiPreferences();
+    const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (savedActiveTab === 'advanced') switchTab('advanced');
     loadFilters().finally(startMarketRefresh);
 })();

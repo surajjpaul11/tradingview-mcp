@@ -350,7 +350,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
                     "entry_price": entry_p,
                     "exit_price": exit_p,
                     "exit_reason": t.get("exit_reason", ""),
-                    "entry_reason": "breakout",
+                    "entry_reason": t.get("entry_reason", "breakout"),
                     "pnl_usd": pnl_u,
                     "pnl_pct": ret_pct,
                     "created_at": created_at,

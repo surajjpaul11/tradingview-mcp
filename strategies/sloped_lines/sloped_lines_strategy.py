@@ -662,6 +662,7 @@ def run_sloped_lines(
                             "entry_bar":   i,
                             "entry_low":   lows[i],
                             "side":        "long",
+                            "entry_reason": "exit_peak_reclaim",
                         }
                         state = "holding"
                         active_trendline = None
@@ -687,6 +688,7 @@ def run_sloped_lines(
                                 "entry_bar":   i,
                                 "entry_low":   lows[i],
                                 "side":        "long",
+                                "entry_reason": "barrier_trap_reentry",
                             }
                             state = "holding"
                             active_trendline = None
@@ -730,6 +732,7 @@ def run_sloped_lines(
                                         "exit_date":   date,
                                         "exit_price":  exec_price,
                                         "side":        "short",
+                                        "entry_reason": position.get("entry_reason", "support_break"),
                                         "exit_reason": "resistance_break",
                                         "strategy":    "sloped_lines",
                                     })
@@ -742,6 +745,7 @@ def run_sloped_lines(
                                     "entry_bar":   i,
                                     "entry_low":   lows[i],
                                     "side":        "long",
+                                    "entry_reason": "breakout",
                                 }
                                 state = "holding"
                                 active_trendline = None
@@ -776,6 +780,7 @@ def run_sloped_lines(
                                         "exit_date":   date,
                                         "exit_price":  exec_price,
                                         "side":        "short",
+                                        "entry_reason": position.get("entry_reason", "support_break"),
                                         "exit_reason": "resistance_break",
                                         "strategy":    "sloped_lines",
                                     })
@@ -788,6 +793,7 @@ def run_sloped_lines(
                                     "entry_bar":   i,
                                     "entry_low":   entry_low,
                                     "side":        "long",
+                                    "entry_reason": "breakout",
                                 }
                                 state = "holding"
                                 active_trendline = None
@@ -826,6 +832,7 @@ def run_sloped_lines(
                             "exit_date":   date,
                             "exit_price":  exec_price,
                             "side":        "long",
+                            "entry_reason": position.get("entry_reason", "breakout"),
                             "exit_reason": "support_break",
                             "strategy":    "sloped_lines",
                         })
@@ -840,6 +847,7 @@ def run_sloped_lines(
                             "entry_bar":   i,
                             "entry_high":  highs[i],
                             "side":        "short",
+                            "entry_reason": "support_break",
                         }
                         state = "short"
                     else:
@@ -905,6 +913,7 @@ def run_sloped_lines(
                         "exit_date":   date,
                         "exit_price":  exec_price,
                         "side":        "long",
+                        "entry_reason": position.get("entry_reason", "breakout"),
                         "exit_reason": "support_break",
                         "strategy":    "sloped_lines",
                     })
@@ -952,6 +961,7 @@ def run_sloped_lines(
             "exit_date":   candles[-1]["date"],
             "exit_price":  last_close,
             "side":        side,
+            "entry_reason": position.get("entry_reason", "breakout"),
             "exit_reason": "end_of_data",
             "strategy":    "sloped_lines",
         })

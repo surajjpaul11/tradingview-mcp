@@ -39,6 +39,39 @@ let filtersLoaded = false;
 const ACTIVE_TAB_STORAGE_KEY = 'trade-visualizer-active-tab';
 const BEFORE_HOURS_STORAGE_KEY = 'trade-visualizer-before-hours';
 const AFTER_HOURS_STORAGE_KEY = 'trade-visualizer-after-hours';
+const MARKET_TIME_ZONE = 'America/New_York';
+
+function chartTimeToDate(time) {
+    if (typeof time === 'number') return new Date(time * 1000);
+    if (typeof time === 'string') return new Date(`${time}T12:00:00Z`);
+    if (time && typeof time === 'object') {
+        return new Date(Date.UTC(time.year, time.month - 1, time.day, 12));
+    }
+    return null;
+}
+
+function formatMarketChartTime(time, includeDate = true, includeZone = false) {
+    const date = chartTimeToDate(time);
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: MARKET_TIME_ZONE,
+        ...(includeDate ? { month: 'short', day: 'numeric' } : {}),
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        ...(includeZone ? { timeZoneName: 'short' } : {}),
+    }).format(date);
+}
+
+const marketChartOptions = {
+    localization: {
+        locale: 'en-US',
+        timeFormatter: time => formatMarketChartTime(time, true, true),
+    },
+    timeScale: {
+        tickMarkFormatter: time => formatMarketChartTime(time, true),
+    },
+};
 
 function getSelectedTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
@@ -491,6 +524,7 @@ function initChart() {
     container.innerHTML = '';
 
     chart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height: container.clientHeight || 500,
         layout: {
@@ -502,6 +536,7 @@ function initChart() {
             horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -559,6 +594,7 @@ function initChart() {
 
 function createIndicatorChart(container, height) {
     const indicatorChart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height,
         layout: {
@@ -570,6 +606,7 @@ function createIndicatorChart(container, height) {
             horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -743,6 +780,7 @@ function initAdvChart() {
     container.innerHTML = '';
 
     advChart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height: container.clientHeight || 500,
         layout: {
@@ -754,6 +792,7 @@ function initAdvChart() {
             horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -1208,12 +1247,14 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
             const isSlopedBreakout = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
+            const isExitPeakReclaim = trade.entry_reason === 'exit_peak_reclaim';
+            const isBarrierTrapReentry = trade.entry_reason === 'barrier_trap_reentry';
             const isMidlineCross = (trade.entry_reason === 'midline_cross') || (trade.notes && trade.notes.includes('midline_cross'));
             const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
             const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))));
+            const entryPrefix = isExitPeakReclaim ? 'EXIT PEAK RECLAIM ' : (isBarrierTrapReentry ? 'BARRIER TRAP REENTRY ' : (isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))))));
             const entryColor = isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B'))));
 
             // 1. Entry Marker

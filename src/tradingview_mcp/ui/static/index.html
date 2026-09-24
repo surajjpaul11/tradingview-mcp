@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=16">
+    <link rel="stylesheet" href="/static/style.css?v=17">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -253,6 +253,8 @@
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
                 <div class="tab-panel active" id="panel-regular">
+                    <div class="chart-workspace">
+                        <div class="chart-main-column">
                     <div class="chart-wrapper glass-panel">
                         <div id="channel-legend" class="channel-legend" style="display: none;"></div>
                         <div id="tv-chart" class="chart-container"></div>
@@ -279,9 +281,10 @@
                             <div id="rsi-chart" class="indicator-chart"></div>
                         </section>
                     </div>
+                        </div>
 
-                    <!-- Dual Resolution & Timeframe Bar -->
-                    <div class="timeframe-bar glass-panel dual-controls-bar">
+                    <!-- Persistent Resolution & Timeframe Rail -->
+                    <aside class="timeframe-bar glass-panel dual-controls-bar chart-control-rail">
                         <!-- Candle Resolution Group -->
                         <div class="control-section">
                             <div class="timeframe-info">
@@ -313,6 +316,7 @@
                                 <button class="tf-btn range-btn" data-range="max" id="btn-range-max">MAX</button>
                             </div>
                         </div>
+                    </aside>
                     </div>
                 </div>
 

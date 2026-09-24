@@ -3392,7 +3392,8 @@ def close_position(
 
 
 @mcp.tool()
-def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dict:
+def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
+                       correct_entries: bool = True) -> dict:
     """Reconcile open trades in the database against the broker's actual state.
 
     Catches the two cases the database cannot see on its own: entries still holding a
@@ -3403,8 +3404,11 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dic
         broker:       "alpaca" or "bitget"
         record_exits: If True (default), close database rows whose position is gone at
                       the broker, using the last trade price as an approximate exit.
+        correct_entries: If True (default), rewrite an open trade's entry price and quantity
+                      to the broker's actual filled values.
     """
-    return _sync_broker_trades(broker=broker, record_exits=record_exits)
+    return _sync_broker_trades(broker=broker, record_exits=record_exits,
+                               correct_entries=correct_entries)
 
 
 if __name__ == "__main__":

@@ -164,6 +164,55 @@ def log_trade(
     return trade_id
 
 
+def update_trade_fill(
+    trade_id: str,
+    entry_price: float,
+    quantity: Optional[float] = None,
+    db_path: Optional[str] = None,
+) -> dict:
+    """
+    Correct an open trade's entry price (and quantity) once the broker reports the fill.
+
+    Orders are logged at the pre-trade quote because a market order has no fill price yet.
+    Only OPEN trades are corrected; a closed trade's P&L has already been computed from the
+    recorded entry, so rewriting it would silently change past results.
+    """
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT entry_price, quantity, status, capital_usd, notes FROM trades WHERE trade_id = ?",
+            (trade_id,)).fetchone()
+        if not row:
+            return {"error": f"Trade '{trade_id}' not found"}
+        if row["status"] != "open":
+            return {"error": f"Trade '{trade_id}' is {row['status']}; only open trades are corrected"}
+
+        old_price = row["entry_price"]
+        old_qty = row["quantity"]
+        new_qty = quantity if quantity is not None else old_qty
+        if abs(old_price - entry_price) < 1e-9 and abs(old_qty - new_qty) < 1e-9:
+            return {"trade_id": trade_id, "updated": False, "reason": "already matches the fill"}
+
+        note = (row["notes"] or "").strip()
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        note = (note + " | " if note else "") + f"entry corrected {old_price} -> {entry_price} at {stamp}"
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE trades SET entry_price = ?, quantity = ?, capital_usd = ?, notes = ?, updated_at = ? "
+            "WHERE trade_id = ?",
+            (entry_price, new_qty, round(entry_price * new_qty, 2), note, now, trade_id))
+        conn.commit()
+        return {
+            "trade_id": trade_id,
+            "updated": True,
+            "entry_price": {"was": old_price, "now": entry_price},
+            "quantity": {"was": old_qty, "now": new_qty},
+            "capital_usd": round(entry_price * new_qty, 2),
+        }
+    finally:
+        conn.close()
+
+
 def close_trade(
     trade_id: str,
     exit_price: float,

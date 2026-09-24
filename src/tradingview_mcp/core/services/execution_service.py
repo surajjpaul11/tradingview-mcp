@@ -19,6 +19,7 @@ from typing import Optional
 from tradingview_mcp.core.services.trade_db import (
     init_db as _init_db,
     log_trade as _log_trade,
+    update_trade_fill as _update_trade_fill,
     close_trade as _close_trade,
     get_trade_history as _get_trade_history,
 )
@@ -576,13 +577,17 @@ def _find_open_trade_id(symbol: str, broker: str) -> Optional[str]:
     return None
 
 
-def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dict:
+def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
+                       correct_entries: bool = True) -> dict:
     """
     Reconcile open trades.db rows against the broker.
 
     Fixes two blind spots: entries still holding a pre-trade quote instead of the real
     fill, and positions closed outside this app (a stop/target that triggered, or a
     manual sale in the broker UI) that the database still shows as open.
+
+    correct_entries=True (default) rewrites an open trade's entry price and quantity to the
+    broker's filled values; set it False to report the differences without changing rows.
     """
     broker = broker.lower().strip()
     if broker not in _SUPPORTED_BROKERS:
@@ -607,9 +612,14 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dic
             try:
                 state = adapter.get_order(order_id)
                 if state.get("filled_price") and abs(float(state["filled_price"]) - float(t["entry_price"])) > 1e-9:
-                    updated_fills.append({"trade_id": t["trade_id"], "symbol": symbol,
-                                          "recorded_entry": t["entry_price"],
-                                          "actual_fill": state["filled_price"]})
+                    entry = {"trade_id": t["trade_id"], "symbol": symbol,
+                             "recorded_entry": t["entry_price"],
+                             "actual_fill": state["filled_price"]}
+                    if correct_entries:
+                        entry["correction"] = _update_trade_fill(
+                            t["trade_id"], float(state["filled_price"]),
+                            float(state["filled_quantity"]) or None)
+                    updated_fills.append(entry)
             except Exception as e:
                 unresolved.append({"trade_id": t["trade_id"], "reason": f"order lookup failed: {e}"})
 
@@ -632,6 +642,7 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True) -> dic
         "open_trades_checked": checked,
         "closed_at_broker": closed,
         "entry_price_mismatches": updated_fills,
+        "correct_entries": correct_entries,
         "unresolved": unresolved,
         "record_exits": record_exits,
         "note": ("Exit prices for positions closed at the broker use the last trade price, "

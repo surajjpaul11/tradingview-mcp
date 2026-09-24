@@ -142,9 +142,11 @@ class BrokerRegressions(unittest.TestCase):
 
         class Order:
             id = "test"
-            status = "accepted"
-            filled_avg_price = None
-            filled_qty = None
+            status = "filled"
+            filled_avg_price = "100.00"
+            filled_qty = "1"
+            symbol = "AAPL"
+            side = "buy"
 
         class API:
             def __init__(self):
@@ -152,6 +154,9 @@ class BrokerRegressions(unittest.TestCase):
 
             def submit_order(self, **kwargs):
                 self.params.append(kwargs)
+                return Order()
+
+            def get_order(self, order_id):
                 return Order()
 
         adapter._api = API()

@@ -1396,29 +1396,49 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
             }
 
-            const seriesOptions = {
-                color: color,
-                lineWidth: 2,
-                lineStyle: lineStyle,
-                crosshairMarkerVisible: false,
-                lastValueVisible: false,
-                priceLineVisible: false,
-                title: tl.label || '',
+            const addTrendlineSeries = (dataPoints, style, width, title) => {
+                if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return;
+                const seriesOptions = {
+                    color,
+                    lineWidth: width,
+                    lineStyle: style,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    title,
+                };
+                let lineSeries;
+                if (typeof chartInstance.addLineSeries === 'function') {
+                    lineSeries = chartInstance.addLineSeries(seriesOptions);
+                } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
+                    lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
+                }
+                if (lineSeries) {
+                    lineSeries.setData(dataPoints);
+                    existingSeriesList.push(lineSeries);
+                }
             };
 
-            let lineSeries;
-            if (typeof chartInstance.addLineSeries === 'function') {
-                lineSeries = chartInstance.addLineSeries(seriesOptions);
-            } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
-                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
-            }
-
-            if (lineSeries) {
-                lineSeries.setData([
+            const confirmationTime = tl.confirmation_time ? findNearestCandleTime(tl.confirmation_time, candleData) : null;
+            if (
+                strategy === 'sloped_lines'
+                && confirmationTime != null
+                && confirmationTime > snappedStart
+                && confirmationTime < snappedEnd
+            ) {
+                addTrendlineSeries([
+                    { time: snappedStart, value: tl.start_price },
+                    { time: confirmationTime, value: tl.confirmation_price },
+                ], 2, 1, `${tl.label || ''} (forming)`);
+                addTrendlineSeries([
+                    { time: confirmationTime, value: tl.confirmation_price },
+                    { time: snappedEnd, value: tl.end_price },
+                ], 0, 2, `${tl.label || ''} (active)`);
+            } else {
+                addTrendlineSeries([
                     { time: snappedStart, value: tl.start_price },
                     { time: snappedEnd, value: tl.end_price },
-                ]);
-                existingSeriesList.push(lineSeries);
+                ], lineStyle, 2, tl.label || '');
             }
         });
     } catch (err) {
@@ -1445,6 +1465,7 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
+            <div class="channel-pill">Dashed = forming · Solid = active</div>
         `;
     } else if (strategy === 'enhanced_lines') {
         el.innerHTML = `

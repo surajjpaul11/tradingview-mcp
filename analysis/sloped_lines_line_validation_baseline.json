@@ -1,0 +1,54 @@
+{
+  "captured_at": "2026-09-24T18:47:36.411784+00:00",
+  "label": "before strict line validation",
+  "parameters": {
+    "strategy": "sloped_lines",
+    "timeframe": "30m",
+    "period": "3mo",
+    "trading_window": "extended hours",
+    "full_candle": "false",
+    "use_wick": "false",
+    "confirm_candles": 0,
+    "inverse_color_trigger": "false",
+    "line_angle": 3,
+    "stop_loss_mode": "exit_peak_reclaim",
+    "min_anchor_bars": 2
+  },
+  "results": {
+    "AAPL": {
+      "total_pnl_pct": 2.52,
+      "buy_and_hold_pct": 16.57,
+      "win_rate_pct": 16.2,
+      "total_trades": 37,
+      "trendline_count": 10
+    },
+    "GOOGL": {
+      "total_pnl_pct": -1.46,
+      "buy_and_hold_pct": -3.66,
+      "win_rate_pct": 14.6,
+      "total_trades": 48,
+      "trendline_count": 15
+    },
+    "MELI": {
+      "total_pnl_pct": -18.91,
+      "buy_and_hold_pct": 3.77,
+      "win_rate_pct": 12.0,
+      "total_trades": 83,
+      "trendline_count": 20
+    },
+    "SPY": {
+      "total_pnl_pct": 1.57,
+      "buy_and_hold_pct": 3.14,
+      "win_rate_pct": 25.0,
+      "total_trades": 8,
+      "trendline_count": 2
+    },
+    "NVDA": {
+      "total_pnl_pct": 16.32,
+      "buy_and_hold_pct": 13.01,
+      "win_rate_pct": 23.0,
+      "total_trades": 61,
+      "trendline_count": 24
+    }
+  }
+}

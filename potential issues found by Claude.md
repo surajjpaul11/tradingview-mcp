@@ -123,7 +123,9 @@ Dry runs still price from the last Yahoo daily close.
 - **Real exits (was item 2 of the Alpaca gaps):** new `close_position` MCP tool cancels the symbol's resting
   stop/target orders, flattens at market, and records the exit. `close_open_trade` remains database-only.
 - **Reconciliation:** new `sync_broker_trades` MCP tool closes database rows whose position is gone at the
-  broker (stop/target fired, or a manual sale) and flags entry-price mismatches.
+  broker (stop/target fired, or a manual sale) and corrects an open row's entry price/quantity to the
+  broker's filled values (`trade_db.update_trade_fill`; `correct_entries=False` to only report). Closed
+  trades are never rewritten, since their P&L was computed from the recorded entry.
 
 Still open from the Alpaca list: guardrails (size caps, duplicate-order protection), the deprecated
 `alpaca-trade-api` SDK, and the two parallel implementations (`scripts/active_trader.py` vs the MCP path).

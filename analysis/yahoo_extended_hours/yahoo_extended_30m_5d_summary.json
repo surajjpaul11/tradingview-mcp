@@ -1,0 +1,85 @@
+{
+  "source": "Yahoo Finance via yfinance",
+  "period": "5d",
+  "interval": "30m",
+  "timezone": "America/New_York",
+  "prepost": true,
+  "symbols": {
+    "AAPL": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "NVDA": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "AMD": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "SPY": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    }
+  }
+}

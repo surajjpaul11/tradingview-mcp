@@ -106,14 +106,44 @@ def build_rows(period: str) -> tuple[pd.DataFrame, dict]:
             i = by_date[trade["entry_date"]]
             current = frame.iloc[i]
             previous = frame.iloc[i - 1] if i else current
+            price_up_signal = bool(current["close"] > previous["close"])
+            rsi_cross_up_50 = bool(previous["rsi14"] < 50 <= current["rsi14"])
+            recent_cross_start = max(1, i - 2)
+            rsi_cross_up_50_last_3 = any(
+                frame.iloc[j - 1]["rsi14"] < 50 <= frame.iloc[j]["rsi14"]
+                for j in range(recent_cross_start, i + 1)
+            )
+            next_open_entry_price = np.nan
+            next_open_return_pct = np.nan
+            if i + 1 < len(frame) and frame.iloc[i + 1]["date"] <= trade["exit_date"]:
+                next_open_entry_price = float(frame.iloc[i + 1]["open"])
+                next_open_return_pct = (
+                    (trade["exit_price"] - next_open_entry_price) / next_open_entry_price * 100 - 0.30
+                )
+            forward_returns = {}
+            for horizon in (1, 5, 10, 20):
+                forward_returns[f"forward_return_{horizon}d_from_close"] = (
+                    (frame.iloc[i + horizon]["close"] / current["close"] - 1) * 100
+                    if i + horizon < len(frame) else np.nan
+                )
+                forward_returns[f"forward_return_{horizon}d_from_next_open"] = (
+                    (frame.iloc[i + horizon]["close"] / frame.iloc[i + 1]["open"] - 1) * 100
+                    if i + horizon < len(frame) else np.nan
+                )
             row = {
                 "ticker": ticker,
                 "trade_number": trade_number,
                 "entry_date": trade["entry_date"],
+                "entry_price": trade["entry_price"],
                 "exit_date": trade["exit_date"],
+                "exit_price": trade["exit_price"],
                 "return_pct": trade["return_pct"],
                 "winner": int(trade["return_pct"] > 0),
+                "next_open_entry_price": next_open_entry_price,
+                "next_open_return_pct": next_open_return_pct,
+                "next_open_winner": int(next_open_return_pct > 0) if not np.isnan(next_open_return_pct) else np.nan,
                 "rsi14_signal": current["rsi14"],
+                "rsi_change_signal": current["rsi14"] - previous["rsi14"],
                 "volume_ratio_signal": current["volume_ratio"],
                 "volume_percentile60_signal": current["volume_percentile60"],
                 "rsi14_prior": previous["rsi14"],
@@ -126,7 +156,13 @@ def build_rows(period: str) -> tuple[pd.DataFrame, dict]:
                 "return_20d_prior": previous["return_20d"],
                 "body_pct_signal": current["body_pct"],
                 "close_location_signal": current["close_location"],
+                "price_change_signal": (current["close"] / previous["close"] - 1) * 100,
+                "price_up_signal": int(price_up_signal),
+                "rsi_cross_up_50": int(rsi_cross_up_50),
+                "rsi_cross_up_50_price_up": int(rsi_cross_up_50 and price_up_signal),
+                "rsi_cross_up_50_last_3_price_up": int(rsi_cross_up_50_last_3 and price_up_signal),
             }
+            row.update(forward_returns)
             row.update(line_features(result, trade["entry_date"]))
             rows.append(row)
     return pd.DataFrame(rows), summaries
@@ -164,6 +200,9 @@ def threshold_tables(frame: pd.DataFrame) -> dict:
         "signal_volume_ge_1_2": frame["volume_ratio_signal"] >= 1.2,
         "prior_rsi_ge_50_and_volume_ge_1_2": (frame["rsi14_prior"] >= 50) & (frame["volume_ratio_prior"] >= 1.2),
         "signal_rsi_ge_50_and_volume_ge_1_2": (frame["rsi14_signal"] >= 50) & (frame["volume_ratio_signal"] >= 1.2),
+        "signal_rsi_cross_up_50_price_up": frame["rsi_cross_up_50_price_up"] == 1,
+        "signal_rsi_cross_up_50_last_3_price_up": frame["rsi_cross_up_50_last_3_price_up"] == 1,
+        "signal_rsi_cross_up_50_price_up_and_volume_ge_1_2": (frame["rsi_cross_up_50_price_up"] == 1) & (frame["volume_ratio_signal"] >= 1.2),
         "above_sma200_prior": frame["above_sma200_prior"] == 1,
         "below_sma200_prior": frame["above_sma200_prior"] == 0,
     }

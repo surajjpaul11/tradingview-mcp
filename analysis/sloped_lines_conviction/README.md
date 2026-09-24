@@ -22,6 +22,33 @@ The strong-candle condition also held in the latest chronological 30% of trades:
 
 On the current one-year dashboard window, the four configurations produced 98 completed trades with a 43.9% pooled win rate. Signal-day volume of at least 1.2x occurred 22 times and won 14 times (63.6%), so the recent window points in the same direction, although it is too small and was involved in parameter selection.
 
+## RSI crossing above 50
+
+An RSI-50 crossover was defined before looking at the results: the prior completed daily RSI(14) is below 50, the signal-day RSI closes at or above 50, and the signal-day close is higher than the prior close. There were 67 such entries.
+
+The crossover raised the percentage of profitable strategy exits but did not predict a larger subsequent price increase:
+
+| Measurement from next open | All entries | RSI cross above 50 | Difference |
+|---|---:|---:|---:|
+| Profitable strategy exits | 33.4% | 43.3% | +9.9 pp |
+| Mean strategy return | +0.41% | -0.14% | -0.55 pp |
+| Positive after 1 trading day | 53.0% | 52.2% | -0.8 pp |
+| Mean 1-day price return | +0.15% | -0.35% | -0.50 pp |
+| Positive after 5 trading days | 57.0% | 49.3% | -7.7 pp |
+| Mean 5-day price return | +0.65% | -0.54% | -1.19 pp |
+| Positive after 10 trading days | 57.1% | 47.0% | -10.1 pp |
+| Mean 10-day price return | +1.53% | +0.41% | -1.12 pp |
+| Positive after 20 trading days | 56.6% | 42.2% | -14.4 pp |
+| Mean 20-day price return | +2.47% | -0.33% | -2.80 pp |
+
+Compared directly with entries that did not have the crossover, the estimated mean-return difference was -0.57 percentage points after one day, -1.34 after five days, -1.27 after ten days, and -3.16 after twenty days. Bootstrap intervals were wide at the shorter horizons, but the 20-day 95% interval barely excluded zero (-6.21 to -0.02 percentage points). This is evidence against using the crossover as a general higher-return signal in the present dataset.
+
+The result differs by stock. AAPL had favorable 1- and 20-day behavior, AMD was favorable around 10 days but reversed by 20 days, NVDA crossover entries had negative mean returns at every tested horizon, and SPY showed no useful improvement. Allowing the crossover to have occurred during any of the prior three sessions did not repair the pooled result.
+
+In the current one-year window, crossover entries won 8 of 16 strategy trades (50.0%) from the next open versus 36.7% for all entries, but their mean strategy return was +1.37% versus +2.45% overall. The sample supports a possible increase in win frequency, not an increase in expected return. The two-proportion comparison is not statistically conclusive (five-year two-sided p = 0.068; one-year p = 0.229).
+
+The practical conclusion is to display an RSI-50 crossover as context rather than award it a positive conviction weight. It may become useful in a stock-specific model, particularly for AAPL, but NVDA should not receive the same treatment. Combining the crossover with high volume did not improve the next-open results.
+
 ## Timing caveat
 
 The current strategy can register a daily breakout from the completed candle but record its fill at the projected line or that day's open. Final volume, closing location, and RSI are only known at the close, so using those values with the current fill price creates a timing mismatch.

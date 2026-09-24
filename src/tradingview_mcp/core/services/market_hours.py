@@ -22,6 +22,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "regular market": {"start_time": "09:30", "end_time": "16:00"},
         "pre-market": {"start_time": "04:00", "end_time": "16:00"},
         "after hours": {"start_time": "09:30", "end_time": "20:00"},
+        "extended hours": {"start_time": "04:00", "end_time": "20:00"},
         "overnight": {"start_time": "00:00", "end_time": "24:00"},
     },
     "refresh_minutes": 30,
@@ -40,6 +41,9 @@ TRADING_WINDOW_ALIASES = {
     "afterhours": "after hours",
     "after_hours": "after hours",
     "after hours": "after hours",
+    "extended": "extended hours",
+    "extended_hours": "extended hours",
+    "extended hours": "extended hours",
     "overnight": "overnight",
 }
 

@@ -48,7 +48,7 @@ function getDisplayTradingWindow() {
     if (activeTab !== 'advanced') return getSelectedTradingWindow();
     const beforeHours = Boolean(beforeHoursCheckbox?.checked);
     const afterHours = Boolean(afterHoursCheckbox?.checked);
-    if (beforeHours && afterHours) return 'overnight';
+    if (beforeHours && afterHours) return 'extended hours';
     if (beforeHours) return 'pre-market';
     if (afterHours) return 'after hours';
     return 'regular market';
@@ -1354,7 +1354,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
-        const tradingWindow = encodeURIComponent(getSelectedTradingWindow());
+        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1472,7 +1472,7 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
     try {
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
-        const tradingWindow = encodeURIComponent(getSelectedTradingWindow());
+        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
         const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1542,8 +1542,8 @@ async function updateDashboard() {
     try {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
-        const tradingWindowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
-        const candleWindowParam = `&trading_window=${encodeURIComponent(getDisplayTradingWindow())}`;
+        const strategyWindow = getDisplayTradingWindow();
+        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
@@ -1553,9 +1553,9 @@ async function updateDashboard() {
             : slopedParam;
 
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${candleWindowParam}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${tradingWindowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${tradingWindowParam}${multParam}`)
+            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
@@ -1680,7 +1680,7 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getDisplayTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
@@ -1697,7 +1697,7 @@ async function updateAdvDashboard() {
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
 
-        const rawCandles = candlesData.candles || [];
+        const rawCandles = filterCandlesForVisibleSessions(candlesData.candles || []);
         const sorted = rawCandles
             .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
             .sort((a, b) => a.time - b.time)

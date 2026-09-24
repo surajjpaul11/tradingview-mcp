@@ -72,6 +72,8 @@ class MarketHoursTests(unittest.TestCase):
         self.assertTrue(timestamp_in_trading_window(premarket, "pre-market", config()))
         self.assertFalse(timestamp_in_trading_window(after_hours, "pre-market", config()))
         self.assertTrue(timestamp_in_trading_window(after_hours, "after hours", config()))
+        self.assertTrue(timestamp_in_trading_window(premarket, "extended hours", config()))
+        self.assertTrue(timestamp_in_trading_window(after_hours, "extended hours", config()))
         self.assertTrue(timestamp_in_trading_window(after_hours, "overnight", config()))
 
     def test_timestamp_is_classified_for_chart_session_zones(self):

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from tradingview_mcp.ui import server
+from tradingview_mcp.ui.server import _format_trade_candle_datetime
 
 
 class FakeFrame:
@@ -32,6 +33,18 @@ class FakeAfterHoursFrame(FakeFrame):
             "Close": 101.0,
             "Volume": 0.0,
         }
+
+
+class TradeMarkerTimestampTests(unittest.TestCase):
+    def test_intraday_trade_marker_uses_exact_candle_epoch(self):
+        candles = [{
+            "time": 1784628000,
+            "date": "2026-07-21 06:00",
+        }]
+
+        value = _format_trade_candle_datetime("2026-07-21 06:00", candles, "09:30:00")
+
+        self.assertEqual(value, "2026-07-21T10:00:00+00:00")
 
 
 class YahooRefreshCacheTests(unittest.TestCase):

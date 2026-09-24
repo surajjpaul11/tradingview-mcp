@@ -279,6 +279,7 @@ class AlpacaAdapter(BrokerAdapter):
         quantity: float,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
+        await_fill: bool = True,
     ) -> dict:
         order_params = {
             "symbol": symbol,
@@ -299,7 +300,7 @@ class AlpacaAdapter(BrokerAdapter):
                 order_params["take_profit"] = {"limit_price": str(round(take_profit, 2))}
 
         order = self._api.submit_order(**order_params)
-        state = self._await_fill(order.id)
+        state = self._await_fill(order.id) if await_fill else self.get_order(order.id)
 
         return {
             "order_id": order.id,
@@ -439,7 +440,8 @@ def execute_order(
             market = adapter.market_status()
         except Exception as e:
             return {"error": f"Failed to read {broker} market status: {e}"}
-        if not market["is_open"] and not allow_closed_market:
+        market_open = market["is_open"]
+        if not market_open and not allow_closed_market:
             return {
                 "error": f"{broker} market is closed — no order placed.",
                 "market": market,
@@ -466,15 +468,26 @@ def execute_order(
     else:
         try:
             adapter = _get_adapter(broker)
-            result = adapter.place_market_order(symbol, side, quantity, stop_loss, take_profit)
+            try:
+                result = adapter.place_market_order(symbol, side, quantity, stop_loss,
+                                                    take_profit, await_fill=market_open)
+            except TypeError:  # adapters without the await_fill parameter (Bitget)
+                result = adapter.place_market_order(symbol, side, quantity, stop_loss, take_profit)
             result["broker"] = broker
             result["mode"] = "live"
             result["entry_price"] = result.get("filled_price") or price
             result["quantity"] = result.get("filled_quantity") or quantity
             result["quoted_price"] = price
             if result.get("filled_price") is None:
-                result["note"] = ("Order not filled yet — entry_price is the pre-trade quote. "
-                                  "Run sync_broker_trades to record the actual fill.")
+                if not market_open:
+                    result["queued_for_next_open"] = market.get("next_open")
+                    result["note"] = (
+                        f"Market closed — order accepted and queued by {broker} for the next "
+                        f"session (opens {market.get('next_open')}). entry_price is the pre-trade "
+                        f"quote; run sync_broker_trades after the open to record the actual fill.")
+                else:
+                    result["note"] = ("Order not filled yet — entry_price is the pre-trade quote. "
+                                      "Run sync_broker_trades to record the actual fill.")
         except Exception as e:
             return {"error": f"Order execution failed: {e}"}
 

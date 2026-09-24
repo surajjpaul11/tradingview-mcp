@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--interval", default="30m")
     parser.add_argument("--timezone", default="America/New_York")
     parser.add_argument("--output-dir", type=Path, default=Path("analysis/yahoo_extended_hours"))
+    parser.add_argument("--output-prefix", default="yahoo_extended")
     args = parser.parse_args()
 
     frames: list[pd.DataFrame] = []
@@ -69,8 +70,11 @@ def main() -> None:
         "symbol", "timestamp_ny", "session", "Open", "High", "Low", "Close", "Volume",
         "Dividends", "Stock Splits", "volume_nonzero",
     ]
-    combined[[column for column in output_columns if column in combined.columns]].to_csv(
-        args.output_dir / f"yahoo_extended_{args.interval}_{args.period}.csv", index=False
+    export = combined[[column for column in output_columns if column in combined.columns]]
+    base_name = f"{args.output_prefix}_{args.interval}_{args.period}"
+    export.to_csv(args.output_dir / f"{base_name}.csv", index=False)
+    export.loc[export["session"] == "after hours"].to_csv(
+        args.output_dir / f"{base_name}_after_hours_only.csv", index=False
     )
     metadata = {
         "source": "Yahoo Finance via yfinance",
@@ -80,7 +84,7 @@ def main() -> None:
         "prepost": True,
         "symbols": summary,
     }
-    (args.output_dir / f"yahoo_extended_{args.interval}_{args.period}_summary.json").write_text(
+    (args.output_dir / f"{base_name}_summary.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
     print(json.dumps(metadata, indent=2))

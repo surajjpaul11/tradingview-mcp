@@ -294,6 +294,8 @@ let rsiSeries = null;
 let rsiUpperGuide = null;
 let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
+let currentCandles = [];
+let sessionZoneFrame = null;
 
 // ----- Chart Globals (Advanced Tab) -----
 let advChart = null;
@@ -304,6 +306,99 @@ let advTrendlineSeries = [];
 
 // ----- Tab State -----
 let activeTab = 'regular';
+
+function sessionLabelForCandle(candle) {
+    if (candle?.session) return candle.session;
+    if (!candle?.time) return 'regular market';
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(candle.time * 1000));
+    const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+    const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+    const clock = (hour * 60) + minute;
+    if (clock >= 240 && clock < 570) return 'pre-market';
+    if (clock >= 570 && clock < 960) return 'regular market';
+    if (clock >= 960 && clock < 1200) return 'after hours';
+    return 'overnight';
+}
+
+function ensureSessionZoneLayer(container) {
+    if (!container) return null;
+    let layer = container.querySelector(':scope > .session-zone-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.className = 'session-zone-layer';
+        container.appendChild(layer);
+    }
+    return layer;
+}
+
+function renderSessionZones(targetChart, containerId, candles) {
+    const container = document.getElementById(containerId);
+    const layer = ensureSessionZoneLayer(container);
+    if (!layer) return 0;
+    layer.replaceChildren();
+    if (!targetChart || !candles?.length || !['30m', '1h', '4h', '12h'].includes(activeResolution)) return 0;
+
+    const points = candles.map(candle => ({
+        candle,
+        session: sessionLabelForCandle(candle),
+        x: targetChart.timeScale().timeToCoordinate(candle.time),
+    }));
+    const groups = [];
+    for (let index = 0; index < points.length; index += 1) {
+        const point = points[index];
+        if (point.session === 'regular market' || point.x == null) continue;
+        const previous = groups.at(-1);
+        if (previous && previous.session === point.session && previous.end === index - 1) {
+            previous.end = index;
+        } else {
+            groups.push({ session: point.session, start: index, end: index });
+        }
+    }
+
+    const containerWidth = container.clientWidth;
+    groups.forEach(group => {
+        const first = points[group.start];
+        const last = points[group.end];
+        const previousX = points[group.start - 1]?.x;
+        const nextX = points[group.end + 1]?.x;
+        const fallbackStep = Math.max(2, Math.abs((nextX ?? last.x + 8) - (previousX ?? first.x - 8)) / Math.max(2, group.end - group.start + 2));
+        const left = previousX == null ? first.x - fallbackStep / 2 : (previousX + first.x) / 2;
+        const right = nextX == null ? last.x + fallbackStep / 2 : (last.x + nextX) / 2;
+        const clippedLeft = Math.max(0, left);
+        const clippedRight = Math.min(containerWidth, right);
+        if (clippedRight <= clippedLeft) return;
+        const zone = document.createElement('div');
+        zone.className = `session-zone ${group.session.replace(' ', '-')}`;
+        zone.style.left = `${clippedLeft}px`;
+        zone.style.width = `${clippedRight - clippedLeft}px`;
+        zone.title = group.session;
+        layer.appendChild(zone);
+    });
+    return layer.childElementCount;
+}
+
+function renderAllSessionZones() {
+    sessionZoneFrame = null;
+    const zoneCount = renderSessionZones(chart, 'tv-chart', currentCandles);
+    if (volumeChart) renderSessionZones(volumeChart, 'volume-chart', currentCandles);
+    if (rsiChart) renderSessionZones(rsiChart, 'rsi-chart', currentCandles);
+    const legend = document.getElementById('session-zone-legend');
+    if (legend) {
+        const visibleSessions = new Set(currentCandles.map(sessionLabelForCandle));
+        const preMarketItem = legend.querySelector('.session-swatch.pre-market')?.parentElement;
+        const afterHoursItem = legend.querySelector('.session-swatch.after-hours')?.parentElement;
+        if (preMarketItem) preMarketItem.hidden = !visibleSessions.has('pre-market');
+        if (afterHoursItem) afterHoursItem.hidden = !visibleSessions.has('after hours');
+        legend.hidden = zoneCount === 0;
+    }
+}
+
+function scheduleSessionZoneRender() {
+    if (sessionZoneFrame != null) cancelAnimationFrame(sessionZoneFrame);
+    sessionZoneFrame = requestAnimationFrame(renderAllSessionZones);
+}
 
 // ============================================================
 // TAB SWITCHING
@@ -338,6 +433,7 @@ function switchTab(tab) {
             height: container.clientHeight || 500,
         });
     }
+    scheduleSessionZoneRender();
 }
 
 // ============================================================
@@ -403,11 +499,13 @@ function initChart() {
             const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
             if (width > 50 && height > 50) {
                 chart.applyOptions({ width, height });
+                scheduleSessionZoneRender();
             }
         }
     }).observe(container);
 
     chart.timeScale().subscribeVisibleTimeRangeChange(range => {
+        scheduleSessionZoneRender();
         if (!range || activeTab !== 'advanced') return;
         if (volumeChart && volumeIndicatorCheckbox?.checked) {
             volumeChart.timeScale().setVisibleRange(range);
@@ -450,7 +548,10 @@ function createIndicatorChart(container, height) {
 
     new ResizeObserver(entries => {
         const width = container.clientWidth || entries[0]?.contentRect?.width || 800;
-        if (width > 50) indicatorChart.applyOptions({ width, height });
+        if (width > 50) {
+            indicatorChart.applyOptions({ width, height });
+            scheduleSessionZoneRender();
+        }
     }).observe(container);
     return indicatorChart;
 }
@@ -570,7 +671,10 @@ function renderAdvancedIndicators(candles) {
     }
     const rsiValue = document.getElementById('rsi-indicator-value');
     if (rsiValue) rsiValue.textContent = rsiData.length ? rsiData[rsiData.length - 1].value.toFixed(2) : '—';
-    requestAnimationFrame(syncIndicatorRanges);
+    requestAnimationFrame(() => {
+        syncIndicatorRanges();
+        scheduleSessionZoneRender();
+    });
 }
 
 function updateIndicatorVisibility() {
@@ -1466,7 +1570,10 @@ async function updateDashboard() {
 
         if (chart) {
             chart.timeScale().fitContent();
-            requestAnimationFrame(syncIndicatorRanges);
+            requestAnimationFrame(() => {
+                syncIndicatorRanges();
+                scheduleSessionZoneRender();
+            });
         }
 
         // -- Stats --

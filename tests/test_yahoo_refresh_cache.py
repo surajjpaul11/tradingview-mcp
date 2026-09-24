@@ -23,6 +23,17 @@ class FakeFrame:
         }
 
 
+class FakeAfterHoursFrame(FakeFrame):
+    def iterrows(self):
+        yield datetime(2026, 9, 23, 22, 0, tzinfo=timezone.utc), {
+            "Open": 100.0,
+            "High": 102.0,
+            "Low": 99.0,
+            "Close": 101.0,
+            "Volume": 0.0,
+        }
+
+
 class YahooRefreshCacheTests(unittest.TestCase):
     def setUp(self):
         server._yahoo_candle_cache.clear()
@@ -51,6 +62,15 @@ class YahooRefreshCacheTests(unittest.TestCase):
         self.assertEqual(ticker_factory.call_count, 2)
         self.assertEqual(ticker.history.call_args_list[0].kwargs["prepost"], False)
         self.assertEqual(ticker.history.call_args_list[1].kwargs["prepost"], True)
+
+    def test_intraday_candles_include_a_chart_session_label(self):
+        ticker = Mock()
+        ticker.history.return_value = FakeAfterHoursFrame()
+
+        with patch.object(server.yf, "Ticker", return_value=ticker):
+            candles, _, _ = server.fetch_market_candles("AAPL", "30m", "5d", "after hours")
+
+        self.assertEqual(candles[0]["session"], "after hours")
 
     def test_homepage_window_selection_is_persisted(self):
         with tempfile.TemporaryDirectory() as directory:

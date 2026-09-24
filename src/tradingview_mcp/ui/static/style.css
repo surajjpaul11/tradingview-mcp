@@ -543,6 +543,84 @@ select:focus {
 .chart-container {
     width: 100%;
     height: 100%;
+    position: relative;
+}
+
+.session-zone-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.session-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+}
+
+.session-zone.pre-market {
+    background: rgba(59, 130, 246, 0.055);
+    border-color: rgba(96, 165, 250, 0.09);
+}
+
+.session-zone.after-hours {
+    background: rgba(245, 158, 11, 0.065);
+    border-color: rgba(251, 191, 36, 0.11);
+}
+
+.session-zone.overnight {
+    background: rgba(168, 85, 247, 0.045);
+    border-color: rgba(192, 132, 252, 0.08);
+}
+
+.session-zone-legend {
+    position: absolute;
+    top: 0.28rem;
+    right: 1.5rem;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.32rem 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: rgba(11, 14, 20, 0.72);
+    font-size: 0.66rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.session-zone-legend[hidden] {
+    display: none;
+}
+
+.session-zone-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+}
+
+.session-zone-legend span[hidden] {
+    display: none;
+}
+
+.session-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.session-swatch.pre-market {
+    background: rgba(59, 130, 246, 0.28);
+}
+
+.session-swatch.after-hours {
+    background: rgba(245, 158, 11, 0.32);
 }
 
 .indicator-stack {
@@ -581,6 +659,7 @@ select:focus {
 .indicator-chart {
     width: 100%;
     height: 138px;
+    position: relative;
 }
 
 @media (max-width: 700px) {

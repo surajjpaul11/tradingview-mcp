@@ -21,6 +21,7 @@ from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST,
 from tradingview_mcp.core.services.market_hours import (
     get_market_status,
     load_market_config,
+    market_session_label,
     market_config_path,
     normalize_trading_window,
     timestamp_in_trading_window,
@@ -267,6 +268,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
                     "low": round(l, 4),
                     "close": round(c, 4),
                     "volume": round(v, 2),
+                    "session": market_session_label(candle_time, market_config) if tf in ("30m", "1h", "4h", "12h") else "regular market",
                 })
     except Exception as e:
         print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}, {selected_window}): {e}")

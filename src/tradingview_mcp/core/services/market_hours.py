@@ -196,3 +196,20 @@ def timestamp_in_trading_window(
     local = current.astimezone(tz)
     opens_at, closes_at = _window_datetimes(local.date(), cfg, tz, selected_window)
     return opens_at <= local < closes_at
+
+
+def market_session_label(value: datetime, config: dict[str, Any] | None = None) -> str:
+    """Classify a timestamp into the US equity session shown on the chart."""
+    cfg = config or load_market_config()
+    tz = ZoneInfo(str(cfg["timezone"]))
+    current = value
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=tz)
+    clock = current.astimezone(tz).time().replace(tzinfo=None)
+    if time(4, 0) <= clock < time(9, 30):
+        return "pre-market"
+    if time(9, 30) <= clock < time(16, 0):
+        return "regular market"
+    if time(16, 0) <= clock < time(20, 0):
+        return "after hours"
+    return "overnight"

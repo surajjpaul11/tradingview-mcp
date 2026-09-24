@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from tradingview_mcp.core.services.market_hours import (
     DEFAULT_CONFIG,
     get_market_status,
+    market_session_label,
     timestamp_in_trading_window,
 )
 
@@ -72,6 +73,12 @@ class MarketHoursTests(unittest.TestCase):
         self.assertFalse(timestamp_in_trading_window(after_hours, "pre-market", config()))
         self.assertTrue(timestamp_in_trading_window(after_hours, "after hours", config()))
         self.assertTrue(timestamp_in_trading_window(after_hours, "overnight", config()))
+
+    def test_timestamp_is_classified_for_chart_session_zones(self):
+        self.assertEqual(market_session_label(datetime(2026, 9, 23, 8, 0, tzinfo=EASTERN), config()), "pre-market")
+        self.assertEqual(market_session_label(datetime(2026, 9, 23, 9, 30, tzinfo=EASTERN), config()), "regular market")
+        self.assertEqual(market_session_label(datetime(2026, 9, 23, 16, 0, tzinfo=EASTERN), config()), "after hours")
+        self.assertEqual(market_session_label(datetime(2026, 9, 23, 21, 0, tzinfo=EASTERN), config()), "overnight")
 
 
 if __name__ == "__main__":

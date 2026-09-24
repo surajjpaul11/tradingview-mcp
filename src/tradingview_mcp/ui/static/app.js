@@ -27,6 +27,8 @@ const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
+const beforeHoursCheckbox = document.getElementById('before-hours-checkbox');
+const afterHoursCheckbox = document.getElementById('after-hours-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
 const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
 const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
@@ -349,6 +351,8 @@ function renderSessionZones(targetChart, containerId, candles) {
     for (let index = 0; index < points.length; index += 1) {
         const point = points[index];
         if (point.session === 'regular market' || point.x == null) continue;
+        if (point.session === 'pre-market' && !beforeHoursCheckbox?.checked) continue;
+        if (point.session === 'after hours' && !afterHoursCheckbox?.checked) continue;
         const previous = groups.at(-1);
         if (previous && previous.session === point.session && previous.end === index - 1) {
             previous.end = index;
@@ -389,8 +393,8 @@ function renderAllSessionZones() {
         const visibleSessions = new Set(currentCandles.map(sessionLabelForCandle));
         const preMarketItem = legend.querySelector('.session-swatch.pre-market')?.parentElement;
         const afterHoursItem = legend.querySelector('.session-swatch.after-hours')?.parentElement;
-        if (preMarketItem) preMarketItem.hidden = !visibleSessions.has('pre-market');
-        if (afterHoursItem) afterHoursItem.hidden = !visibleSessions.has('after hours');
+        if (preMarketItem) preMarketItem.hidden = !beforeHoursCheckbox?.checked || !visibleSessions.has('pre-market');
+        if (afterHoursItem) afterHoursItem.hidden = !afterHoursCheckbox?.checked || !visibleSessions.has('after hours');
         legend.hidden = zoneCount === 0;
     }
 }
@@ -1759,5 +1763,7 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    beforeHoursCheckbox?.addEventListener('change', scheduleSessionZoneRender);
+    afterHoursCheckbox?.addEventListener('change', scheduleSessionZoneRender);
     loadFilters().finally(startMarketRefresh);
 })();

@@ -28,7 +28,7 @@ Not reviewed in depth: `indicators.py`, screener/news/sentiment services, `ui/st
 - **What:** per-*trade* returns are annualized with per-*bar* factors (`sqrt(252)` / `sqrt(252*6)`), and the risk-free rate is subtracted per bar. A strategy with 26 trades in 2 years is scaled as if it had 1,512 per year (e.g. SPY resistance_lines 1h showed Sharpe −9.9).
 - **Fix idea:** compute Sharpe from a bar-level (or daily) equity curve, or annualize by trades-per-year.
 
-### 4. "Walk-forward" is not walk-forward
+### 4. "Walk-forward" is not walk-forward — PARTLY FIXED on develop (per-bar rates, None for inactive folds, INSUFFICIENT EVIDENCE verdict); no parameter search and no indicator warm-up on test slices
 - **Where:** `walk_forward_backtest()` in `backtest_service.py`.
 - **What:** no parameters are optimized on the train slice — fixed defaults run on both slices. Robustness = test return / train return, comparing a 30% window to a 70% window, so scores are biased toward "WEAK/OVERFITTED". Each slice starts cold, so strategies needing 200-bar warmup (vwma17, buy_and_protect) get few/no test trades.
 - **Fix idea:** warm indicators on prior data, compare per-bar or annualized returns, optionally add real parameter search on train.
@@ -47,12 +47,15 @@ Not reviewed in depth: `indicators.py`, screener/news/sentiment services, `ui/st
 - **What:** stop and limit are placed separately; when one fills the other remains live and can sell coins no longer held (or error). If SL placement fails, the position is left unprotected and the error is only nested in `sl_order`.
 - **Fix idea:** use exchange-native TP/SL or OCO params; cancel/rollback or fail loudly if protection can't be placed.
 
-### 7. Alpaca bracket orders likely rejected (unverified)
+### 7. Alpaca bracket orders likely rejected (unverified) — FIXED 2026-09-23
 - **Where:** `AlpacaAdapter.place_market_order()`; quantity rounding in `execute_order()`.
 - **What:** qty rounded to 2 decimals (fractional) — Alpaca doesn't allow fractional brackets; bracket also needs both SL and TP (only one → use `oto`).
 - **Fix idea:** whole shares for bracket/oto, choose `oto` when only one leg is given; test against paper.
 
-### 8. Logged entry price is the pre-trade quote; dry run uses stale price
+### 8. Logged entry price is the pre-trade quote; dry run uses stale price — PARTLY FIXED 2026-09-23
+Live orders now poll for the fill and record the filled price; `sync_broker_trades` reports rows whose
+recorded entry still differs from the fill (it reports, it does not rewrite the entry price).
+Dry runs still price from the last Yahoo daily close.
 - **Where:** `execute_order()` → `_log_trade(entry_price=price)`; dry-run price = last *daily* close from Yahoo.
 - **Fix idea:** log fill price; use a live quote for dry runs.
 
@@ -106,3 +109,21 @@ Not reviewed in depth: `indicators.py`, screener/news/sentiment services, `ui/st
 2. B6, B7, B9 — before any live trading.
 3. C10–C12 — dashboard consistency.
 4. D14 — regression tests on fixed data so A1–A3 stay fixed; then re-run comparisons and update `STRATEGIES.md`.
+
+
+---
+
+## Fixed since this review (2026-09-23, branch `claude`)
+
+- **Alpaca sizing (was item 7):** orders carrying a stop or take-profit are rounded down to whole shares;
+  an order too small for one share is refused with the required capital. Unprotected orders stay fractional.
+- **Market hours (new gap 3):** `execute_order` / `execute_trade` refuse live Alpaca orders while the market
+  is closed and report the next open; `allow_closed_market=True` queues one deliberately.
+- **Fills (was item 8):** live orders poll until terminal state and record the actual fill price.
+- **Real exits (was item 2 of the Alpaca gaps):** new `close_position` MCP tool cancels the symbol's resting
+  stop/target orders, flattens at market, and records the exit. `close_open_trade` remains database-only.
+- **Reconciliation:** new `sync_broker_trades` MCP tool closes database rows whose position is gone at the
+  broker (stop/target fired, or a manual sale) and flags entry-price mismatches.
+
+Still open from the Alpaca list: guardrails (size caps, duplicate-order protection), the deprecated
+`alpaca-trade-api` SDK, and the two parallel implementations (`scripts/active_trader.py` vs the MCP path).

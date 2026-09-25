@@ -164,7 +164,7 @@ function applyInitialChartViewport(targetChart, candles, tradesData, resolution,
     return { startIndex, endIndex, buyIndex, target };
 }
 
-function recordChartRenderState(candles, tradesData, resolution, range, viewport, strategy, symbol) {
+function recordChartRenderState(candles, tradesData, resolution, range, viewport, strategy, symbol, overlays = {}) {
     const container = document.getElementById('tv-chart');
     if (!container) return;
     container.dataset.renderStatus = candles.length ? 'ready' : 'empty';
@@ -176,6 +176,10 @@ function recordChartRenderState(candles, tradesData, resolution, range, viewport
     container.dataset.firstBuyIndex = String(viewport?.buyIndex ?? -1);
     container.dataset.visibleStartIndex = String(viewport?.startIndex ?? -1);
     container.dataset.visibleEndIndex = String(viewport?.endIndex ?? -1);
+    container.dataset.tradeCount = String(tradesData?.trades?.length ?? 0);
+    container.dataset.markerCount = String(overlays.markerCount ?? 0);
+    container.dataset.trendlinesReturned = String(overlays.trendlinesReturned ?? 0);
+    container.dataset.trendlinesDrawn = String(overlays.trendlinesDrawn ?? 0);
 }
 
 function refreshMainChartLayout() {
@@ -1578,20 +1582,23 @@ function buildMarkers(tradesData, sorted, strategy) {
 // TRENDLINE OVERLAY
 // ============================================================
 async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, isCurrent = () => true) {
+    // Counts let the UI smoke test verify that returned trendlines were actually drawn.
+    const summary = { returned: 0, drawn: 0 };
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
-        if (!res.ok) return;
+        if (!res.ok) return summary;
         const data = await res.json();
-        if (!isCurrent()) return;
+        if (!isCurrent()) return summary;
         existingSeriesList.forEach(s => {
             try { chartInstance.removeSeries(s); } catch (_) {}
         });
         existingSeriesList.length = 0;
-        if (!data.trendlines || data.trendlines.length === 0) return;
+        if (!data.trendlines || data.trendlines.length === 0) return summary;
+        summary.returned = data.trendlines.length;
 
-        if (candleData.length === 0) return;
+        if (candleData.length === 0) return summary;
         const firstCandle = candleData[0].time;
         const lastCandle = candleData[candleData.length - 1].time;
 
@@ -1628,7 +1635,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
             }
 
             const addTrendlineSeries = (dataPoints, style, width, title) => {
-                if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return;
+                if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return false;
                 const seriesOptions = {
                     color,
                     lineWidth: width,
@@ -1644,10 +1651,10 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
                     lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
                 }
-                if (lineSeries) {
-                    lineSeries.setData(dataPoints);
-                    existingSeriesList.push(lineSeries);
-                }
+                if (!lineSeries) return false;
+                lineSeries.setData(dataPoints);
+                existingSeriesList.push(lineSeries);
+                return true;
             };
 
             const confirmationTime = tl.confirmation_time ? findNearestCandleTime(tl.confirmation_time, candleData) : null;
@@ -1657,24 +1664,26 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 && confirmationTime > snappedStart
                 && confirmationTime < snappedEnd
             ) {
-                addTrendlineSeries([
+                const forming = addTrendlineSeries([
                     { time: snappedStart, value: tl.start_price },
                     { time: confirmationTime, value: tl.confirmation_price },
                 ], 2, 1, `${tl.label || ''} (forming)`);
-                addTrendlineSeries([
+                const active = addTrendlineSeries([
                     { time: confirmationTime, value: tl.confirmation_price },
                     { time: snappedEnd, value: tl.end_price },
                 ], 0, 2, `${tl.label || ''} (active)`);
-            } else {
-                addTrendlineSeries([
-                    { time: snappedStart, value: tl.start_price },
-                    { time: snappedEnd, value: tl.end_price },
-                ], lineStyle, 2, tl.label || '');
+                if (forming || active) summary.drawn += 1;
+            } else if (addTrendlineSeries([
+                { time: snappedStart, value: tl.start_price },
+                { time: snappedEnd, value: tl.end_price },
+            ], lineStyle, 2, tl.label || '')) {
+                summary.drawn += 1;
             }
         });
     } catch (err) {
         console.warn('[TV] Trendline fetch error:', err);
     }
+    return summary;
 }
 
 // ============================================================
@@ -1837,6 +1846,14 @@ async function updateDashboard() {
 
         chartDataUpdateInProgress = true;
         try {
+            // Drop old overlays before swapping candles: removing them afterwards shifts the shared
+            // time scale under the new candles and the library throws "Value is null" (BUG-001).
+            if (chart) {
+                trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+                trendlineSeries.length = 0;
+                channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
+                channelSeries.length = 0;
+            }
             if (candlestickSeries) {
                 candlestickSeries.setData(sorted);
             }
@@ -1846,11 +1863,13 @@ async function updateDashboard() {
         }
 
         // -- Trade Markers --
+        const overlays = { markerCount: 0, trendlinesReturned: 0, trendlinesDrawn: 0 };
         if (candlestickSeries && tradesData.trades && sorted.length > 0) {
             try {
                 const finalMarkers = buildMarkers(tradesData, sorted, strategy);
                 if (typeof candlestickSeries.setMarkers === 'function') {
                     candlestickSeries.setMarkers(finalMarkers);
+                    overlays.markerCount = finalMarkers.length;
                 }
             } catch (markerErr) {
                 console.warn('[TV] Marker setting warning:', markerErr);
@@ -1864,7 +1883,9 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
+            overlays.trendlinesReturned = trendlineSummary.returned;
+            overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
@@ -1882,7 +1903,7 @@ async function updateDashboard() {
 
         if (chart) {
             const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
-            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport, strategy, symbol);
+            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport, strategy, symbol, overlays);
             requestAnimationFrame(() => {
                 syncIndicatorRanges();
                 scheduleSessionZoneRender();

@@ -286,6 +286,10 @@ Both servers pick the first free port starting at `--port` / `$PORT` (default 80
 - `--strict-port` or `PORT_STRICT=1` fails instead of moving. `PORT_MAX_TRIES` caps the scan (default 50); inside Docker set `PORT_MAX_TRIES=5` to stay within 8000–8004.
 - Logic lives in `src/tradingview_mcp/core/utils/ports.py` (also a CLI: `python -m tradingview_mcp.core.utils.ports`).
 
+## Bug Log
+
+`BUGS_TO_FIX.md` is the running log of bugs: symptom, how to reproduce, confirmed cause, and fix (with commit). Add an entry whenever a bug is noticed, and update it when fixed — keep fixed entries for future reference.
+
 ## Git in Cowork Sessions
 
 Cowork's shell reaches this repo through a mounted folder where files **cannot be deleted**, and it runs git 2.34. Rules:

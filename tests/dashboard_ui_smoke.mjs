@@ -132,6 +132,10 @@ async function readChartState(page) {
       rsiCanvases: document.querySelectorAll('#rsi-chart canvas').length,
       volumePoints: Number(document.querySelector('#volume-chart')?.dataset.pointCount ?? 0),
       rsiPoints: Number(document.querySelector('#rsi-chart')?.dataset.pointCount ?? 0),
+      tradeCount: Number(chart?.dataset.tradeCount ?? 0),
+      markerCount: Number(chart?.dataset.markerCount ?? 0),
+      trendlinesReturned: Number(chart?.dataset.trendlinesReturned ?? 0),
+      trendlinesDrawn: Number(chart?.dataset.trendlinesDrawn ?? 0),
     };
   });
 }
@@ -147,6 +151,31 @@ function assertRenderedGraph(state, context) {
       `${context}: first buy is not at the left edge of the viewport`,
     );
   }
+}
+
+async function waitForSlopedChart(page, resolution, timeframe) {
+  await page.waitForFunction(
+    ({ resolution, timeframe }) => {
+      const chart = document.querySelector('#tv-chart');
+      const loading = document.querySelector('#loading');
+      return chart?.dataset.renderStatus === 'ready'
+        && chart.dataset.strategy === 'sloped_lines'
+        && chart.dataset.resolution === resolution
+        && chart.dataset.timeframe === timeframe
+        && Number(chart.dataset.candleCount) > 0
+        && !loading?.classList.contains('active');
+    },
+    { resolution, timeframe },
+    { timeout: 90_000 },
+  );
+}
+
+function assertSlopedOverlays(state, context) {
+  assert.equal(state.strategy, 'sloped_lines', `${context}: wrong strategy`);
+  assert.ok(state.trendlinesReturned > 0, `${context}: backend returned no sloped trendlines`);
+  assert.ok(state.trendlinesDrawn > 0, `${context}: ${state.trendlinesReturned} trendlines returned but none drawn`);
+  assert.ok(state.tradeCount > 0, `${context}: no sloped-lines trades to mark`);
+  assert.ok(state.markerCount > 0, `${context}: ${state.tradeCount} trades but no chart markers`);
 }
 
 const dashboard = await startDashboard();
@@ -287,6 +316,23 @@ try {
   await page.locator('#strategy-select').selectOption('sloped_lines');
   await waitForStrategyChart(page, 'sloped_lines');
   assertRenderedGraph(await readChartState(page), 'advanced sloped lines after strategy switch');
+
+  // Five years of daily bars reliably contains sloped-line breakouts, so lines and markers must be drawn.
+  await page.locator('#btn-res-1d').click();
+  await page.locator('#btn-range-5y').click();
+  await waitForSlopedChart(page, '1d', '5y');
+  const slopedState = await readChartState(page);
+  assertRenderedGraph(slopedState, 'sloped lines 1d/5y');
+  assertSlopedOverlays(slopedState, 'sloped lines 1d/5y');
+  results.push({
+    strategy: 'sloped_lines',
+    resolution: '1d',
+    timeframe: '5y',
+    candles: slopedState.candleCount,
+    trades: slopedState.tradeCount,
+    markers: slopedState.markerCount,
+    trendlines: slopedState.trendlinesDrawn,
+  });
 
   assert.deepEqual(pageErrors, [], `Browser errors: ${pageErrors.join('; ')}`);
   console.log(JSON.stringify({ passed: results.length, results }, null, 2));

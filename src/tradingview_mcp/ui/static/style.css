@@ -390,12 +390,6 @@ select:focus {
     text-align: center;
 }
 
-.session-controls-label {
-    margin-top: 0.2rem;
-    padding-top: 0.65rem;
-    border-top: 1px solid var(--border-color);
-}
-
 .indicator-toggle {
     display: flex;
     align-items: center;
@@ -408,20 +402,6 @@ select:focus {
 
 .indicator-toggle input {
     accent-color: var(--accent-blue);
-}
-
-.before-hours-toggle input {
-    accent-color: #3b82f6;
-}
-
-.after-hours-toggle input {
-    accent-color: #f59e0b;
-}
-
-.session-calculation-note {
-    color: var(--text-muted);
-    font-size: 0.6rem;
-    line-height: 1.35;
 }
 
 .tab-btn {

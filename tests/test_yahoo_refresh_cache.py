@@ -56,8 +56,8 @@ class YahooRefreshCacheTests(unittest.TestCase):
         ticker.history.return_value = FakeFrame()
 
         with patch.object(server.yf, "Ticker", return_value=ticker) as ticker_factory:
-            first = server.fetch_market_candles("AAPL", "1d", "1y")
-            second = server.fetch_market_candles("AAPL", "1d", "1y")
+            first = server.fetch_market_candles("AAPL", "1d", "1y", "regular market")
+            second = server.fetch_market_candles("AAPL", "1d", "1y", "regular market")
 
         self.assertEqual(first, second)
         self.assertEqual(len(first[0]), 1)

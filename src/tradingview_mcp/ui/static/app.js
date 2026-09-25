@@ -27,8 +27,6 @@ const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
-const beforeHoursCheckbox = document.getElementById('before-hours-checkbox');
-const afterHoursCheckbox = document.getElementById('after-hours-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
 const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
 const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
@@ -37,8 +35,8 @@ let marketStatusTimer = null;
 let autoRefreshInFlight = false;
 let filtersLoaded = false;
 const ACTIVE_TAB_STORAGE_KEY = 'trade-visualizer-active-tab';
-const BEFORE_HOURS_STORAGE_KEY = 'trade-visualizer-before-hours';
-const AFTER_HOURS_STORAGE_KEY = 'trade-visualizer-after-hours';
+const LEGACY_BEFORE_HOURS_STORAGE_KEY = 'trade-visualizer-before-hours';
+const LEGACY_AFTER_HOURS_STORAGE_KEY = 'trade-visualizer-after-hours';
 const MARKET_TIME_ZONE = 'America/New_York';
 
 function chartTimeToDate(time) {
@@ -63,13 +61,51 @@ function formatMarketChartTime(time, includeDate = true, includeZone = false) {
     }).format(date);
 }
 
+function formatMarketAxisTick(time, tickMarkType) {
+    const date = chartTimeToDate(time);
+    if (!date || Number.isNaN(date.getTime())) return '';
+
+    // Lightweight Charts uses 0/1/2 for year, month, and day ticks, and
+    // 3/4 for intraday time ticks. Keep session-heavy intraday charts compact
+    // while still marking each date boundary selected by the chart library.
+    if (tickMarkType === 0) {
+        return new Intl.DateTimeFormat('en-US', {
+            timeZone: MARKET_TIME_ZONE,
+            year: 'numeric',
+        }).format(date);
+    }
+    if (tickMarkType === 1) {
+        return new Intl.DateTimeFormat('en-US', {
+            timeZone: MARKET_TIME_ZONE,
+            month: 'short',
+        }).format(date);
+    }
+    if (tickMarkType === 2) {
+        return new Intl.DateTimeFormat('en-US', {
+            timeZone: MARKET_TIME_ZONE,
+            month: 'short',
+            day: 'numeric',
+        }).format(date);
+    }
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: MARKET_TIME_ZONE,
+        hour: 'numeric',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    }).formatToParts(date);
+    const hour = Number(parts.find(part => part.type === 'hour')?.value ?? 0);
+    const minute = parts.find(part => part.type === 'minute')?.value ?? '00';
+    return minute === '00' ? String(hour) : `${hour}:${minute}`;
+}
+
 const marketChartOptions = {
     localization: {
         locale: 'en-US',
         timeFormatter: time => formatMarketChartTime(time, true, true),
     },
     timeScale: {
-        tickMarkFormatter: time => formatMarketChartTime(time, true),
+        tickMarkFormatter: (time, tickMarkType) => formatMarketAxisTick(time, tickMarkType),
     },
 };
 
@@ -128,13 +164,15 @@ function applyInitialChartViewport(targetChart, candles, tradesData, resolution,
     return { startIndex, endIndex, buyIndex, target };
 }
 
-function recordChartRenderState(candles, tradesData, resolution, range, viewport) {
+function recordChartRenderState(candles, tradesData, resolution, range, viewport, strategy, symbol) {
     const container = document.getElementById('tv-chart');
     if (!container) return;
     container.dataset.renderStatus = candles.length ? 'ready' : 'empty';
     container.dataset.candleCount = String(candles.length);
     container.dataset.resolution = resolution;
     container.dataset.timeframe = range;
+    container.dataset.strategy = strategy || '';
+    container.dataset.symbol = symbol || '';
     container.dataset.firstBuyIndex = String(viewport?.buyIndex ?? -1);
     container.dataset.visibleStartIndex = String(viewport?.startIndex ?? -1);
     container.dataset.visibleEndIndex = String(viewport?.endIndex ?? -1);
@@ -148,40 +186,47 @@ function refreshMainChartLayout() {
     if (width > 50 && height > 50) chart.applyOptions({ width, height });
 }
 
-function getSelectedTradingWindow() {
+function getActiveTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
 
-function getDisplayTradingWindow() {
-    if (activeTab !== 'advanced') return getSelectedTradingWindow();
-    const beforeHours = Boolean(beforeHoursCheckbox?.checked);
-    const afterHours = Boolean(afterHoursCheckbox?.checked);
+function tradingWindowFromLegacySessionPreferences(beforeValue, afterValue) {
+    const beforeHours = beforeValue === 'true';
+    const afterHours = afterValue === 'true';
     if (beforeHours && afterHours) return 'extended hours';
     if (beforeHours) return 'pre-market';
     if (afterHours) return 'after hours';
-    return 'regular market';
+    return null;
+}
+
+function consumeLegacyTradingWindow() {
+    const beforeValue = localStorage.getItem(LEGACY_BEFORE_HOURS_STORAGE_KEY);
+    const afterValue = localStorage.getItem(LEGACY_AFTER_HOURS_STORAGE_KEY);
+    if (beforeValue === null && afterValue === null) return null;
+    localStorage.removeItem(LEGACY_BEFORE_HOURS_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_AFTER_HOURS_STORAGE_KEY);
+    return tradingWindowFromLegacySessionPreferences(beforeValue, afterValue);
+}
+
+const TRADING_WINDOW_SESSIONS = {
+    'regular market': ['regular market'],
+    'pre-market': ['pre-market', 'regular market'],
+    'after hours': ['regular market', 'after hours'],
+    'extended hours': ['pre-market', 'regular market', 'after hours'],
+    overnight: ['overnight', 'pre-market', 'regular market', 'after hours'],
+};
+
+function activeTradingWindowIncludes(session) {
+    const sessions = TRADING_WINDOW_SESSIONS[getActiveTradingWindow()] || TRADING_WINDOW_SESSIONS['regular market'];
+    return sessions.includes(session);
 }
 
 function filterCandlesForVisibleSessions(candles) {
-    if (activeTab !== 'advanced') return candles;
-    return candles.filter(candle => {
-        const session = sessionLabelForCandle(candle);
-        if (session === 'regular market') return true;
-        if (session === 'pre-market') return Boolean(beforeHoursCheckbox?.checked);
-        if (session === 'after hours') return Boolean(afterHoursCheckbox?.checked);
-        return false;
-    });
-}
-
-function restoreUiPreferences() {
-    const savedBeforeHours = localStorage.getItem(BEFORE_HOURS_STORAGE_KEY);
-    const savedAfterHours = localStorage.getItem(AFTER_HOURS_STORAGE_KEY);
-    if (beforeHoursCheckbox && savedBeforeHours !== null) beforeHoursCheckbox.checked = savedBeforeHours === 'true';
-    if (afterHoursCheckbox && savedAfterHours !== null) afterHoursCheckbox.checked = savedAfterHours === 'true';
+    return candles.filter(candle => activeTradingWindowIncludes(sessionLabelForCandle(candle)));
 }
 
 function ensureIntradayResolutionForExtendedWindow() {
-    const extended = getDisplayTradingWindow() !== 'regular market';
+    const extended = getActiveTradingWindow() !== 'regular market';
     if (!extended) return;
     if (!['30m', '1h', '4h', '12h'].includes(activeResolution)) {
         activeResolution = '30m';
@@ -413,8 +458,10 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             const beatsText = perf.beats_bnh_pct !== undefined
                 ? ` · ${perf.beats_bnh_pct >= 0 ? '+' : ''}${perf.beats_bnh_pct}% vs B&H (B&H: ${perf.buy_and_hold_pct}%)`
                 : '';
-            bestParamsBadge.innerHTML = `<span class="star-icon">★</span> Best Params${pnlText}`;
-            bestParamsBadge.title = `Configured optimal parameters for ${symbol} · ${strategy}${beatsText}`;
+            const baselineContext = [result.data.timeframe, result.data.period].filter(Boolean).join(' / ').toUpperCase();
+            const updatedText = result.data.last_updated ? ` · captured ${result.data.last_updated}` : '';
+            bestParamsBadge.innerHTML = `<span class="star-icon">★</span> Saved Best${pnlText} baseline`;
+            bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
     } catch (e) {
@@ -438,6 +485,8 @@ let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
 let currentCandles = [];
 let sessionZoneFrame = null;
+let chartDataUpdateInProgress = false;
+let dashboardRequestGeneration = 0;
 
 // ----- Chart Globals (Advanced Tab) -----
 let advChart = null;
@@ -490,9 +539,8 @@ function renderSessionZones(targetChart, containerId, candles) {
     const groups = [];
     for (let index = 0; index < points.length; index += 1) {
         const point = points[index];
-        if (point.session === 'regular market' || point.x == null) continue;
-        if (point.session === 'pre-market' && !beforeHoursCheckbox?.checked) continue;
-        if (point.session === 'after hours' && !afterHoursCheckbox?.checked) continue;
+        if (!['pre-market', 'after hours'].includes(point.session) || point.x == null) continue;
+        if (!activeTradingWindowIncludes(point.session)) continue;
         const previous = groups.at(-1);
         if (previous && previous.session === point.session && previous.end === index - 1) {
             previous.end = index;
@@ -533,8 +581,8 @@ function renderAllSessionZones() {
         const visibleSessions = new Set(currentCandles.map(sessionLabelForCandle));
         const preMarketItem = legend.querySelector('.session-swatch.pre-market')?.parentElement;
         const afterHoursItem = legend.querySelector('.session-swatch.after-hours')?.parentElement;
-        if (preMarketItem) preMarketItem.hidden = !beforeHoursCheckbox?.checked || !visibleSessions.has('pre-market');
-        if (afterHoursItem) afterHoursItem.hidden = !afterHoursCheckbox?.checked || !visibleSessions.has('after hours');
+        if (preMarketItem) preMarketItem.hidden = !activeTradingWindowIncludes('pre-market') || !visibleSessions.has('pre-market');
+        if (afterHoursItem) afterHoursItem.hidden = !activeTradingWindowIncludes('after hours') || !visibleSessions.has('after hours');
         legend.hidden = zoneCount === 0;
     }
 }
@@ -652,13 +700,9 @@ function initChart() {
 
     chart.timeScale().subscribeVisibleTimeRangeChange(range => {
         scheduleSessionZoneRender();
-        if (!range || activeTab !== 'advanced') return;
-        if (volumeChart && volumeIndicatorCheckbox?.checked) {
-            volumeChart.timeScale().setVisibleRange(range);
-        }
-        if (rsiChart && rsiIndicatorCheckbox?.checked) {
-            rsiChart.timeScale().setVisibleRange(range);
-        }
+        if (!range || activeTab !== 'advanced' || chartDataUpdateInProgress) return;
+        safelySetIndicatorRange(volumeChart, volumeIndicatorCheckbox?.checked, range);
+        safelySetIndicatorRange(rsiChart, rsiIndicatorCheckbox?.checked, range);
     });
 }
 
@@ -784,12 +828,27 @@ function calculateRSI(candles, period = 14) {
     return values;
 }
 
+function safelySetIndicatorRange(indicatorChart, enabled, range) {
+    if (!indicatorChart || !enabled || !range) return;
+    try {
+        indicatorChart.timeScale().setVisibleRange(range);
+    } catch (_) {
+        // A series can briefly have no logical range while its data is replaced.
+        // The post-render synchronization below will retry once every series is ready.
+    }
+}
+
 function syncIndicatorRanges() {
-    if (!chart) return;
-    const range = chart.timeScale().getVisibleRange();
+    if (!chart || chartDataUpdateInProgress) return;
+    let range;
+    try {
+        range = chart.timeScale().getVisibleRange();
+    } catch (_) {
+        return;
+    }
     if (!range) return;
-    if (volumeChart && volumeIndicatorCheckbox?.checked) volumeChart.timeScale().setVisibleRange(range);
-    if (rsiChart && rsiIndicatorCheckbox?.checked) rsiChart.timeScale().setVisibleRange(range);
+    safelySetIndicatorRange(volumeChart, volumeIndicatorCheckbox?.checked, range);
+    safelySetIndicatorRange(rsiChart, rsiIndicatorCheckbox?.checked, range);
 }
 
 function renderAdvancedIndicators(candles) {
@@ -1010,7 +1069,18 @@ async function loadFilters() {
         const data = await res.json();
         if (marketRes.ok && tradingWindowSelect) {
             const marketData = await marketRes.json();
-            tradingWindowSelect.value = marketData.configured_default_window || 'regular market';
+            const configuredWindow = marketData.configured_default_window || 'regular market';
+            const migratedWindow = consumeLegacyTradingWindow();
+            tradingWindowSelect.value = migratedWindow || configuredWindow;
+            if (migratedWindow && migratedWindow !== configuredWindow) {
+                try {
+                    const selectedWindow = encodeURIComponent(migratedWindow);
+                    const response = await fetch(`/api/trading-window?trading_window=${selectedWindow}`, { method: 'POST' });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                } catch (err) {
+                    console.warn('[TV] Could not persist migrated trading window:', err);
+                }
+            }
             ensureIntradayResolutionForExtendedWindow();
         }
 
@@ -1064,7 +1134,7 @@ async function loadFilters() {
             tradingWindowSelect.onchange = async () => {
                 ensureIntradayResolutionForExtendedWindow();
                 try {
-                    const selectedWindow = encodeURIComponent(getSelectedTradingWindow());
+                    const selectedWindow = encodeURIComponent(getActiveTradingWindow());
                     const response = await fetch(`/api/trading-window?trading_window=${selectedWindow}`, { method: 'POST' });
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 } catch (err) {
@@ -1210,7 +1280,7 @@ function renderMarketStatus(status, failed = false) {
 
 async function checkMarketAndRefresh() {
     try {
-        const tradingWindow = getSelectedTradingWindow();
+        const tradingWindow = getActiveTradingWindow();
         const response = await fetch(`/api/market-status?trading_window=${encodeURIComponent(tradingWindow)}`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const status = await response.json();
@@ -1306,6 +1376,47 @@ function isStopLossReason(reason) {
     return r.includes('stop') || r.includes('stopgap') || r.includes('trailing');
 }
 
+function getSlopedEntryMarkerStyle(reason, isLong) {
+    if (reason === 'breakout' || reason === 'support_break') {
+        return {
+            markerClass: 'sloped-line-signal',
+            prefix: reason === 'support_break' ? 'LINE SUPPORT BREAK ' : 'LINE BREAKOUT ',
+            color: isLong ? '#059669' : '#DC2626',
+        };
+    }
+    if (reason === 'exit_peak_reclaim') {
+        return { markerClass: 'sloped-reentry', prefix: 'PEAK RECLAIM ', color: '#6EE7B7' };
+    }
+    if (reason === 'barrier_trap_reentry') {
+        return { markerClass: 'sloped-reentry', prefix: 'TRAP REENTRY ', color: '#22D3EE' };
+    }
+    return { markerClass: 'sloped-other-entry', prefix: 'OTHER SIGNAL ', color: '#A78BFA' };
+}
+
+function getSlopedExitMarkerStyle(reason, isLong, isWin) {
+    if (reason === 'support_break' || reason === 'resistance_break') {
+        return {
+            markerClass: 'sloped-line-signal',
+            prefix: reason === 'support_break' ? 'LINE SUPPORT BREAK ' : 'LINE RESISTANCE BREAK ',
+            color: reason === 'support_break' ? '#DC2626' : '#059669',
+        };
+    }
+    if (reason === 'entry_barrier_break') {
+        return { markerClass: 'sloped-protection', prefix: 'ENTRY BARRIER ', color: '#F59E0B' };
+    }
+    if (reason === 'atr_stop_buffer') {
+        return { markerClass: 'sloped-protection', prefix: 'ATR STOP ', color: '#F97316' };
+    }
+    if (reason === 'end_of_data') {
+        return { markerClass: 'sloped-end-of-data', prefix: 'END OF DATA ', color: '#94A3B8' };
+    }
+    return {
+        markerClass: 'sloped-other-exit',
+        prefix: 'OTHER EXIT ',
+        color: isWin ? '#A78BFA' : '#7C3AED',
+    };
+}
+
 function buildMarkers(tradesData, sorted, strategy) {
     if (!sorted || sorted.length === 0 || !tradesData || !Array.isArray(tradesData.trades)) {
         return [];
@@ -1321,7 +1432,7 @@ function buildMarkers(tradesData, sorted, strategy) {
             const sideStr = (trade.side || '').toLowerCase();
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
-            const isSlopedBreakout = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
+            const isSlopedTrade = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
             const isExitPeakReclaim = trade.entry_reason === 'exit_peak_reclaim';
             const isBarrierTrapReentry = trade.entry_reason === 'barrier_trap_reentry';
             const isMidlineCross = (trade.entry_reason === 'midline_cross') || (trade.notes && trade.notes.includes('midline_cross'));
@@ -1329,8 +1440,9 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isExitPeakReclaim ? 'EXIT PEAK RECLAIM ' : (isBarrierTrapReentry ? 'BARRIER TRAP REENTRY ' : (isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))))));
-            const entryColor = isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B'))));
+            const slopedStyle = isSlopedTrade ? getSlopedEntryMarkerStyle(trade.entry_reason, isLong) : null;
+            const entryPrefix = slopedStyle?.prefix || (isExitPeakReclaim ? 'EXIT PEAK RECLAIM ' : (isBarrierTrapReentry ? 'BARRIER TRAP REENTRY ' : (isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : '')))))));
+            const entryColor = slopedStyle?.color || (isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B')))));
 
             // 1. Entry Marker
             markers.push({
@@ -1338,6 +1450,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                 position: isLong ? 'belowBar' : 'aboveBar',
                 color: entryColor,
                 shape: isLong ? 'arrowUp' : 'arrowDown',
+                markerClass: slopedStyle?.markerClass || 'default-entry',
                 text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
             });
         }
@@ -1353,21 +1466,24 @@ function buildMarkers(tradesData, sorted, strategy) {
                 const pnlPct = Number(trade.pnl_pct || 0);
                 const pnlSign = pnlPct >= 0 ? '+' : '';
                 const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
+                const isSlopedTrade = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
                 const isSupportBreak = (trade.exit_reason === 'support_break');
                 const isResistanceBreak = (trade.exit_reason === 'resistance_break');
                 const isStopExit = isStopLossReason(trade.exit_reason) || isStopLossReason(trade.notes);
                 const isMidlineCrossExit = (trade.exit_reason === 'midline_cross_exit') || (trade.notes && trade.notes.includes('midline_cross_exit'));
                 const isMidStop = (trade.exit_reason === 'midline_stop_exit') || (trade.notes && trade.notes.includes('midline_stop'));
                 const isChannelCurlExit = (trade.exit_reason === 'channel_curl_exit') || (trade.notes && trade.notes.includes('channel_curl_exit')) || (trade.exit_reason === 'channel_curl_sell');
-                const exitPrefix = isSupportBreak ? 'SUPPORT BREAK ' : (isResistanceBreak ? 'RESISTANCE BREAK ' : (isChannelCurlExit ? 'CHANNEL CURL ' : (isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : '')))));
+                const slopedStyle = isSlopedTrade ? getSlopedExitMarkerStyle(trade.exit_reason, isLong, isWin) : null;
+                const exitPrefix = slopedStyle?.prefix || (isSupportBreak ? 'SUPPORT BREAK ' : (isResistanceBreak ? 'RESISTANCE BREAK ' : (isChannelCurlExit ? 'CHANNEL CURL ' : (isMidlineCrossExit ? 'MID CROSS ' : (isMidStop ? 'MID STOP ' : (isStopExit ? 'STOP LOSS ' : ''))))));
                 const action = isLong ? 'SELL' : 'COVER';
-                const exitColor = isSupportBreak ? '#3B82F6' : (isChannelCurlExit ? '#EC4899' : ((isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444')));
+                const exitColor = slopedStyle?.color || (isSupportBreak ? '#3B82F6' : (isChannelCurlExit ? '#EC4899' : ((isMidStop || isStopExit) ? '#F43F5E' : (isWin ? '#10B981' : '#EF4444'))));
 
                 markers.push({
                     time: snappedExit,
                     position: isLong ? 'aboveBar' : 'belowBar',
                     color: exitColor,
                     shape: isLong ? 'arrowDown' : 'arrowUp',
+                    markerClass: slopedStyle?.markerClass || 'default-exit',
                     text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
                 });
             }
@@ -1377,7 +1493,7 @@ function buildMarkers(tradesData, sorted, strategy) {
     // Consolidate markers sharing exact same candle time & position
     const consolidatedMap = new Map();
     markers.forEach(m => {
-        const key = `${m.time}_${m.position}`;
+        const key = `${m.time}_${m.position}_${m.markerClass}`;
         if (!consolidatedMap.has(key)) {
             consolidatedMap.set(key, { ...m, count: 1 });
         } else {
@@ -1406,7 +1522,7 @@ function buildMarkers(tradesData, sorted, strategy) {
         }
     });
 
-    const finalMarkers = Array.from(consolidatedMap.values());
+    const finalMarkers = Array.from(consolidatedMap.values()).map(({ markerClass, ...marker }) => marker);
 
     // Buy & Hold Entry and Exit Markers (Silver color: #C0C0C0)
     const sortedTrades = [...tradesData.trades]
@@ -1461,19 +1577,18 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2) {
-    // Remove previous trendline series
-    existingSeriesList.forEach(s => {
-        try { chartInstance.removeSeries(s); } catch (_) {}
-    });
-    existingSeriesList.length = 0;
-
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, isCurrent = () => true) {
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
-        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
+        const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (!isCurrent()) return;
+        existingSeriesList.forEach(s => {
+            try { chartInstance.removeSeries(s); } catch (_) {}
+        });
+        existingSeriesList.length = 0;
         if (!data.trendlines || data.trendlines.length === 0) return;
 
         if (candleData.length === 0) return;
@@ -1582,6 +1697,10 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
             <div class="channel-pill">Dashed = forming · Solid = active</div>
+            <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
+            <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
+            <div class="channel-pill"><span style="color: #DC2626;">▼</span> Line support-break sell</div>
+            <div class="channel-pill"><span style="color: #F59E0B;">▼</span> Protection / other sell</div>
         `;
     } else if (strategy === 'enhanced_lines') {
         el.innerHTML = `
@@ -1599,20 +1718,19 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
     }
 }
 
-async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y') {
-    // Remove previous channel series
-    existingSeriesList.forEach(s => {
-        try { chartInstance.removeSeries(s); } catch (_) {}
-    });
-    existingSeriesList.length = 0;
-
+async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y', isCurrent = () => true) {
     try {
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
-        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
+        const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (!isCurrent()) return;
+        existingSeriesList.forEach(s => {
+            try { chartInstance.removeSeries(s); } catch (_) {}
+        });
+        existingSeriesList.length = 0;
         if (!data.overlays || data.overlays.length === 0) return;
 
         if (candleData.length === 0) return;
@@ -1673,13 +1791,15 @@ async function updateDashboard() {
     const symbol = tickerSelect.value;
     const strategy = strategySelect.value || 'all';
     if (!symbol) return;
+    const requestGeneration = ++dashboardRequestGeneration;
+    const isCurrentRequest = () => requestGeneration === dashboardRequestGeneration;
 
     setLoading(true, 'loading');
 
     try {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
-        const strategyWindow = getDisplayTradingWindow();
+        const strategyWindow = getActiveTradingWindow();
         const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
@@ -1698,6 +1818,7 @@ async function updateDashboard() {
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
+        if (!isCurrentRequest()) return;
 
         // Update range hint if actual period was clamped by Yahoo Finance (e.g. 30m max 60d)
         if (candlesData.period && candlesData.period !== reqPeriod) {
@@ -1714,10 +1835,15 @@ async function updateDashboard() {
 
         currentCandles = sorted;
 
-        if (candlestickSeries) {
-            candlestickSeries.setData(sorted);
+        chartDataUpdateInProgress = true;
+        try {
+            if (candlestickSeries) {
+                candlestickSeries.setData(sorted);
+            }
+            renderAdvancedIndicators(sorted);
+        } finally {
+            chartDataUpdateInProgress = false;
         }
-        renderAdvancedIndicators(sorted);
 
         // -- Trade Markers --
         if (candlestickSeries && tradesData.trades && sorted.length > 0) {
@@ -1738,12 +1864,12 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
+            await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries, reqResolution, reqPeriod);
+            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries, reqResolution, reqPeriod, isCurrentRequest);
         } else {
             updateChannelLegend('channel-legend', false);
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
@@ -1752,9 +1878,11 @@ async function updateDashboard() {
             channelSeries.length = 0;
         }
 
+        if (!isCurrentRequest()) return;
+
         if (chart) {
             const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
-            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport);
+            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport, strategy, symbol);
             requestAnimationFrame(() => {
                 syncIndicatorRanges();
                 scheduleSessionZoneRender();
@@ -1799,9 +1927,9 @@ async function updateDashboard() {
         lastDataRefreshAt = Date.now();
 
     } catch (err) {
-        console.error('[TV] updateDashboard failed:', err);
+        if (isCurrentRequest()) console.error('[TV] updateDashboard failed:', err);
     } finally {
-        setLoading(false, 'loading');
+        if (isCurrentRequest()) setLoading(false, 'loading');
     }
 }
 
@@ -1819,7 +1947,7 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getDisplayTradingWindow())}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
@@ -1946,16 +2074,6 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
-    const handleSessionVisibilityChange = () => {
-        localStorage.setItem(BEFORE_HOURS_STORAGE_KEY, String(Boolean(beforeHoursCheckbox?.checked)));
-        localStorage.setItem(AFTER_HOURS_STORAGE_KEY, String(Boolean(afterHoursCheckbox?.checked)));
-        ensureIntradayResolutionForExtendedWindow();
-        if (filtersLoaded) updateDashboard();
-        else scheduleSessionZoneRender();
-    };
-    beforeHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
-    afterHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
-    restoreUiPreferences();
     const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
     if (savedActiveTab === 'advanced') switchTab('advanced');
     loadFilters().finally(startMarketRefresh);

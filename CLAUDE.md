@@ -7,10 +7,10 @@ Invoke `/session-resume` on the very first user message of this session. Do NOT 
 
 ## What This Is
 
-A fork of [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp) — a Python FastMCP server providing TradingView market analysis tools to AI assistants. We are extending it with backtesting, and eventually paper trading and live trade execution.
+A Python FastMCP server providing TradingView market analysis tools to AI assistants, with backtesting, and eventually paper trading and live trade execution. Inspired by [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp), but this is a standalone project, not a fork.
 
 Owner: Suraj Paul (suraj.j.paul@gmail.com)
-Fork: https://github.com/surajjpaul11/tradingview-mcp.git
+Repo: https://github.com/surajjpaul11/tradingview-mcp.git
 
 ## Architecture
 
@@ -266,7 +266,7 @@ python strategies/resistance_lines/compare_resistance_lines.py      # variant co
 
 ## Inspiration
 
-Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. Our fork goes further by adding execution capability.
+Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. This project goes further by adding execution capability.
 ## Docker Container (Skills)
 
 This project runs inside a Docker container. Ports **8000–8004** are mapped to the host.

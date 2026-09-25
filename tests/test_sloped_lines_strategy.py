@@ -6,10 +6,19 @@ STRATEGY_DIR = Path(__file__).resolve().parents[1] / "strategies" / "sloped_line
 if str(STRATEGY_DIR) not in sys.path:
     sys.path.insert(0, str(STRATEGY_DIR))
 
-from sloped_lines_strategy import build_ascending_support, build_descending_resistance
+from sloped_lines_strategy import (
+    _entry_barrier_exit_reason,
+    build_ascending_support,
+    build_descending_resistance,
+)
 
 
 class StrictTrendlineValidationTests(unittest.TestCase):
+    def test_pre_line_protection_exit_is_not_labeled_as_a_slope_break(self):
+        self.assertEqual(_entry_barrier_exit_reason("exit_peak_reclaim"), "entry_barrier_break")
+        self.assertEqual(_entry_barrier_exit_reason("barrier_trap_reentry"), "entry_barrier_break")
+        self.assertEqual(_entry_barrier_exit_reason("atr_stop_buffer"), "atr_stop_buffer")
+
     def test_resistance_rejects_candle_body_crossing(self):
         candles = [
             {"open": 110, "high": 111, "low": 109, "close": 110},

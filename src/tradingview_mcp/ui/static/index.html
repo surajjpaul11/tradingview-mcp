@@ -42,10 +42,11 @@
                     <label for="trading-window-select">Trading Window</label>
                     <div class="custom-select">
                         <select id="trading-window-select">
-                            <option value="regular market" selected>Regular market</option>
-                            <option value="pre-market">Pre-market + regular</option>
-                            <option value="after hours">Regular + after hours</option>
-                            <option value="overnight">All sessions / overnight</option>
+                            <option value="regular market" selected>Regular market (9:30 AM–4:00 PM)</option>
+                            <option value="pre-market">Pre-market + regular (4:00 AM–4:00 PM)</option>
+                            <option value="after hours">Regular + after hours (9:30 AM–8:00 PM)</option>
+                            <option value="extended hours">Extended session (4:00 AM–8:00 PM)</option>
+                            <option value="overnight">All sessions / overnight (12:00 AM–11:59 PM)</option>
                         </select>
                     </div>
                 </div>
@@ -246,16 +247,6 @@
                         <input type="checkbox" id="rsi-indicator-checkbox" checked>
                         <span>RSI (14)</span>
                     </label>
-                    <span class="indicator-controls-label session-controls-label">SESSIONS</span>
-                    <label class="indicator-toggle before-hours-toggle" for="before-hours-checkbox">
-                        <input type="checkbox" id="before-hours-checkbox" checked>
-                        <span>Before Hours</span>
-                    </label>
-                    <label class="indicator-toggle after-hours-toggle" for="after-hours-checkbox">
-                        <input type="checkbox" id="after-hours-checkbox" checked>
-                        <span>After Hours</span>
-                    </label>
-                    <span class="session-calculation-note">Checked sessions affect signals, trades, and returns.</span>
                 </div>
             </div>
 
@@ -345,6 +336,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=49"></script>
+    <script src="/static/app.js?v=53"></script>
 </body>
 </html>

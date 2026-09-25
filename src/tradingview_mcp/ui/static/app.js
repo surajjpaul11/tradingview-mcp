@@ -73,6 +73,81 @@ const marketChartOptions = {
     },
 };
 
+const VIEWPORT_CANDLES_BY_RESOLUTION = {
+    '30m': 120,
+    '1h': 120,
+    '4h': 110,
+    '12h': 100,
+    '1d': 180,
+    '5d': 160,
+};
+
+const VIEWPORT_CANDLES_BY_RANGE = {
+    '3mo': 90,
+    '1y': 140,
+    '5y': 180,
+    'max': 220,
+};
+
+function visibleCandleTarget(resolution, range) {
+    const resolutionTarget = VIEWPORT_CANDLES_BY_RESOLUTION[resolution] || 120;
+    const rangeTarget = VIEWPORT_CANDLES_BY_RANGE[range] || 140;
+    return Math.min(resolutionTarget, rangeTarget);
+}
+
+function firstBuyCandleIndex(candles, tradesData) {
+    const entryTimes = (tradesData?.trades || [])
+        .filter(trade => ['buy', 'long'].includes(String(trade.side || '').toLowerCase()))
+        .map(trade => toChartTime(trade.created_at))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+    if (!entryTimes.length) return -1;
+    const firstBuyTime = entryTimes[0];
+    let nearestIndex = 0;
+    let nearestDistance = Math.abs(candles[0].time - firstBuyTime);
+    for (let index = 1; index < candles.length; index += 1) {
+        const distance = Math.abs(candles[index].time - firstBuyTime);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = index;
+        }
+    }
+    return nearestIndex;
+}
+
+function applyInitialChartViewport(targetChart, candles, tradesData, resolution, range) {
+    if (!targetChart || !candles?.length) return null;
+    const target = Math.max(20, visibleCandleTarget(resolution, range));
+    const buyIndex = firstBuyCandleIndex(candles, tradesData);
+    const startIndex = buyIndex >= 0
+        ? Math.max(0, buyIndex - 2)
+        : Math.max(0, candles.length - target);
+    const endIndex = Math.min(candles.length - 1, startIndex + target - 1);
+    const logicalRange = { from: startIndex - 0.5, to: endIndex + 0.5 };
+    targetChart.timeScale().setVisibleLogicalRange(logicalRange);
+    return { startIndex, endIndex, buyIndex, target };
+}
+
+function recordChartRenderState(candles, tradesData, resolution, range, viewport) {
+    const container = document.getElementById('tv-chart');
+    if (!container) return;
+    container.dataset.renderStatus = candles.length ? 'ready' : 'empty';
+    container.dataset.candleCount = String(candles.length);
+    container.dataset.resolution = resolution;
+    container.dataset.timeframe = range;
+    container.dataset.firstBuyIndex = String(viewport?.buyIndex ?? -1);
+    container.dataset.visibleStartIndex = String(viewport?.startIndex ?? -1);
+    container.dataset.visibleEndIndex = String(viewport?.endIndex ?? -1);
+}
+
+function refreshMainChartLayout() {
+    const container = document.getElementById('tv-chart');
+    if (!container || !chart) return;
+    const width = container.clientWidth || 800;
+    const height = container.clientHeight || 500;
+    if (width > 50 && height > 50) chart.applyOptions({ width, height });
+}
+
 function getSelectedTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
@@ -496,13 +571,8 @@ function switchTab(tab) {
     document.getElementById('panel-regular')?.classList.add('active');
     updateIndicatorVisibility();
 
-    const container = document.getElementById('tv-chart');
-    if (container && chart) {
-        chart.applyOptions({
-            width: container.clientWidth || 800,
-            height: container.clientHeight || 500,
-        });
-    }
+    refreshMainChartLayout();
+    requestAnimationFrame(() => requestAnimationFrame(refreshMainChartLayout));
     scheduleSessionZoneRender();
     if (filtersLoaded) {
         ensureIntradayResolutionForExtendedWindow();
@@ -736,6 +806,8 @@ function renderAdvancedIndicators(candles) {
         const latestVolume = volumeData.at(-1)?.value;
         const value = document.getElementById('volume-indicator-value');
         if (value) value.textContent = latestVolume == null ? '—' : Intl.NumberFormat(undefined, { notation: 'compact' }).format(latestVolume);
+        const volumeContainer = document.getElementById('volume-chart');
+        if (volumeContainer) volumeContainer.dataset.pointCount = String(volumeData.length);
     }
 
     const rsiData = calculateRSI(candles);
@@ -749,6 +821,8 @@ function renderAdvancedIndicators(candles) {
     }
     const rsiValue = document.getElementById('rsi-indicator-value');
     if (rsiValue) rsiValue.textContent = rsiData.length ? rsiData[rsiData.length - 1].value.toFixed(2) : '—';
+    const rsiContainer = document.getElementById('rsi-chart');
+    if (rsiContainer) rsiContainer.dataset.pointCount = String(rsiData.length);
     requestAnimationFrame(() => {
         syncIndicatorRanges();
         scheduleSessionZoneRender();
@@ -766,6 +840,7 @@ function updateIndicatorVisibility() {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
             syncIndicatorRanges();
+            refreshMainChartLayout();
         });
     }
 }
@@ -1678,10 +1753,12 @@ async function updateDashboard() {
         }
 
         if (chart) {
-            chart.timeScale().fitContent();
+            const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
+            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport);
             requestAnimationFrame(() => {
                 syncIndicatorRanges();
                 scheduleSessionZoneRender();
+                refreshMainChartLayout();
                 setTimeout(scheduleSessionZoneRender, 250);
             });
         }

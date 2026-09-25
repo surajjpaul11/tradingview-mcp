@@ -1,0 +1,43 @@
+{
+  "about": "Running bug log. One object per bug; keep fixed bugs for reference. List open bugs: jq '.bugs[] | select(.fixed == false) | {id, title}' bugs_to_fix.json",
+  "bugs": [
+    {
+      "id": "BUG-001",
+      "title": "Chart throws \"Value is null\" when reloading after a strategy switch",
+      "fixed": true,
+      "found": "2026-09-25",
+      "branch": "claude",
+      "found_by": "Strengthened dashboard browser test (tests/dashboard_ui_smoke.mjs) failed with 'Browser errors: Value is null'.",
+      "where": [
+        "src/tradingview_mcp/ui/static/app.js → updateDashboard()",
+        "Thrown inside Lightweight Charts v4.1.3 (static/lightweight-charts.standalone.production.js)"
+      ],
+      "symptom": "Browser console logged 'Uncaught Error: Value is null' one to three times. The chart still ended up drawn correctly, so users couldn't see it. It failed the browser test, which treats any browser error as a failure.",
+      "reproduce": [
+        "Start the dashboard: ./start.command (or uv run python src/tradingview_mcp/ui/server.py).",
+        "Open it in Chrome with DevTools → Console open.",
+        "Click the Advanced tab. Pick resolution 12H and range 5Y.",
+        "Change the strategy dropdown to Bollinger, then back to Sloped Lines (this loads saved best parameters and resets the chart to 1D / 1Y).",
+        "Trigger any reload of the chart: click range 5Y, or the Regular tab.",
+        "'Value is null' appears in the console shortly after the reload."
+      ],
+      "reproduce_automated": "npm run test:ui — its final step (click 5Y right after switching back to Sloped Lines) is this sequence and now guards against regression. Waiting before the click did not avoid the bug; it is not a click-timing issue.",
+      "cause": "The main chart shares one time scale across the candles and every overlay line. updateDashboard() loaded the new candles first and removed the previous trendline/channel overlay series only later, after the new trendlines were fetched. Removing series after the swap shifted the shared time-scale positions under the new candles, so the library looked up bars at positions that no longer existed.",
+      "stack_traces": [
+        "Error: Value is null at ensureNotNull ← TimeScale._internal_timeRangeForLogicalRange ← TimeScaleApi.getVisibleRange ← TimeScaleApi._private__onVisibleBarsChanged (visible-time-range event)",
+        "Error: Value is null at ensureNotNull ← SeriesBarColorer.Candlestick ← SeriesCandlesticksPaneView._internal__createRawItem (drawing a candle)"
+      ],
+      "debug_tip": "For readable stack traces, temporarily replace the bundled library with https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.development.js",
+      "dead_ends": [
+        "Switching the listener from subscribeVisibleTimeRangeChange to subscribeVisibleLogicalRangeChange removed the first trace but not the second. Not needed once the real cause was fixed; reverted.",
+        "Waiting (animation frames + 500 ms, up to 3 s) before the next click did not avoid the error."
+      ],
+      "fix": "In updateDashboard(), remove the old trendline and channel overlay series before candlestickSeries.setData(...). New overlays are still added after the new candles. Side effect: during a reload the old lines vanish right away instead of staying until the new ones arrive.",
+      "verified": "npm run test:ui passed 3/3 runs; 38/38 Python tests pass. On the Advanced tab, dragging and zooming the main chart still keeps the volume and RSI panels aligned (Playwright check, no browser errors).",
+      "fixed_in": {
+        "commit": "6806d65",
+        "date": "2026-09-25"
+      }
+    }
+  ]
+}

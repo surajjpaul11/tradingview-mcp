@@ -1847,7 +1847,7 @@ async function updateDashboard() {
         chartDataUpdateInProgress = true;
         try {
             // Drop old overlays before swapping candles: removing them afterwards shifts the shared
-            // time scale under the new candles and the library throws "Value is null" (BUG-001).
+            // time scale under the new candles and the library throws "Value is null" (BUG-001 in bugs_to_fix.json).
             if (chart) {
                 trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
                 trendlineSeries.length = 0;

@@ -288,7 +288,12 @@ Both servers pick the first free port starting at `--port` / `$PORT` (default 80
 
 ## Bug Log
 
-`BUGS_TO_FIX.md` is the running log of bugs: symptom, how to reproduce, confirmed cause, and fix (with commit). Add an entry whenever a bug is noticed, and update it when fixed — keep fixed entries for future reference.
+`bugs_to_fix.json` is the running log of bugs: symptom, how to reproduce, confirmed cause, and fix (with commit). Add an entry to `.bugs` whenever a bug is noticed (`"fixed": false`, next `BUG-NNN` id); when fixed, set `"fixed": true` and fill `fix`, `verified`, `fixed_in`. Keep fixed entries for future reference.
+
+Don't read the whole file — filter with `jq`:
+- Open bugs: `jq '.bugs[] | select(.fixed == false) | {id, title}' bugs_to_fix.json`
+- Fixed bugs: `jq '.bugs[] | select(.fixed) | {id, title, fixed_in}' bugs_to_fix.json`
+- One bug in full: `jq '.bugs[] | select(.id == "BUG-001")' bugs_to_fix.json`
 
 ## Git in Cowork Sessions
 

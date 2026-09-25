@@ -27,19 +27,161 @@ const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
+const beforeHoursCheckbox = document.getElementById('before-hours-checkbox');
+const afterHoursCheckbox = document.getElementById('after-hours-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
 const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
 const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
 let lastDataRefreshAt = 0;
 let marketStatusTimer = null;
 let autoRefreshInFlight = false;
+let filtersLoaded = false;
+const ACTIVE_TAB_STORAGE_KEY = 'trade-visualizer-active-tab';
+const BEFORE_HOURS_STORAGE_KEY = 'trade-visualizer-before-hours';
+const AFTER_HOURS_STORAGE_KEY = 'trade-visualizer-after-hours';
+const MARKET_TIME_ZONE = 'America/New_York';
+
+function chartTimeToDate(time) {
+    if (typeof time === 'number') return new Date(time * 1000);
+    if (typeof time === 'string') return new Date(`${time}T12:00:00Z`);
+    if (time && typeof time === 'object') {
+        return new Date(Date.UTC(time.year, time.month - 1, time.day, 12));
+    }
+    return null;
+}
+
+function formatMarketChartTime(time, includeDate = true, includeZone = false) {
+    const date = chartTimeToDate(time);
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: MARKET_TIME_ZONE,
+        ...(includeDate ? { month: 'short', day: 'numeric' } : {}),
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        ...(includeZone ? { timeZoneName: 'short' } : {}),
+    }).format(date);
+}
+
+const marketChartOptions = {
+    localization: {
+        locale: 'en-US',
+        timeFormatter: time => formatMarketChartTime(time, true, true),
+    },
+    timeScale: {
+        tickMarkFormatter: time => formatMarketChartTime(time, true),
+    },
+};
+
+const VIEWPORT_CANDLES_BY_RESOLUTION = {
+    '30m': 120,
+    '1h': 120,
+    '4h': 110,
+    '12h': 100,
+    '1d': 180,
+    '5d': 160,
+};
+
+const VIEWPORT_CANDLES_BY_RANGE = {
+    '3mo': 90,
+    '1y': 140,
+    '5y': 180,
+    'max': 220,
+};
+
+function visibleCandleTarget(resolution, range) {
+    const resolutionTarget = VIEWPORT_CANDLES_BY_RESOLUTION[resolution] || 120;
+    const rangeTarget = VIEWPORT_CANDLES_BY_RANGE[range] || 140;
+    return Math.min(resolutionTarget, rangeTarget);
+}
+
+function firstBuyCandleIndex(candles, tradesData) {
+    const entryTimes = (tradesData?.trades || [])
+        .filter(trade => ['buy', 'long'].includes(String(trade.side || '').toLowerCase()))
+        .map(trade => toChartTime(trade.created_at))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+    if (!entryTimes.length) return -1;
+    const firstBuyTime = entryTimes[0];
+    let nearestIndex = 0;
+    let nearestDistance = Math.abs(candles[0].time - firstBuyTime);
+    for (let index = 1; index < candles.length; index += 1) {
+        const distance = Math.abs(candles[index].time - firstBuyTime);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = index;
+        }
+    }
+    return nearestIndex;
+}
+
+function applyInitialChartViewport(targetChart, candles, tradesData, resolution, range) {
+    if (!targetChart || !candles?.length) return null;
+    const target = Math.max(20, visibleCandleTarget(resolution, range));
+    const buyIndex = firstBuyCandleIndex(candles, tradesData);
+    const startIndex = buyIndex >= 0
+        ? Math.max(0, buyIndex - 2)
+        : Math.max(0, candles.length - target);
+    const endIndex = Math.min(candles.length - 1, startIndex + target - 1);
+    const logicalRange = { from: startIndex - 0.5, to: endIndex + 0.5 };
+    targetChart.timeScale().setVisibleLogicalRange(logicalRange);
+    return { startIndex, endIndex, buyIndex, target };
+}
+
+function recordChartRenderState(candles, tradesData, resolution, range, viewport) {
+    const container = document.getElementById('tv-chart');
+    if (!container) return;
+    container.dataset.renderStatus = candles.length ? 'ready' : 'empty';
+    container.dataset.candleCount = String(candles.length);
+    container.dataset.resolution = resolution;
+    container.dataset.timeframe = range;
+    container.dataset.firstBuyIndex = String(viewport?.buyIndex ?? -1);
+    container.dataset.visibleStartIndex = String(viewport?.startIndex ?? -1);
+    container.dataset.visibleEndIndex = String(viewport?.endIndex ?? -1);
+}
+
+function refreshMainChartLayout() {
+    const container = document.getElementById('tv-chart');
+    if (!container || !chart) return;
+    const width = container.clientWidth || 800;
+    const height = container.clientHeight || 500;
+    if (width > 50 && height > 50) chart.applyOptions({ width, height });
+}
 
 function getSelectedTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
 
+function getDisplayTradingWindow() {
+    if (activeTab !== 'advanced') return getSelectedTradingWindow();
+    const beforeHours = Boolean(beforeHoursCheckbox?.checked);
+    const afterHours = Boolean(afterHoursCheckbox?.checked);
+    if (beforeHours && afterHours) return 'extended hours';
+    if (beforeHours) return 'pre-market';
+    if (afterHours) return 'after hours';
+    return 'regular market';
+}
+
+function filterCandlesForVisibleSessions(candles) {
+    if (activeTab !== 'advanced') return candles;
+    return candles.filter(candle => {
+        const session = sessionLabelForCandle(candle);
+        if (session === 'regular market') return true;
+        if (session === 'pre-market') return Boolean(beforeHoursCheckbox?.checked);
+        if (session === 'after hours') return Boolean(afterHoursCheckbox?.checked);
+        return false;
+    });
+}
+
+function restoreUiPreferences() {
+    const savedBeforeHours = localStorage.getItem(BEFORE_HOURS_STORAGE_KEY);
+    const savedAfterHours = localStorage.getItem(AFTER_HOURS_STORAGE_KEY);
+    if (beforeHoursCheckbox && savedBeforeHours !== null) beforeHoursCheckbox.checked = savedBeforeHours === 'true';
+    if (afterHoursCheckbox && savedAfterHours !== null) afterHoursCheckbox.checked = savedAfterHours === 'true';
+}
+
 function ensureIntradayResolutionForExtendedWindow() {
-    const extended = getSelectedTradingWindow() !== 'regular market';
+    const extended = getDisplayTradingWindow() !== 'regular market';
     if (!extended) return;
     if (!['30m', '1h', '4h', '12h'].includes(activeResolution)) {
         activeResolution = '30m';
@@ -294,6 +436,8 @@ let rsiSeries = null;
 let rsiUpperGuide = null;
 let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
+let currentCandles = [];
+let sessionZoneFrame = null;
 
 // ----- Chart Globals (Advanced Tab) -----
 let advChart = null;
@@ -304,6 +448,101 @@ let advTrendlineSeries = [];
 
 // ----- Tab State -----
 let activeTab = 'regular';
+
+function sessionLabelForCandle(candle) {
+    if (candle?.session) return candle.session;
+    if (!candle?.time) return 'regular market';
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(candle.time * 1000));
+    const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+    const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+    const clock = (hour * 60) + minute;
+    if (clock >= 240 && clock < 570) return 'pre-market';
+    if (clock >= 570 && clock < 960) return 'regular market';
+    if (clock >= 960 && clock < 1200) return 'after hours';
+    return 'overnight';
+}
+
+function ensureSessionZoneLayer(container) {
+    if (!container) return null;
+    let layer = container.querySelector(':scope > .session-zone-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.className = 'session-zone-layer';
+        container.appendChild(layer);
+    }
+    return layer;
+}
+
+function renderSessionZones(targetChart, containerId, candles) {
+    const container = document.getElementById(containerId);
+    const layer = ensureSessionZoneLayer(container);
+    if (!layer) return 0;
+    layer.replaceChildren();
+    if (!targetChart || !candles?.length || !['30m', '1h', '4h', '12h'].includes(activeResolution)) return 0;
+
+    const points = candles.map(candle => ({
+        candle,
+        session: sessionLabelForCandle(candle),
+        x: targetChart.timeScale().timeToCoordinate(candle.time),
+    }));
+    const groups = [];
+    for (let index = 0; index < points.length; index += 1) {
+        const point = points[index];
+        if (point.session === 'regular market' || point.x == null) continue;
+        if (point.session === 'pre-market' && !beforeHoursCheckbox?.checked) continue;
+        if (point.session === 'after hours' && !afterHoursCheckbox?.checked) continue;
+        const previous = groups.at(-1);
+        if (previous && previous.session === point.session && previous.end === index - 1) {
+            previous.end = index;
+        } else {
+            groups.push({ session: point.session, start: index, end: index });
+        }
+    }
+
+    const containerWidth = container.clientWidth;
+    groups.forEach(group => {
+        const first = points[group.start];
+        const last = points[group.end];
+        const previousX = points[group.start - 1]?.x;
+        const nextX = points[group.end + 1]?.x;
+        const fallbackStep = Math.max(2, Math.abs((nextX ?? last.x + 8) - (previousX ?? first.x - 8)) / Math.max(2, group.end - group.start + 2));
+        const left = previousX == null ? first.x - fallbackStep / 2 : (previousX + first.x) / 2;
+        const right = nextX == null ? last.x + fallbackStep / 2 : (last.x + nextX) / 2;
+        const clippedLeft = Math.max(0, left);
+        const clippedRight = Math.min(containerWidth, right);
+        if (clippedRight <= clippedLeft) return;
+        const zone = document.createElement('div');
+        zone.className = `session-zone ${group.session.replace(' ', '-')}`;
+        zone.style.left = `${clippedLeft}px`;
+        zone.style.width = `${clippedRight - clippedLeft}px`;
+        zone.title = group.session;
+        layer.appendChild(zone);
+    });
+    return layer.childElementCount;
+}
+
+function renderAllSessionZones() {
+    sessionZoneFrame = null;
+    const zoneCount = renderSessionZones(chart, 'tv-chart', currentCandles);
+    if (volumeChart) renderSessionZones(volumeChart, 'volume-chart', currentCandles);
+    if (rsiChart) renderSessionZones(rsiChart, 'rsi-chart', currentCandles);
+    const legend = document.getElementById('session-zone-legend');
+    if (legend) {
+        const visibleSessions = new Set(currentCandles.map(sessionLabelForCandle));
+        const preMarketItem = legend.querySelector('.session-swatch.pre-market')?.parentElement;
+        const afterHoursItem = legend.querySelector('.session-swatch.after-hours')?.parentElement;
+        if (preMarketItem) preMarketItem.hidden = !beforeHoursCheckbox?.checked || !visibleSessions.has('pre-market');
+        if (afterHoursItem) afterHoursItem.hidden = !afterHoursCheckbox?.checked || !visibleSessions.has('after hours');
+        legend.hidden = zoneCount === 0;
+    }
+}
+
+function scheduleSessionZoneRender() {
+    if (sessionZoneFrame != null) cancelAnimationFrame(sessionZoneFrame);
+    sessionZoneFrame = requestAnimationFrame(renderAllSessionZones);
+}
 
 // ============================================================
 // TAB SWITCHING
@@ -320,6 +559,7 @@ function initTabs() {
 
 function switchTab(tab) {
     activeTab = tab;
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab);
 
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -331,12 +571,12 @@ function switchTab(tab) {
     document.getElementById('panel-regular')?.classList.add('active');
     updateIndicatorVisibility();
 
-    const container = document.getElementById('tv-chart');
-    if (container && chart) {
-        chart.applyOptions({
-            width: container.clientWidth || 800,
-            height: container.clientHeight || 500,
-        });
+    refreshMainChartLayout();
+    requestAnimationFrame(() => requestAnimationFrame(refreshMainChartLayout));
+    scheduleSessionZoneRender();
+    if (filtersLoaded) {
+        ensureIntradayResolutionForExtendedWindow();
+        updateDashboard();
     }
 }
 
@@ -354,6 +594,7 @@ function initChart() {
     container.innerHTML = '';
 
     chart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height: container.clientHeight || 500,
         layout: {
@@ -365,6 +606,7 @@ function initChart() {
             horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -403,11 +645,13 @@ function initChart() {
             const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
             if (width > 50 && height > 50) {
                 chart.applyOptions({ width, height });
+                scheduleSessionZoneRender();
             }
         }
     }).observe(container);
 
     chart.timeScale().subscribeVisibleTimeRangeChange(range => {
+        scheduleSessionZoneRender();
         if (!range || activeTab !== 'advanced') return;
         if (volumeChart && volumeIndicatorCheckbox?.checked) {
             volumeChart.timeScale().setVisibleRange(range);
@@ -420,6 +664,7 @@ function initChart() {
 
 function createIndicatorChart(container, height) {
     const indicatorChart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height,
         layout: {
@@ -431,6 +676,7 @@ function createIndicatorChart(container, height) {
             horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -450,7 +696,10 @@ function createIndicatorChart(container, height) {
 
     new ResizeObserver(entries => {
         const width = container.clientWidth || entries[0]?.contentRect?.width || 800;
-        if (width > 50) indicatorChart.applyOptions({ width, height });
+        if (width > 50) {
+            indicatorChart.applyOptions({ width, height });
+            scheduleSessionZoneRender();
+        }
     }).observe(container);
     return indicatorChart;
 }
@@ -557,6 +806,8 @@ function renderAdvancedIndicators(candles) {
         const latestVolume = volumeData.at(-1)?.value;
         const value = document.getElementById('volume-indicator-value');
         if (value) value.textContent = latestVolume == null ? '—' : Intl.NumberFormat(undefined, { notation: 'compact' }).format(latestVolume);
+        const volumeContainer = document.getElementById('volume-chart');
+        if (volumeContainer) volumeContainer.dataset.pointCount = String(volumeData.length);
     }
 
     const rsiData = calculateRSI(candles);
@@ -570,7 +821,12 @@ function renderAdvancedIndicators(candles) {
     }
     const rsiValue = document.getElementById('rsi-indicator-value');
     if (rsiValue) rsiValue.textContent = rsiData.length ? rsiData[rsiData.length - 1].value.toFixed(2) : '—';
-    requestAnimationFrame(syncIndicatorRanges);
+    const rsiContainer = document.getElementById('rsi-chart');
+    if (rsiContainer) rsiContainer.dataset.pointCount = String(rsiData.length);
+    requestAnimationFrame(() => {
+        syncIndicatorRanges();
+        scheduleSessionZoneRender();
+    });
 }
 
 function updateIndicatorVisibility() {
@@ -584,6 +840,7 @@ function updateIndicatorVisibility() {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
             syncIndicatorRanges();
+            refreshMainChartLayout();
         });
     }
 }
@@ -598,6 +855,7 @@ function initAdvChart() {
     container.innerHTML = '';
 
     advChart = LightweightCharts.createChart(container, {
+        ...marketChartOptions,
         width: container.clientWidth || 800,
         height: container.clientHeight || 500,
         layout: {
@@ -609,6 +867,7 @@ function initAdvChart() {
             horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         timeScale: {
+            ...marketChartOptions.timeScale,
             borderColor: 'rgba(255, 255, 255, 0.1)',
             timeVisible: true,
             secondsVisible: false,
@@ -790,12 +1049,14 @@ async function loadFilters() {
         // Wire up change listeners — update both tabs
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
@@ -893,10 +1154,13 @@ async function loadFilters() {
             };
         }
         syncChannelMultVisibility(strategySelect.value);
+        filtersLoaded = true;
+        ensureIntradayResolutionForExtendedWindow();
 
         // Trigger initial data load with best parameters if combination exists
         if (data.symbols && data.symbols.length > 0) {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
+            ensureIntradayResolutionForExtendedWindow();
             await updateDashboard();
         }
 
@@ -1058,12 +1322,14 @@ function buildMarkers(tradesData, sorted, strategy) {
             const isLong = sideStr === 'buy' || sideStr === 'long';
             const stratPrefix = showStrategy ? `${trade.strategy} ` : '';
             const isSlopedBreakout = (trade.strategy === 'sloped_lines') || (strategy === 'sloped_lines');
+            const isExitPeakReclaim = trade.entry_reason === 'exit_peak_reclaim';
+            const isBarrierTrapReentry = trade.entry_reason === 'barrier_trap_reentry';
             const isMidlineCross = (trade.entry_reason === 'midline_cross') || (trade.notes && trade.notes.includes('midline_cross'));
             const isMidlineReclaim = (trade.entry_reason === 'midline_reclaim') || (trade.notes && trade.notes.includes('midline_reclaim'));
             const isChannelReclaim = (trade.entry_reason === 'channel_reclaim') || (trade.notes && trade.notes.includes('channel_reclaim'));
             const isChannelInflection = (trade.entry_reason === 'channel_inflection') || (trade.notes && trade.notes.includes('channel_inflection'));
             const isStopEntry = isStopLossReason(trade.entry_reason) || isStopLossReason(trade.notes);
-            const entryPrefix = isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))));
+            const entryPrefix = isExitPeakReclaim ? 'EXIT PEAK RECLAIM ' : (isBarrierTrapReentry ? 'BARRIER TRAP REENTRY ' : (isStopEntry ? 'STOP LOSS ' : (isMidlineCross ? 'MID CROSS ' : (isMidlineReclaim ? 'MID RECLAIM ' : (isChannelReclaim ? 'LOWER RECLAIM ' : (isChannelInflection ? 'CHANNEL CURL ' : (isSlopedBreakout ? 'BREAKOUT ' : '')))))));
             const entryColor = isMidlineCross ? '#0EA5E9' : (isMidlineReclaim ? '#3B82F6' : (isChannelReclaim ? '#06B6D4' : (isChannelInflection ? '#FACC15' : (isLong ? '#10B981' : '#F59E0B'))));
 
             // 1. Entry Marker
@@ -1204,7 +1470,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
-        const tradingWindow = encodeURIComponent(getSelectedTradingWindow());
+        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1246,29 +1512,49 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
             }
 
-            const seriesOptions = {
-                color: color,
-                lineWidth: 2,
-                lineStyle: lineStyle,
-                crosshairMarkerVisible: false,
-                lastValueVisible: false,
-                priceLineVisible: false,
-                title: tl.label || '',
+            const addTrendlineSeries = (dataPoints, style, width, title) => {
+                if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return;
+                const seriesOptions = {
+                    color,
+                    lineWidth: width,
+                    lineStyle: style,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    title,
+                };
+                let lineSeries;
+                if (typeof chartInstance.addLineSeries === 'function') {
+                    lineSeries = chartInstance.addLineSeries(seriesOptions);
+                } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
+                    lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
+                }
+                if (lineSeries) {
+                    lineSeries.setData(dataPoints);
+                    existingSeriesList.push(lineSeries);
+                }
             };
 
-            let lineSeries;
-            if (typeof chartInstance.addLineSeries === 'function') {
-                lineSeries = chartInstance.addLineSeries(seriesOptions);
-            } else if (typeof chartInstance.addSeries === 'function' && typeof LightweightCharts.LineSeries !== 'undefined') {
-                lineSeries = chartInstance.addSeries(LightweightCharts.LineSeries, seriesOptions);
-            }
-
-            if (lineSeries) {
-                lineSeries.setData([
+            const confirmationTime = tl.confirmation_time ? findNearestCandleTime(tl.confirmation_time, candleData) : null;
+            if (
+                strategy === 'sloped_lines'
+                && confirmationTime != null
+                && confirmationTime > snappedStart
+                && confirmationTime < snappedEnd
+            ) {
+                addTrendlineSeries([
+                    { time: snappedStart, value: tl.start_price },
+                    { time: confirmationTime, value: tl.confirmation_price },
+                ], 2, 1, `${tl.label || ''} (forming)`);
+                addTrendlineSeries([
+                    { time: confirmationTime, value: tl.confirmation_price },
+                    { time: snappedEnd, value: tl.end_price },
+                ], 0, 2, `${tl.label || ''} (active)`);
+            } else {
+                addTrendlineSeries([
                     { time: snappedStart, value: tl.start_price },
                     { time: snappedEnd, value: tl.end_price },
-                ]);
-                existingSeriesList.push(lineSeries);
+                ], lineStyle, 2, tl.label || '');
             }
         });
     } catch (err) {
@@ -1295,6 +1581,7 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
+            <div class="channel-pill">Dashed = forming · Solid = active</div>
         `;
     } else if (strategy === 'enhanced_lines') {
         el.innerHTML = `
@@ -1322,7 +1609,7 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
     try {
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
-        const tradingWindow = encodeURIComponent(getSelectedTradingWindow());
+        const tradingWindow = encodeURIComponent(getDisplayTradingWindow());
         const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1392,7 +1679,8 @@ async function updateDashboard() {
     try {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
-        const windowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
+        const strategyWindow = getDisplayTradingWindow();
+        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
@@ -1402,9 +1690,9 @@ async function updateDashboard() {
             : slopedParam;
 
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${windowParam}${multParam}`)
+            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`)
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
@@ -1418,7 +1706,7 @@ async function updateDashboard() {
         }
 
         // -- Candles --
-        const rawCandles = candlesData.candles || [];
+        const rawCandles = filterCandlesForVisibleSessions(candlesData.candles || []);
         const sorted = rawCandles
             .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
             .sort((a, b) => a.time - b.time)
@@ -1465,8 +1753,14 @@ async function updateDashboard() {
         }
 
         if (chart) {
-            chart.timeScale().fitContent();
-            requestAnimationFrame(syncIndicatorRanges);
+            const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
+            recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport);
+            requestAnimationFrame(() => {
+                syncIndicatorRanges();
+                scheduleSessionZoneRender();
+                refreshMainChartLayout();
+                setTimeout(scheduleSessionZoneRender, 250);
+            });
         }
 
         // -- Stats --
@@ -1525,7 +1819,7 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getSelectedTradingWindow())}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getDisplayTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
@@ -1542,7 +1836,7 @@ async function updateAdvDashboard() {
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
 
-        const rawCandles = candlesData.candles || [];
+        const rawCandles = filterCandlesForVisibleSessions(candlesData.candles || []);
         const sorted = rawCandles
             .filter(c => c && typeof c.time === 'number' && !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close))
             .sort((a, b) => a.time - b.time)
@@ -1652,5 +1946,17 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    const handleSessionVisibilityChange = () => {
+        localStorage.setItem(BEFORE_HOURS_STORAGE_KEY, String(Boolean(beforeHoursCheckbox?.checked)));
+        localStorage.setItem(AFTER_HOURS_STORAGE_KEY, String(Boolean(afterHoursCheckbox?.checked)));
+        ensureIntradayResolutionForExtendedWindow();
+        if (filtersLoaded) updateDashboard();
+        else scheduleSessionZoneRender();
+    };
+    beforeHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
+    afterHoursCheckbox?.addEventListener('change', handleSessionVisibilityChange);
+    restoreUiPreferences();
+    const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (savedActiveTab === 'advanced') switchTab('advanced');
     loadFilters().finally(startMarketRefresh);
 })();

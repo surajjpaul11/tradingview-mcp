@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=16">
+    <link rel="stylesheet" href="/static/style.css?v=17">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -246,6 +246,16 @@
                         <input type="checkbox" id="rsi-indicator-checkbox" checked>
                         <span>RSI (14)</span>
                     </label>
+                    <span class="indicator-controls-label session-controls-label">SESSIONS</span>
+                    <label class="indicator-toggle before-hours-toggle" for="before-hours-checkbox">
+                        <input type="checkbox" id="before-hours-checkbox" checked>
+                        <span>Before Hours</span>
+                    </label>
+                    <label class="indicator-toggle after-hours-toggle" for="after-hours-checkbox">
+                        <input type="checkbox" id="after-hours-checkbox" checked>
+                        <span>After Hours</span>
+                    </label>
+                    <span class="session-calculation-note">Checked sessions affect signals, trades, and returns.</span>
                 </div>
             </div>
 
@@ -253,8 +263,14 @@
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
                 <div class="tab-panel active" id="panel-regular">
+                    <div class="chart-workspace">
+                        <div class="chart-main-column">
                     <div class="chart-wrapper glass-panel">
                         <div id="channel-legend" class="channel-legend" style="display: none;"></div>
+                        <div id="session-zone-legend" class="session-zone-legend" hidden>
+                            <span><i class="session-swatch pre-market"></i>Before hours</span>
+                            <span><i class="session-swatch after-hours"></i>After hours</span>
+                        </div>
                         <div id="tv-chart" class="chart-container"></div>
                         <!-- Loading overlay -->
                         <div id="loading" class="loading-overlay">
@@ -279,9 +295,10 @@
                             <div id="rsi-chart" class="indicator-chart"></div>
                         </section>
                     </div>
+                        </div>
 
-                    <!-- Dual Resolution & Timeframe Bar -->
-                    <div class="timeframe-bar glass-panel dual-controls-bar">
+                    <!-- Persistent Resolution & Timeframe Rail -->
+                    <aside class="timeframe-bar glass-panel dual-controls-bar chart-control-rail">
                         <!-- Candle Resolution Group -->
                         <div class="control-section">
                             <div class="timeframe-info">
@@ -313,6 +330,7 @@
                                 <button class="tf-btn range-btn" data-range="max" id="btn-range-max">MAX</button>
                             </div>
                         </div>
+                    </aside>
                     </div>
                 </div>
 
@@ -327,6 +345,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=39"></script>
+    <script src="/static/app.js?v=49"></script>
 </body>
 </html>

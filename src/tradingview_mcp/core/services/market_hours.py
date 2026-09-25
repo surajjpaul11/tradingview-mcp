@@ -22,6 +22,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "regular market": {"start_time": "09:30", "end_time": "16:00"},
         "pre-market": {"start_time": "04:00", "end_time": "16:00"},
         "after hours": {"start_time": "09:30", "end_time": "20:00"},
+        "extended hours": {"start_time": "04:00", "end_time": "20:00"},
         "overnight": {"start_time": "00:00", "end_time": "24:00"},
     },
     "refresh_minutes": 30,
@@ -40,6 +41,9 @@ TRADING_WINDOW_ALIASES = {
     "afterhours": "after hours",
     "after_hours": "after hours",
     "after hours": "after hours",
+    "extended": "extended hours",
+    "extended_hours": "extended hours",
+    "extended hours": "extended hours",
     "overnight": "overnight",
 }
 
@@ -196,3 +200,20 @@ def timestamp_in_trading_window(
     local = current.astimezone(tz)
     opens_at, closes_at = _window_datetimes(local.date(), cfg, tz, selected_window)
     return opens_at <= local < closes_at
+
+
+def market_session_label(value: datetime, config: dict[str, Any] | None = None) -> str:
+    """Classify a timestamp into the US equity session shown on the chart."""
+    cfg = config or load_market_config()
+    tz = ZoneInfo(str(cfg["timezone"]))
+    current = value
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=tz)
+    clock = current.astimezone(tz).time().replace(tzinfo=None)
+    if time(4, 0) <= clock < time(9, 30):
+        return "pre-market"
+    if time(9, 30) <= clock < time(16, 0):
+        return "regular market"
+    if time(16, 0) <= clock < time(20, 0):
+        return "after hours"
+    return "overnight"

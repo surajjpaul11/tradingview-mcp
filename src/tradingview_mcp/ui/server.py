@@ -21,6 +21,7 @@ from tradingview_mcp.core.services.opportunity_service import DEFAULT_WATCHLIST,
 from tradingview_mcp.core.services.market_hours import (
     get_market_status,
     load_market_config,
+    market_session_label,
     market_config_path,
     normalize_trading_window,
     timestamp_in_trading_window,
@@ -35,6 +36,15 @@ _market_config_lock = threading.Lock()
 # Mount static directory directly
 static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+def _format_trade_candle_datetime(date_value, candles: list[dict], default_time: str) -> str:
+    """Return the exact UTC candle time for an intraday backtest trade marker."""
+    target = str(date_value or "").strip()
+    for candle in candles:
+        if str(candle.get("date", "")).strip() == target and candle.get("time") is not None:
+            return datetime.fromtimestamp(int(candle["time"]), tz=timezone.utc).isoformat()
+    return _format_iso_datetime(target, default_time)
+
 
 def _ensure_seeded():
     """Ensure database has historical backtest trades loaded."""
@@ -267,6 +277,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
                     "low": round(l, 4),
                     "close": round(c, 4),
                     "volume": round(v, 2),
+                    "session": market_session_label(candle_time, market_config) if tf in ("30m", "1h", "4h", "12h") else "regular market",
                 })
     except Exception as e:
         print(f"fetch_market_candles error for {yf_symbol} ({tf}, {actual_period}, {selected_window}): {e}")
@@ -322,8 +333,8 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
             for t in res.get("trade_log", []):
                 entry_d = t.get("entry_date", "")
                 exit_d = t.get("exit_date", "")
-                created_at = _format_iso_datetime(entry_d, "09:30:00")
-                closed_at = _format_iso_datetime(exit_d, "16:00:00") if exit_d else None
+                created_at = _format_trade_candle_datetime(entry_d, candles, "09:30:00")
+                closed_at = _format_trade_candle_datetime(exit_d, candles, "16:00:00") if exit_d else None
                 entry_p = float(t.get("entry_price", 0))
                 exit_p = float(t.get("exit_price", entry_p)) if exit_d else None
                 ret_pct = float(t.get("return_pct", 0.0))
@@ -339,7 +350,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
                     "entry_price": entry_p,
                     "exit_price": exit_p,
                     "exit_reason": t.get("exit_reason", ""),
-                    "entry_reason": "breakout",
+                    "entry_reason": t.get("entry_reason", "breakout"),
                     "pnl_usd": pnl_u,
                     "pnl_pct": ret_pct,
                     "created_at": created_at,

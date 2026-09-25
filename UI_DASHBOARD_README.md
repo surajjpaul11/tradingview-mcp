@@ -21,6 +21,7 @@ A fully customized, high-performance HTML/JS/FastAPI dashboard was engineered to
     - Lightweight charts automatically pull historical candles and sequentially plot explicit **buy (green upward arrows)** and **sell (red downward arrows)** markers at their exact historical execution times.
     - Statistics Cards dynamically rerender their contents strictly based on the currently filtered strategy and ticker.
     - **Advanced** keeps the regular chart, candle-resolution controls, and timeframe controls, then adds optional synchronized Volume and RSI (14) panes below it. Both panes follow the main chart whenever its range is changed or zoomed.
+    - Candle resolution and timeframe controls stay in a sticky rail on the chart's right side at desktop widths, with a compact above-chart layout on narrow screens.
 
 ## 2. Running the UI Dashboard
 

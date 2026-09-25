@@ -390,6 +390,12 @@ select:focus {
     text-align: center;
 }
 
+.session-controls-label {
+    margin-top: 0.2rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--border-color);
+}
+
 .indicator-toggle {
     display: flex;
     align-items: center;
@@ -402,6 +408,20 @@ select:focus {
 
 .indicator-toggle input {
     accent-color: var(--accent-blue);
+}
+
+.before-hours-toggle input {
+    accent-color: #3b82f6;
+}
+
+.after-hours-toggle input {
+    accent-color: #f59e0b;
+}
+
+.session-calculation-note {
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    line-height: 1.35;
 }
 
 .tab-btn {
@@ -466,6 +486,71 @@ select:focus {
     opacity: 1;
 }
 
+.chart-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 208px;
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.chart-main-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.chart-control-rail {
+    position: sticky;
+    top: 1rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.2rem;
+    padding: 1rem;
+}
+
+.chart-control-rail .control-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.8rem;
+}
+
+.chart-control-rail .timeframe-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.chart-control-rail .tf-btn {
+    justify-content: center;
+    width: 100%;
+    padding: 0.55rem 0.35rem;
+}
+
+.chart-control-rail .control-divider {
+    width: 100%;
+    height: 1px;
+}
+
+@media (max-width: 820px) {
+    .chart-workspace {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .chart-control-rail {
+        position: static;
+        order: -1;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .chart-control-rail .control-section {
+        flex: 1 1 260px;
+    }
+    .chart-control-rail .control-divider {
+        display: none;
+    }
+}
+
 /* Chart Wrapper */
 .chart-wrapper {
     position: relative;
@@ -478,6 +563,84 @@ select:focus {
 .chart-container {
     width: 100%;
     height: 100%;
+    position: relative;
+}
+
+.session-zone-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.session-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+}
+
+.session-zone.pre-market {
+    background: rgba(59, 130, 246, 0.055);
+    border-color: rgba(96, 165, 250, 0.09);
+}
+
+.session-zone.after-hours {
+    background: rgba(245, 158, 11, 0.065);
+    border-color: rgba(251, 191, 36, 0.11);
+}
+
+.session-zone.overnight {
+    background: rgba(168, 85, 247, 0.045);
+    border-color: rgba(192, 132, 252, 0.08);
+}
+
+.session-zone-legend {
+    position: absolute;
+    top: 0.28rem;
+    right: 1.5rem;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.32rem 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: rgba(11, 14, 20, 0.72);
+    font-size: 0.66rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.session-zone-legend[hidden] {
+    display: none;
+}
+
+.session-zone-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+}
+
+.session-zone-legend span[hidden] {
+    display: none;
+}
+
+.session-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.session-swatch.pre-market {
+    background: rgba(59, 130, 246, 0.28);
+}
+
+.session-swatch.after-hours {
+    background: rgba(245, 158, 11, 0.32);
 }
 
 .indicator-stack {
@@ -516,6 +679,7 @@ select:focus {
 .indicator-chart {
     width: 100%;
     height: 138px;
+    position: relative;
 }
 
 @media (max-width: 700px) {

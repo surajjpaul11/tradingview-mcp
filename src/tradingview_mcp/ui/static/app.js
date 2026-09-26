@@ -1900,7 +1900,6 @@ async function updateDashboard() {
         }
 
         if (!isCurrentRequest()) return;
-
         if (chart) {
             const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
             recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport, strategy, symbol, overlays);

@@ -290,6 +290,7 @@ try {
     for (const resolution of resolutions) {
       await page.locator(`#btn-res-${resolution}`).click();
       for (const timeframe of timeframes) {
+        console.log(`Checking ${pane} ${resolution}/${timeframe}`);
         await page.locator(`#btn-range-${timeframe}`).click();
         await waitForChart(page, resolution, timeframe);
         const state = await readChartState(page);

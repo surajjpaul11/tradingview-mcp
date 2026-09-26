@@ -3179,6 +3179,7 @@ def execute_trade(
     interval: str = "1d",
     dry_run: bool = True,
     allow_closed_market: bool = False,
+    sync_after_order: bool = True,
 ) -> dict:
     """Check for a strategy signal and execute a trade if one is active.
 
@@ -3200,6 +3201,8 @@ def execute_trade(
         dry_run:     If True (default), simulate without placing a real order.
         allow_closed_market: If True, queue a stock order while the market is closed
                      instead of refusing it (Alpaca only; default False).
+        sync_after_order: If True (default), re-read the order after logging and correct
+                     the recorded entry price to the actual fill.
                      Set to False for live execution.
 
     Returns:
@@ -3262,6 +3265,7 @@ def execute_trade(
         dry_run=dry_run,
         strategy=strategy,
         allow_closed_market=allow_closed_market,
+        sync_after_order=sync_after_order,
     )
 
     return {
@@ -3411,9 +3415,10 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
                        correct_entries: bool = True) -> dict:
     """Reconcile open trades in the database against the broker's actual state.
 
-    Catches the two cases the database cannot see on its own: entries still holding a
-    pre-trade quote instead of the real fill price, and positions closed outside this
-    app (a stop or target that triggered, or a manual sale) that are still marked open.
+    Catches what the database cannot see on its own: entries still holding a pre-trade
+    quote instead of the real fill price, positions closed outside this app (a stop or
+    target that triggered, or a manual sale) that are still marked open, and open
+    positions whose protective orders are gone (day-TIF legs expire at the close).
 
     Args:
         broker:       "alpaca" or "bitget"

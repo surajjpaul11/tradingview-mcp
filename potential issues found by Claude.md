@@ -129,3 +129,20 @@ Dry runs still price from the last Yahoo daily close.
 
 Still open from the Alpaca list: guardrails (size caps, duplicate-order protection), the deprecated
 `alpaca-trade-api` SDK, and the two parallel implementations (`scripts/active_trader.py` vs the MCP path).
+
+
+---
+
+## Found while live-testing the first paper trade (2026-09-24 → 26)
+
+- **Protective legs expired overnight — FIXED.** The AAPL bracket used `time_in_force: day`, so at
+  16:02 ET the target expired and the stop was cancelled with it, leaving the position open and
+  unprotected for two days. Orders carrying a stop or target now use `gtc`; unprotected entries keep `day`.
+- **Nothing noticed the bare position — FIXED.** `sync_broker_trades` now reports
+  `unprotected_positions`: an open position whose trade row records a stop/target but which has no
+  resting protective order at the broker.
+- **The recorded entry stayed wrong until someone ran the sync — FIXED.** `execute_order` now
+  re-reads the order after logging it (`sync_after_order=True`) and corrects the entry price to the
+  fill immediately. A queued (unfilled) order reports why it could not sync yet.
+- **Still open:** the sync must be run on a schedule to catch drift between orders; exit prices for
+  positions closed at the broker remain approximate; no duplicate-order protection.

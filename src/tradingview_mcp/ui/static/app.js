@@ -437,6 +437,7 @@ let rsiUpperGuide = null;
 let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
 let currentCandles = [];
+let dashboardUpdateSequence = 0;
 let sessionZoneFrame = null;
 
 // ----- Chart Globals (Advanced Tab) -----
@@ -1673,6 +1674,7 @@ async function updateDashboard() {
     const symbol = tickerSelect.value;
     const strategy = strategySelect.value || 'all';
     if (!symbol) return;
+    const updateSequence = ++dashboardUpdateSequence;
 
     setLoading(true, 'loading');
 
@@ -1698,6 +1700,7 @@ async function updateDashboard() {
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
+        if (updateSequence !== dashboardUpdateSequence) return;
 
         // Update range hint if actual period was clamped by Yahoo Finance (e.g. 30m max 60d)
         if (candlesData.period && candlesData.period !== reqPeriod) {
@@ -1752,6 +1755,7 @@ async function updateDashboard() {
             channelSeries.length = 0;
         }
 
+        if (updateSequence !== dashboardUpdateSequence) return;
         if (chart) {
             const viewport = applyInitialChartViewport(chart, sorted, tradesData, reqResolution, reqPeriod);
             recordChartRenderState(sorted, tradesData, reqResolution, reqPeriod, viewport);
@@ -1799,9 +1803,9 @@ async function updateDashboard() {
         lastDataRefreshAt = Date.now();
 
     } catch (err) {
-        console.error('[TV] updateDashboard failed:', err);
+        if (updateSequence === dashboardUpdateSequence) console.error('[TV] updateDashboard failed:', err);
     } finally {
-        setLoading(false, 'loading');
+        if (updateSequence === dashboardUpdateSequence) setLoading(false, 'loading');
     }
 }
 

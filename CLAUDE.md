@@ -16,6 +16,24 @@ Claude skills with details for the Docker container (loaded on-demand to save to
 - `/container-restart` — Pre-restart checklist to preserve work
 - `/session-resume` — Startup protocol for restoring state
 
+## Daily Alpaca Sync (macOS)
+
+`scripts/sync_alpaca_trades.sh` reconciles `data/trades.db` against Alpaca: corrects entry prices to
+actual fills, closes rows whose position is gone at the broker, and flags open positions with no
+resting stop/target (day-TIF legs expire at the close — protected orders now use GTC).
+
+Scheduled daily at 16:00 local via launchd:
+
+```bash
+cp scripts/com.suraj.tradingview-sync.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.suraj.tradingview-sync.plist
+launchctl start com.suraj.tradingview-sync     # run once now
+tail -20 data/alpaca_sync.log                  # results
+```
+
+The plist has absolute paths to this worktree — edit them if it moves. Logs: `data/alpaca_sync.log`
+(script output) and `data/alpaca_sync.launchd.log` (launchd's own). Both are git-ignored.
+
 ## Git in Cowork Sessions
 
 Cowork's shell reaches this repo through a mounted folder where files **cannot be deleted**, and it runs git 2.34. Rules:

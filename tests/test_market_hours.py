@@ -62,6 +62,8 @@ class MarketHoursTests(unittest.TestCase):
         self.assertFalse(get_market_status(at_five_am, config(), "regular market")["is_open"])
         self.assertTrue(get_market_status(at_five_am, config(), "pre-market")["is_open"])
         self.assertTrue(get_market_status(at_six_pm, config(), "after hours")["is_open"])
+        self.assertTrue(get_market_status(at_five_am, config(), "extended hours")["is_open"])
+        self.assertTrue(get_market_status(at_six_pm, config(), "extended hours")["is_open"])
         self.assertTrue(get_market_status(at_two_am, config(), "overnight")["is_open"])
 
     def test_intraday_candles_are_filtered_by_selected_window(self):

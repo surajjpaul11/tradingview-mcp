@@ -57,6 +57,11 @@ DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: t
 DEFAULT_MIN_ANCHOR_BARS = 2    # default minimum bar distance between anchors
 
 
+def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
+    """Distinguish pre-trendline protection exits from actual support-line breaks."""
+    return "atr_stop_buffer" if stop_loss_mode == "atr_stop_buffer" else "entry_barrier_break"
+
+
 # ==============================================================================
 # DATA FETCHING
 # ==============================================================================
@@ -914,7 +919,7 @@ def run_sloped_lines(
                         "exit_price":  exec_price,
                         "side":        "long",
                         "entry_reason": position.get("entry_reason", "breakout"),
-                        "exit_reason": "support_break",
+                        "exit_reason": _entry_barrier_exit_reason(stop_loss_mode),
                         "strategy":    "sloped_lines",
                     })
                     trap_info = {"exit_bar": i, "entry_price": position["entry_price"]}

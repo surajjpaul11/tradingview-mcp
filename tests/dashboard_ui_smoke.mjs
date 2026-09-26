@@ -78,6 +78,36 @@ async function waitForChart(page, resolution, timeframe) {
   );
 }
 
+async function waitForAnyChart(page) {
+  await page.waitForFunction(
+    () => {
+      const chart = document.querySelector('#tv-chart');
+      const loading = document.querySelector('#loading');
+      return chart?.dataset.renderStatus === 'ready'
+        && Number(chart.dataset.candleCount) > 0
+        && !loading?.classList.contains('active');
+    },
+    null,
+    { timeout: 90_000 },
+  );
+}
+
+async function waitForStrategyChart(page, strategy) {
+  await page.waitForFunction(
+    strategy => {
+      const chart = document.querySelector('#tv-chart');
+      const loading = document.querySelector('#loading');
+      return chart?.dataset.renderStatus === 'ready'
+        && chart.dataset.strategy === strategy
+        && Number(chart.dataset.candleCount) > 0
+        && document.querySelectorAll('#tv-chart canvas').length > 0
+        && !loading?.classList.contains('active');
+    },
+    strategy,
+    { timeout: 90_000 },
+  );
+}
+
 async function readChartState(page) {
   return page.evaluate(() => {
     const chart = document.querySelector('#tv-chart');
@@ -89,6 +119,8 @@ async function readChartState(page) {
       candleCount: Number(chart?.dataset.candleCount ?? 0),
       resolution: chart?.dataset.resolution,
       timeframe: chart?.dataset.timeframe,
+      strategy: chart?.dataset.strategy,
+      symbol: chart?.dataset.symbol,
       width: rect?.width ?? 0,
       height: rect?.height ?? 0,
       canvases: document.querySelectorAll('#tv-chart canvas').length,
@@ -100,6 +132,10 @@ async function readChartState(page) {
       rsiCanvases: document.querySelectorAll('#rsi-chart canvas').length,
       volumePoints: Number(document.querySelector('#volume-chart')?.dataset.pointCount ?? 0),
       rsiPoints: Number(document.querySelector('#rsi-chart')?.dataset.pointCount ?? 0),
+      tradeCount: Number(chart?.dataset.tradeCount ?? 0),
+      markerCount: Number(chart?.dataset.markerCount ?? 0),
+      trendlinesReturned: Number(chart?.dataset.trendlinesReturned ?? 0),
+      trendlinesDrawn: Number(chart?.dataset.trendlinesDrawn ?? 0),
     };
   });
 }
@@ -117,6 +153,31 @@ function assertRenderedGraph(state, context) {
   }
 }
 
+async function waitForSlopedChart(page, resolution, timeframe) {
+  await page.waitForFunction(
+    ({ resolution, timeframe }) => {
+      const chart = document.querySelector('#tv-chart');
+      const loading = document.querySelector('#loading');
+      return chart?.dataset.renderStatus === 'ready'
+        && chart.dataset.strategy === 'sloped_lines'
+        && chart.dataset.resolution === resolution
+        && chart.dataset.timeframe === timeframe
+        && Number(chart.dataset.candleCount) > 0
+        && !loading?.classList.contains('active');
+    },
+    { resolution, timeframe },
+    { timeout: 90_000 },
+  );
+}
+
+function assertSlopedOverlays(state, context) {
+  assert.equal(state.strategy, 'sloped_lines', `${context}: wrong strategy`);
+  assert.ok(state.trendlinesReturned > 0, `${context}: backend returned no sloped trendlines`);
+  assert.ok(state.trendlinesDrawn > 0, `${context}: ${state.trendlinesReturned} trendlines returned but none drawn`);
+  assert.ok(state.tradeCount > 0, `${context}: no sloped-lines trades to mark`);
+  assert.ok(state.markerCount > 0, `${context}: ${state.tradeCount} trades but no chart markers`);
+}
+
 const dashboard = await startDashboard();
 const executablePath = CHROME_CANDIDATES.find(existsSync);
 assert.ok(executablePath, 'Chrome or Edge is required. Set CHROME_PATH to its executable.');
@@ -128,7 +189,96 @@ page.on('pageerror', error => pageErrors.push(error.message));
 
 try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
-  await waitForChart(page, '1d', '1y');
+  await waitForAnyChart(page);
+
+  const axisLabels = await page.evaluate(() => ({
+    fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
+    fiveAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 9) / 1000, 3),
+    dateBoundary: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 2),
+  }));
+  assert.deepEqual(axisLabels, {
+    fourAm: '4',
+    fiveAm: '5',
+    dateBoundary: 'Jul 21',
+  });
+
+  const slopedMarkerStyles = await page.evaluate(() => ({
+    lineBuy: getSlopedEntryMarkerStyle('breakout', true),
+    reclaimBuy: getSlopedEntryMarkerStyle('exit_peak_reclaim', true),
+    lineSell: getSlopedExitMarkerStyle('support_break', true, false),
+    protectionSell: getSlopedExitMarkerStyle('entry_barrier_break', true, false),
+    endOfDataSell: getSlopedExitMarkerStyle('end_of_data', true, true),
+    savedBadge: document.querySelector('#best-params-badge')?.textContent,
+  }));
+  assert.deepEqual(slopedMarkerStyles.lineBuy, {
+    markerClass: 'sloped-line-signal', prefix: 'LINE BREAKOUT ', color: '#059669',
+  });
+  assert.deepEqual(slopedMarkerStyles.reclaimBuy, {
+    markerClass: 'sloped-reentry', prefix: 'PEAK RECLAIM ', color: '#6EE7B7',
+  });
+  assert.deepEqual(slopedMarkerStyles.lineSell, {
+    markerClass: 'sloped-line-signal', prefix: 'LINE SUPPORT BREAK ', color: '#DC2626',
+  });
+  assert.deepEqual(slopedMarkerStyles.protectionSell, {
+    markerClass: 'sloped-protection', prefix: 'ENTRY BARRIER ', color: '#F59E0B',
+  });
+  assert.deepEqual(slopedMarkerStyles.endOfDataSell, {
+    markerClass: 'sloped-end-of-data', prefix: 'END OF DATA ', color: '#94A3B8',
+  });
+  assert.match(slopedMarkerStyles.savedBadge || '', /Saved Best.*baseline/);
+
+  const sessionControls = await page.evaluate(() => {
+    const select = document.querySelector('#trading-window-select');
+    const originalValue = select.value;
+    const windows = {};
+    for (const value of ['regular market', 'pre-market', 'after hours', 'extended hours', 'overnight']) {
+      select.value = value;
+      windows[value] = {
+        active: getActiveTradingWindow(),
+        preMarket: activeTradingWindowIncludes('pre-market'),
+        regular: activeTradingWindowIncludes('regular market'),
+        afterHours: activeTradingWindowIncludes('after hours'),
+        overnight: activeTradingWindowIncludes('overnight'),
+      };
+    }
+    select.value = originalValue;
+    return {
+      optionValues: Array.from(select.options, option => option.value),
+      optionLabels: Array.from(select.options, option => option.textContent),
+      legacyCheckboxes: document.querySelectorAll('#before-hours-checkbox, #after-hours-checkbox').length,
+      windows,
+    };
+  });
+  assert.deepEqual(sessionControls.optionValues, [
+    'regular market', 'pre-market', 'after hours', 'extended hours', 'overnight',
+  ]);
+  assert.deepEqual(sessionControls.optionLabels, [
+    'Regular market (9:30 AM–4:00 PM)',
+    'Pre-market + regular (4:00 AM–4:00 PM)',
+    'Regular + after hours (9:30 AM–8:00 PM)',
+    'Extended session (4:00 AM–8:00 PM)',
+    'All sessions / overnight (12:00 AM–11:59 PM)',
+  ]);
+  assert.equal(sessionControls.legacyCheckboxes, 0);
+  assert.deepEqual(sessionControls.windows, {
+    'regular market': { active: 'regular market', preMarket: false, regular: true, afterHours: false, overnight: false },
+    'pre-market': { active: 'pre-market', preMarket: true, regular: true, afterHours: false, overnight: false },
+    'after hours': { active: 'after hours', preMarket: false, regular: true, afterHours: true, overnight: false },
+    'extended hours': { active: 'extended hours', preMarket: true, regular: true, afterHours: true, overnight: false },
+    overnight: { active: 'overnight', preMarket: true, regular: true, afterHours: true, overnight: true },
+  });
+  const legacyWindows = await page.evaluate(() => ({
+    neither: tradingWindowFromLegacySessionPreferences('false', 'false'),
+    before: tradingWindowFromLegacySessionPreferences('true', 'false'),
+    after: tradingWindowFromLegacySessionPreferences('false', 'true'),
+    both: tradingWindowFromLegacySessionPreferences('true', 'true'),
+  }));
+  assert.deepEqual(legacyWindows, {
+    neither: null,
+    before: 'pre-market',
+    after: 'after hours',
+    both: 'extended hours',
+  });
 
   const panes = ['regular', 'advanced'];
   const resolutions = ['1d', '4h', '12h'];
@@ -155,6 +305,35 @@ try {
       }
     }
   }
+
+  await page.locator('#strategy-select').selectOption('sloped_lines');
+  await waitForStrategyChart(page, 'sloped_lines');
+  assertRenderedGraph(await readChartState(page), 'advanced sloped lines before strategy switch');
+
+  await page.locator('#strategy-select').selectOption('bollinger');
+  await waitForStrategyChart(page, 'bollinger');
+  assertRenderedGraph(await readChartState(page), 'advanced Bollinger after strategy switch');
+
+  await page.locator('#strategy-select').selectOption('sloped_lines');
+  await waitForStrategyChart(page, 'sloped_lines');
+  assertRenderedGraph(await readChartState(page), 'advanced sloped lines after strategy switch');
+
+  // Five years of daily bars reliably contains sloped-line breakouts, so lines and markers must be drawn.
+  await page.locator('#btn-res-1d').click();
+  await page.locator('#btn-range-5y').click();
+  await waitForSlopedChart(page, '1d', '5y');
+  const slopedState = await readChartState(page);
+  assertRenderedGraph(slopedState, 'sloped lines 1d/5y');
+  assertSlopedOverlays(slopedState, 'sloped lines 1d/5y');
+  results.push({
+    strategy: 'sloped_lines',
+    resolution: '1d',
+    timeframe: '5y',
+    candles: slopedState.candleCount,
+    trades: slopedState.tradeCount,
+    markers: slopedState.markerCount,
+    trendlines: slopedState.trendlinesDrawn,
+  });
 
   assert.deepEqual(pageErrors, [], `Browser errors: ${pageErrors.join('; ')}`);
   console.log(JSON.stringify({ passed: results.length, results }, null, 2));

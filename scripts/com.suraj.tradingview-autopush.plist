@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Push the `claude` branch every 15 minutes when it is ahead of origin.
+     Install:  cp scripts/com.suraj.tradingview-autopush.plist ~/Library/LaunchAgents/
+               launchctl load ~/Library/LaunchAgents/com.suraj.tradingview-autopush.plist
+     Run now:  launchctl start com.suraj.tradingview-autopush
+     Remove:   launchctl unload ~/Library/LaunchAgents/com.suraj.tradingview-autopush.plist -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.suraj.tradingview-autopush</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/scripts/auto_push_claude.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/data/auto_push.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/data/auto_push.launchd.log</string>
+</dict>
+</plist>

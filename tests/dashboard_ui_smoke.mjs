@@ -309,6 +309,18 @@ try {
     both: 'extended hours',
   });
 
+  const configuredTradingWindow = await page.locator('#trading-window-select').inputValue();
+  await page.evaluate(() => {
+    document.querySelector('#trading-window-select').value = 'extended hours';
+  });
+  await page.locator('#btn-res-30m').click();
+  await page.locator('#btn-range-3mo').click();
+  await waitForChart(page, '30m', '3mo');
+  assertRenderedGraph(await readChartState(page), 'extended-hours default 30m/3mo');
+  await page.evaluate(value => {
+    document.querySelector('#trading-window-select').value = value;
+  }, configuredTradingWindow);
+
   const indicatorToggleOrder = await page.evaluate(() => (
     Array.from(document.querySelectorAll('#advanced-indicator-controls input'), input => input.id)
   ));

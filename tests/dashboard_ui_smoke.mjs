@@ -191,6 +191,53 @@ try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
   await waitForAnyChart(page);
 
+  async function readSavedBestState(symbol) {
+    await page.locator('#ticker-select').selectOption(symbol);
+    await page.waitForFunction(expectedSymbol => {
+      const chart = document.querySelector('#tv-chart');
+      const badge = document.querySelector('#best-params-badge');
+      return chart?.dataset.renderStatus === 'ready'
+        && chart.dataset.symbol === expectedSymbol
+        && chart.dataset.resolution === '1d'
+        && chart.dataset.timeframe === '1y'
+        && badge?.title.includes(`for ${expectedSymbol} `);
+    }, symbol, { timeout: 90_000 });
+    return page.evaluate(() => ({
+      badge: document.querySelector('#best-params-badge')?.textContent.trim(),
+      confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
+      angle: document.querySelector('#sloped-line-angle-select')?.value,
+      stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
+      anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
+      resolution: document.querySelector('#tv-chart')?.dataset.resolution,
+      timeframe: document.querySelector('#tv-chart')?.dataset.timeframe,
+      resolutionHint: document.querySelector('#active-res-hint')?.textContent,
+      timeframeHint: document.querySelector('#active-range-hint')?.textContent,
+    }));
+  }
+
+  assert.deepEqual(await readSavedBestState('SPY'), {
+    badge: '★ Saved Best (+17.07%) baseline',
+    confirmation: '1',
+    angle: '0',
+    stopLoss: 'atr_stop_buffer',
+    anchors: '2',
+    resolution: '1d',
+    timeframe: '1y',
+    resolutionHint: 'Daily (1D)',
+    timeframeHint: '1-Year (1Y)',
+  });
+  assert.deepEqual(await readSavedBestState('AAPL'), {
+    badge: '★ Saved Best (+46.71%) baseline',
+    confirmation: '0',
+    angle: '3',
+    stopLoss: 'exit_peak_reclaim',
+    anchors: '2',
+    resolution: '1d',
+    timeframe: '1y',
+    resolutionHint: 'Daily (1D)',
+    timeframeHint: '1-Year (1Y)',
+  });
+
   const chartControlLayout = await page.evaluate(() => {
     const chart = document.querySelector('#tv-chart')?.getBoundingClientRect();
     const rail = document.querySelector('.chart-control-rail')?.getBoundingClientRect();

@@ -365,8 +365,10 @@ function syncChannelMultVisibility(strategy) {
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
 const bestParamsBadge = document.getElementById('best-params-badge');
+let bestParametersRequestGeneration = 0;
 
 async function applyBestParametersIfAvailable(strategy, symbol) {
+    const requestGeneration = ++bestParametersRequestGeneration;
     if (!strategy || !symbol || strategy === 'all') {
         if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
         return;
@@ -378,6 +380,11 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             return;
         }
         const result = await res.json();
+        if (
+            requestGeneration !== bestParametersRequestGeneration
+            || strategySelect?.value !== strategy
+            || tickerSelect?.value !== symbol
+        ) return;
         if (!result.found || !result.data || !result.data.parameters) {
             if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
             return;
@@ -447,11 +454,27 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
                 btn.classList.toggle('active', btn.dataset.res === activeResolution);
             });
         }
+        const resolutionLabels = {
+            '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
+            '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
+        };
+        const resolutionHint = document.getElementById('active-res-hint');
+        if (resolutionHint && result.data.timeframe) {
+            resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
+        }
         if (result.data.period && result.data.period !== activeTimeframe) {
             activeTimeframe = result.data.period;
             document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
             });
+        }
+        const timeframeLabels = {
+            '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
+            '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
+        };
+        const timeframeHint = document.getElementById('active-range-hint');
+        if (timeframeHint && result.data.period) {
+            timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
         }
 
         // Display Best Params badge
@@ -630,7 +653,6 @@ function switchTab(tab) {
     requestAnimationFrame(() => requestAnimationFrame(refreshMainChartLayout));
     scheduleSessionZoneRender();
     if (filtersLoaded) {
-        ensureIntradayResolutionForExtendedWindow();
         updateDashboard();
     }
 }
@@ -1178,14 +1200,12 @@ async function loadFilters() {
         // Wire up change listeners — update both tabs
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
@@ -1289,7 +1309,6 @@ async function loadFilters() {
         // Trigger initial data load with best parameters if combination exists
         if (data.symbols && data.symbols.length > 0) {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             await updateDashboard();
         }
 

@@ -309,6 +309,44 @@ try {
     both: 'extended hours',
   });
 
+  const indicatorToggleOrder = await page.evaluate(() => (
+    Array.from(document.querySelectorAll('#advanced-indicator-controls input'), input => input.id)
+  ));
+  assert.deepEqual(indicatorToggleOrder, [
+    'volume-indicator-checkbox',
+    'rsi-indicator-checkbox',
+    'vix-indicator-checkbox',
+  ]);
+
+  await page.locator('#tab-advanced').click();
+  await page.locator('#btn-res-1d').click();
+  await page.locator('#btn-range-1y').click();
+  await waitForChart(page, '1d', '1y');
+  await page.locator('#vix-indicator-checkbox').check();
+  await page.waitForFunction(() => {
+    const chart = document.querySelector('#tv-chart');
+    return chart?.dataset.vixVisible === 'true'
+      && Number(chart.dataset.vixPointCount) > 0
+      && chart.dataset.vixResolution === '1d'
+      && chart.dataset.vixTimeframe === '1y';
+  }, null, { timeout: 90_000 });
+  const vixState = await page.evaluate(() => {
+    const chart = document.querySelector('#tv-chart');
+    return {
+      points: Number(chart?.dataset.vixPointCount ?? 0),
+      resolution: chart?.dataset.vixResolution,
+      timeframe: chart?.dataset.vixTimeframe,
+      tradingWindow: chart?.dataset.vixTradingWindow,
+      selectedTradingWindow: getActiveTradingWindow(),
+    };
+  });
+  assert.ok(vixState.points > 0, 'VIX overlay has no data');
+  assert.equal(vixState.resolution, '1d');
+  assert.equal(vixState.timeframe, '1y');
+  assert.equal(vixState.tradingWindow, vixState.selectedTradingWindow);
+  await page.locator('#vix-indicator-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.vixVisible === 'false');
+
   const panes = ['regular', 'advanced'];
   const resolutions = ['1d', '4h', '12h'];
   const timeframes = ['3mo', '1y', '5y'];

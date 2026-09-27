@@ -27,6 +27,7 @@ const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
+const vixIndicatorCheckbox = document.getElementById('vix-indicator-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
 const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
 const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
@@ -487,6 +488,8 @@ let rsiSeries = null;
 let rsiUpperGuide = null;
 let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
+let vixSeries = null;
+let currentVixCandles = [];
 let currentCandles = [];
 let sessionZoneFrame = null;
 let chartDataUpdateInProgress = false;
@@ -691,6 +694,29 @@ function initChart() {
         console.error('[TV] Could not create candlestick series with loaded chart library.');
     }
 
+    vixSeries = addLineSeriesCompat(chart, {
+        color: '#FF9800',
+        lineWidth: 2,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        priceScaleId: 'vix',
+        title: 'VIX',
+        visible: false,
+    });
+    if (vixSeries) {
+        chart.priceScale('vix').applyOptions({
+            scaleMargins: { top: 0.05, bottom: 0.3 },
+            borderVisible: true,
+            borderColor: '#FF9800',
+            textColor: '#FF9800',
+            visible: false,
+        });
+        vixSeries.createPriceLine({ price: 25, color: 'rgba(255,152,0,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 25' });
+        vixSeries.createPriceLine({ price: 30, color: 'rgba(255,87,34,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 30' });
+        vixSeries.createPriceLine({ price: 35, color: 'rgba(244,67,54,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 35' });
+    }
+
     new ResizeObserver(entries => {
         if (chart && container) {
             const width = container.clientWidth || (entries[0] && entries[0].contentRect.width) || 800;
@@ -892,6 +918,30 @@ function renderAdvancedIndicators(candles) {
     });
 }
 
+function renderVixOverlay(candles, metadata = {}) {
+    const enabled = activeTab === 'advanced' && Boolean(vixIndicatorCheckbox?.checked);
+    currentVixCandles = (candles || [])
+        .filter(candle => candle && typeof candle.time === 'number' && Number.isFinite(Number(candle.close)))
+        .sort((a, b) => a.time - b.time)
+        .filter((candle, index, values) => index === 0 || candle.time !== values[index - 1].time);
+    const points = currentVixCandles.map(candle => ({
+        time: candle.time,
+        value: Number(candle.close),
+    }));
+    vixSeries?.setData(points);
+    const visible = enabled && points.length > 0;
+    vixSeries?.applyOptions({ visible });
+    chart?.priceScale('vix').applyOptions({ visible });
+    const container = document.getElementById('tv-chart');
+    if (container) {
+        container.dataset.vixPointCount = String(points.length);
+        container.dataset.vixVisible = String(visible);
+        container.dataset.vixResolution = metadata.timeframe || '';
+        container.dataset.vixTimeframe = metadata.period || '';
+        container.dataset.vixTradingWindow = metadata.trading_window || '';
+    }
+}
+
 function updateIndicatorVisibility() {
     const advanced = activeTab === 'advanced';
     const showVolume = advanced && Boolean(volumeIndicatorCheckbox?.checked);
@@ -899,6 +949,11 @@ function updateIndicatorVisibility() {
     indicatorStack?.classList.toggle('active', advanced && (showVolume || showRsi));
     volumeIndicatorPane?.classList.toggle('active', showVolume);
     rsiIndicatorPane?.classList.toggle('active', showRsi);
+    const showVix = advanced && Boolean(vixIndicatorCheckbox?.checked) && currentVixCandles.length > 0;
+    vixSeries?.applyOptions({ visible: showVix });
+    chart?.priceScale('vix').applyOptions({ visible: showVix });
+    const chartContainer = document.getElementById('tv-chart');
+    if (chartContainer) chartContainer.dataset.vixVisible = String(showVix);
     if (advanced) {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
@@ -1818,15 +1873,20 @@ async function updateDashboard() {
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
             : slopedParam;
 
-        const [candlesRes, tradesRes, statsRes] = await Promise.all([
+        const vixRequested = Boolean(vixIndicatorCheckbox?.checked);
+        const [candlesRes, tradesRes, statsRes, vixRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`)
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
+            vixRequested
+                ? fetch(`/api/candles?symbol=${encodeURIComponent('^VIX')}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`)
+                : Promise.resolve(null),
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
+        const vixData = vixRes?.ok ? await vixRes.json() : { candles: [] };
         if (!isCurrentRequest()) return;
 
         // Update range hint if actual period was clamped by Yahoo Finance (e.g. 30m max 60d)
@@ -1857,6 +1917,7 @@ async function updateDashboard() {
             if (candlestickSeries) {
                 candlestickSeries.setData(sorted);
             }
+            renderVixOverlay(vixData.candles || [], vixData);
             renderAdvancedIndicators(sorted);
         } finally {
             chartDataUpdateInProgress = false;
@@ -2094,6 +2155,11 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    vixIndicatorCheckbox?.addEventListener('change', () => {
+        updateIndicatorVisibility();
+        if (vixIndicatorCheckbox.checked && filtersLoaded) updateDashboard();
+        if (!vixIndicatorCheckbox.checked) renderVixOverlay([]);
+    });
     const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
     if (savedActiveTab === 'advanced') switchTab('advanced');
     loadFilters().finally(startMarketRefresh);

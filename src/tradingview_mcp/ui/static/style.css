@@ -509,7 +509,7 @@ select:focus {
     padding: 0 0 0 0.55rem;
     border-top: 0;
     border-left: 1px solid var(--border-color);
-    grid-template-columns: repeat(2, max-content);
+    grid-template-columns: repeat(3, max-content);
 }
 
 .chart-control-rail .indicator-controls-label {

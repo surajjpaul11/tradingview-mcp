@@ -105,6 +105,96 @@ class StrictTrendlineValidationTests(unittest.TestCase):
         self.assertIsNotNone(body_line)
         self.assertIsNone(wick_line)
 
+    def test_resistance_cannot_resurrect_after_post_anchor_crossing(self):
+        candles = [
+            {"open": 110, "high": 111, "low": 109, "close": 110},
+            {"open": 104, "high": 105, "low": 103, "close": 104},
+            {"open": 100, "high": 101, "low": 99, "close": 100},
+            {"open": 96, "high": 97, "low": 94, "close": 96},
+            {"open": 89, "high": 90, "low": 88, "close": 89},
+        ]
+
+        line = build_descending_resistance(
+            [(0, 110, 0), (2, 100, 4)],
+            [110, 104, 100, 96, 89],
+            current_bar=4,
+            tolerance=0,
+            min_anchor_bars=2,
+            candles=candles,
+            line_angle=0,
+            use_wick=False,
+        )
+
+        self.assertIsNone(line)
+
+    def test_post_anchor_touch_ignores_formation_tolerance(self):
+        candles = [
+            {"open": 110, "high": 111, "low": 109, "close": 110},
+            {"open": 104, "high": 105, "low": 103, "close": 104},
+            {"open": 100, "high": 101, "low": 99, "close": 100},
+            {"open": 95, "high": 96, "low": 94, "close": 95},
+            {"open": 89, "high": 90, "low": 88, "close": 89},
+        ]
+
+        line = build_descending_resistance(
+            [(0, 110, 0), (2, 100, 4)],
+            [110, 104, 100, 95, 89],
+            current_bar=4,
+            tolerance=0.015,
+            min_anchor_bars=2,
+            candles=candles,
+            line_angle=0,
+            use_wick=False,
+        )
+
+        self.assertIsNone(line)
+
+    def test_support_cannot_resurrect_after_post_anchor_crossing(self):
+        candles = [
+            {"open": 100, "high": 101, "low": 99, "close": 100},
+            {"open": 106, "high": 107, "low": 105, "close": 106},
+            {"open": 110, "high": 111, "low": 109, "close": 110},
+            {"open": 114, "high": 116, "low": 114, "close": 114},
+            {"open": 121, "high": 122, "low": 120, "close": 121},
+        ]
+
+        line = build_ascending_support(
+            [(0, 100, 0), (2, 110, 4)],
+            [100, 106, 110, 114, 121],
+            current_bar=4,
+            tolerance=0,
+            min_anchor_bars=2,
+            candles=candles,
+            line_angle=0,
+            use_wick=False,
+        )
+
+        self.assertIsNone(line)
+
+    def test_line_uses_actual_swing_confirmation_bar(self):
+        candles = [
+            {"open": 110, "high": 111, "low": 109, "close": 110},
+            {"open": 104, "high": 105, "low": 103, "close": 104},
+            {"open": 100, "high": 101, "low": 99, "close": 100},
+            {"open": 94, "high": 95, "low": 93, "close": 94},
+            {"open": 89, "high": 90, "low": 88, "close": 89},
+        ]
+
+        line = build_descending_resistance(
+            [(0, 110, 0), (2, 100, 4)],
+            [110, 104, 100, 94, 89],
+            current_bar=4,
+            tolerance=0,
+            min_anchor_bars=2,
+            candles=candles,
+            line_angle=0,
+            use_wick=False,
+        )
+
+        self.assertIsNotNone(line)
+        self.assertEqual(line["anchor2"], (2, 100.0))
+        self.assertEqual(line["confirmed_at_bar"], 4)
+
 
 class TrendlineApiTests(unittest.TestCase):
     def fetch(self, candles):
@@ -123,10 +213,15 @@ class TrendlineApiTests(unittest.TestCase):
         # Fields the dashboard needs to draw the line on the chart.
         times = {c["time"] for c in candles}
         self.assertIn(line["start_time"], times)
+        self.assertIn(line["anchor2_time"], times)
+        self.assertIn(line["confirmation_time"], times)
         self.assertIn(line["end_time"], times)
         self.assertLess(line["start_time"], line["end_time"])
         self.assertGreater(line["start_price"], line["end_price"])
         self.assertIsNotNone(line["break_date"])
+        self.assertGreater(len(line["points"]), 2)
+        self.assertEqual(line["points"][0]["time"], line["start_time"])
+        self.assertEqual(line["points"][-1]["time"], line["end_time"])
 
     def test_api_reports_missing_candles_instead_of_lines(self):
         data = self.fetch([])

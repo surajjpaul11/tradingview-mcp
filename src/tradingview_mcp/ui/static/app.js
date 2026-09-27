@@ -1697,6 +1697,15 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 
             const snappedStart = findNearestCandleTime(startTime, candleData);
             let snappedEnd = findNearestCandleTime(endTime, candleData);
+            const candleTimes = new Set(candleData.map(candle => candle.time));
+            const projectedPoints = Array.isArray(tl.points)
+                ? tl.points
+                    .map(point => ({
+                        time: point.time || toChartTime(point.date),
+                        value: Number(point.value),
+                    }))
+                    .filter(point => candleTimes.has(point.time) && Number.isFinite(point.value))
+                : [];
 
             if (snappedEnd <= snappedStart) {
                 // Ensure strictly ascending time for Lightweight Charts
@@ -1738,19 +1747,30 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 && confirmationTime > snappedStart
                 && confirmationTime < snappedEnd
             ) {
-                const forming = addTrendlineSeries([
-                    { time: snappedStart, value: tl.start_price },
-                    { time: confirmationTime, value: tl.confirmation_price },
-                ], 2, 1, `${tl.label || ''} (forming)`);
-                const active = addTrendlineSeries([
-                    { time: confirmationTime, value: tl.confirmation_price },
-                    { time: snappedEnd, value: tl.end_price },
-                ], 0, 2, `${tl.label || ''} (active)`);
+                const formingData = projectedPoints.length
+                    ? projectedPoints.filter(point => point.time <= confirmationTime)
+                    : [
+                        { time: snappedStart, value: tl.start_price },
+                        { time: confirmationTime, value: tl.confirmation_price },
+                    ];
+                const activeData = projectedPoints.length
+                    ? projectedPoints.filter(point => point.time >= confirmationTime)
+                    : [
+                        { time: confirmationTime, value: tl.confirmation_price },
+                        { time: snappedEnd, value: tl.end_price },
+                    ];
+                const forming = addTrendlineSeries(formingData, 2, 1, `${tl.label || ''} (forming)`);
+                const active = addTrendlineSeries(activeData, 0, 2, `${tl.label || ''} (active)`);
                 if (forming || active) summary.drawn += 1;
-            } else if (addTrendlineSeries([
-                { time: snappedStart, value: tl.start_price },
-                { time: snappedEnd, value: tl.end_price },
-            ], lineStyle, 2, tl.label || '')) {
+            } else if (addTrendlineSeries(
+                projectedPoints.length ? projectedPoints : [
+                    { time: snappedStart, value: tl.start_price },
+                    { time: snappedEnd, value: tl.end_price },
+                ],
+                lineStyle,
+                2,
+                tl.label || '',
+            )) {
                 summary.drawn += 1;
             }
         });

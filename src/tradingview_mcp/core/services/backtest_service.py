@@ -62,8 +62,15 @@ _STRATEGY_LABELS = {
 
 # ─── Data Fetching ────────────────────────────────────────────────────────────
 
-def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d") -> list[dict]:
-    url = f"{_YF_BASE}/{symbol}?interval={interval}&range={period}"
+def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window: str = None) -> list[dict]:
+    selected_window = None
+    market_config = None
+    if trading_window is not None:
+        from tradingview_mcp.core.services.market_hours import load_market_config, normalize_trading_window
+        market_config = load_market_config()
+        selected_window = normalize_trading_window(trading_window, market_config)
+    include_prepost = selected_window is not None and selected_window != "regular market"
+    url = f"{_YF_BASE}/{symbol}?interval={interval}&range={period}&includePrePost={'true' if include_prepost else 'false'}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
 
     data = None
@@ -89,6 +96,11 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d") -> list[dict]:
 
     candles = []
     for i, ts in enumerate(timestamps):
+        if selected_window is not None and interval in ("1h", "30m"):
+            from tradingview_mcp.core.services.market_hours import timestamp_in_trading_window
+            candle_time = datetime.fromtimestamp(ts, tz=timezone.utc)
+            if not timestamp_in_trading_window(candle_time, selected_window, market_config):
+                continue
         o, h, l, c, v = q["open"][i], q["high"][i], q["low"][i], q["close"][i], q["volume"][i]
         if None in (o, h, l, c):
             continue
@@ -845,7 +857,21 @@ def run_backtest(
     if len(candles) < min_bars:
         return {"error": f"Not enough data ({len(candles)} bars). Try a longer period."}
 
-    raw_trades = _STRATEGY_MAP[strategy](candles)
+    # Automatically resolve best parameter defaults for strategy-ticker combination
+    strat_kwargs = {}
+    try:
+        from tradingview_mcp.core.services.strategy_config import get_best_parameters
+        best_cfg = get_best_parameters(strategy, symbol)
+        if best_cfg and "parameters" in best_cfg:
+            strat_kwargs.update(best_cfg["parameters"])
+    except Exception:
+        pass
+
+    try:
+        raw_trades = _STRATEGY_MAP[strategy](candles, **strat_kwargs)
+    except TypeError:
+        raw_trades = _STRATEGY_MAP[strategy](candles)
+
     trades     = _apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics    = _calc_metrics(trades, initial_capital, interval)
     bnh        = _buy_and_hold_return(candles)

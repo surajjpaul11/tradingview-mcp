@@ -1,0 +1,114 @@
+{
+  "captured_at": "2026-09-24T18:57:50.689164+00:00",
+  "label": "strict confirmed-swing body-or-wick validation",
+  "parameters": {
+    "strategy": "sloped_lines",
+    "timeframe": "30m",
+    "period": "3mo",
+    "trading_window": "extended hours",
+    "full_candle": false,
+    "use_wick": false,
+    "confirm_candles": 0,
+    "inverse_color_trigger": false,
+    "line_angle": 3,
+    "stop_loss_mode": "exit_peak_reclaim",
+    "min_anchor_bars": 2
+  },
+  "comparison": {
+    "AAPL": {
+      "before": {
+        "total_pnl_pct": 2.52,
+        "buy_and_hold_pct": 16.57,
+        "win_rate_pct": 16.2,
+        "total_trades": 37,
+        "trendline_count": 10
+      },
+      "after": {
+        "total_pnl_pct": 6.94,
+        "buy_and_hold_pct": 16.55,
+        "win_rate_pct": 28.6,
+        "total_trades": 7,
+        "trendline_count": 2
+      },
+      "return_change_pct_points": 4.42,
+      "trade_count_change": -30,
+      "trendline_count_change": -8
+    },
+    "GOOGL": {
+      "before": {
+        "total_pnl_pct": -1.46,
+        "buy_and_hold_pct": -3.66,
+        "win_rate_pct": 14.6,
+        "total_trades": 48,
+        "trendline_count": 15
+      },
+      "after": {
+        "total_pnl_pct": 7.79,
+        "buy_and_hold_pct": -3.69,
+        "win_rate_pct": 11.1,
+        "total_trades": 18,
+        "trendline_count": 5
+      },
+      "return_change_pct_points": 9.25,
+      "trade_count_change": -30,
+      "trendline_count_change": -10
+    },
+    "MELI": {
+      "before": {
+        "total_pnl_pct": -18.91,
+        "buy_and_hold_pct": 3.77,
+        "win_rate_pct": 12.0,
+        "total_trades": 83,
+        "trendline_count": 20
+      },
+      "after": {
+        "total_pnl_pct": -23.71,
+        "buy_and_hold_pct": 3.94,
+        "win_rate_pct": 2.4,
+        "total_trades": 42,
+        "trendline_count": 4
+      },
+      "return_change_pct_points": -4.8,
+      "trade_count_change": -41,
+      "trendline_count_change": -16
+    },
+    "SPY": {
+      "before": {
+        "total_pnl_pct": 1.57,
+        "buy_and_hold_pct": 3.14,
+        "win_rate_pct": 25.0,
+        "total_trades": 8,
+        "trendline_count": 2
+      },
+      "after": {
+        "total_pnl_pct": 0,
+        "buy_and_hold_pct": 3.23,
+        "win_rate_pct": 0,
+        "total_trades": 0,
+        "trendline_count": 0
+      },
+      "return_change_pct_points": -1.57,
+      "trade_count_change": -8,
+      "trendline_count_change": -2
+    },
+    "NVDA": {
+      "before": {
+        "total_pnl_pct": 16.32,
+        "buy_and_hold_pct": 13.01,
+        "win_rate_pct": 23.0,
+        "total_trades": 61,
+        "trendline_count": 24
+      },
+      "after": {
+        "total_pnl_pct": 22.61,
+        "buy_and_hold_pct": 13.18,
+        "win_rate_pct": 33.3,
+        "total_trades": 15,
+        "trendline_count": 9
+      },
+      "return_change_pct_points": 6.29,
+      "trade_count_change": -46,
+      "trendline_count_change": -15
+    }
+  }
+}

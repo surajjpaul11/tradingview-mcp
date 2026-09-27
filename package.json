@@ -10,11 +10,12 @@
   "scripts": {
     "build": "python -m build",
     "start": "uv run tradingview-mcp",
-    "dev": "uv run tradingview-mcp stdio"
+    "dev": "uv run tradingview-mcp stdio",
+    "test:ui": "node tests/dashboard_ui_smoke.mjs"
   },
   "keywords": [
     "mcp",
-    "tradingview", 
+    "tradingview",
     "crypto",
     "bollinger-bands",
     "candle-patterns",
@@ -35,7 +36,7 @@
     "description": "Advanced multi-agent AI trading framework and real-time TradingView market analysis",
     "tools": [
       "top_gainers",
-      "top_losers", 
+      "top_losers",
       "bollinger_scan",
       "rating_filter",
       "coin_analysis",
@@ -46,5 +47,8 @@
     "resources": [
       "exchanges://list"
     ]
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
   }
 }

@@ -1,0 +1,606 @@
+{
+  "source": "Yahoo Finance via yfinance",
+  "period": "5d",
+  "interval": "30m",
+  "timezone": "America/New_York",
+  "prepost": true,
+  "symbols": {
+    "AAPL": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "AGNC": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "AMD": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "AMZN": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "BE": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "BMNR": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "BMRN": {
+      "rows": 92,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 17,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 22,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "CRWD": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "DIA": {
+      "rows": 138,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 30,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "GDX": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "GOOGL": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "IREN": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "MELI": {
+      "rows": 139,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 31,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "META": {
+      "rows": 141,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "overnight": {
+          "candles": 1,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "MSFT": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "NVDA": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "NVTS": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "PAAS": {
+      "rows": 133,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 29,
+          "candles_with_nonzero_volume": 3
+        },
+        "pre-market": {
+          "candles": 51,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "PANW": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "PLTR": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "QQQ": {
+      "rows": 141,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "overnight": {
+          "candles": 1,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "SMCI": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "SMR": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 3
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "SNDK": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "SPY": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "STX": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "TSLA": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "UEC": {
+      "rows": 138,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 31,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 54,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "VXX": {
+      "rows": 138,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 31,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 54,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "WDC": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    },
+    "WULF": {
+      "rows": 140,
+      "first_timestamp_ny": "2026-09-18T04:00:00-04:00",
+      "last_timestamp_ny": "2026-09-24T09:30:00-04:00",
+      "sessions": {
+        "after hours": {
+          "candles": 32,
+          "candles_with_nonzero_volume": 0
+        },
+        "pre-market": {
+          "candles": 55,
+          "candles_with_nonzero_volume": 0
+        },
+        "regular market": {
+          "candles": 53,
+          "candles_with_nonzero_volume": 53
+        }
+      }
+    }
+  }
+}

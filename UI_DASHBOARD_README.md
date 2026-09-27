@@ -20,6 +20,8 @@ A fully customized, high-performance HTML/JS/FastAPI dashboard was engineered to
     - Includes `index.html`, `style.css` (premium dark mode aesthetics), and `app.js` (native vanilla JS with dynamic UI state handling).
     - Lightweight charts automatically pull historical candles and sequentially plot explicit **buy (green upward arrows)** and **sell (red downward arrows)** markers at their exact historical execution times.
     - Statistics Cards dynamically rerender their contents strictly based on the currently filtered strategy and ticker.
+    - **Advanced** keeps the regular chart, candle-resolution controls, and timeframe controls, then adds optional synchronized Volume and RSI (14) panes below it. Both panes follow the main chart whenever its range is changed or zoomed.
+    - Candle resolution and timeframe controls stay in a sticky rail on the chart's right side at desktop widths, with a compact above-chart layout on narrow screens.
 
 ## 2. Running the UI Dashboard
 
@@ -29,7 +31,7 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
 
 1. Open a system terminal and navigate to the project's root directly:
    ```bash
-   cd /Users/spaul11/Projects/codex
+   cd /Users/spaul11/Projects/tradingview-mcp
    ```
 
 2. Run the dashboard launcher with `uv run`:
@@ -37,9 +39,36 @@ It is highly recommended that you run the dashboard using **`uv run`**. This pro
    uv run python -m tradingview_mcp.ui.launcher --open-browser
    ```
 
-3. The launcher prints and opens the dashboard address. It starts at port 8000 and tries the next free port if another copy is already running. Set `PORT` to change the starting port.
+3. The launcher prints and opens the dashboard address. It starts at port 8000 and tries the next free port if
+   another copy is already running, so several copies (e.g. one per git worktree) can run side by side.
+   Set `PORT` or `--port N` to change the starting port, and `--strict-port` (or `PORT_STRICT=1`) to fail
+   instead of moving to another port. The same selection applies to the MCP HTTP server
+   (`uv run tradingview-mcp streamable-http`).
 
 The dashboard's **Opportunity research** link opens an editable cross-stock watchlist scanner. It highlights current completed-bar buys and their historical long-trade outcomes. The displayed win rates are not calibrated probabilities; see [the scanner groundwork](docs/OPPORTUNITY_SCANNER.md) for its present limits.
+
+### Yahoo Finance refresh schedule
+
+The dashboard loads Yahoo Finance data when it first opens and whenever the ticker, strategy, or chart range changes. While the configured market session is open, it also refreshes the visible chart every 30 minutes. A header indicator shows whether the market is open and when automatic refresh will resume.
+
+Edit `config/market_hours.json` to change the schedule:
+
+- `timezone`, `open_time`, and `close_time` define the regular session.
+- `active_trading_window` stores the home-page selection. Its default is `regular market`.
+- `trading_windows` defines the selectable sessions: regular market (9:30 a.m.–4:00 p.m.), pre-market plus regular (4:00 a.m.–4:00 p.m.), regular plus after hours (9:30 a.m.–8:00 p.m.), and overnight/all sessions (midnight–midnight).
+- `weekdays` uses Python weekday numbers (`0` is Monday and `6` is Sunday).
+- `refresh_minutes` controls the live dashboard interval.
+- `holidays` accepts closed dates such as `"2026-12-25"`.
+- `early_closes` maps a date to its close time, such as `"2026-11-27": "13:00"`.
+- `yahoo_cache_seconds` prevents the dashboard's candle, trade, stats, and overlay requests from downloading the same Yahoo data repeatedly during one refresh.
+
+The checked-in holiday and early-close dates cover the NYSE calendar through 2028 and should be updated when NYSE publishes later years. The `calendar_source` field records the official schedule used.
+
+Set `MARKET_HOURS_CONFIG` to use a different JSON file. The schedule is reread by the server, so a restart is not normally required after editing it.
+
+The **Trading Window** selector on the home page persists `active_trading_window`, changes the automatic-refresh session, and is sent to the candle, trade, statistics, trendline, and channel APIs. Extended windows request Yahoo pre/post-market data and filter intraday candles before a strategy runs. Because daily candles do not preserve session boundaries, choosing an extended window automatically changes the regular chart to 30-minute candles and the advanced chart to its one-day intraday view. Yahoo may not supply every overnight equity print, so the overnight option uses all intraday data Yahoo returns rather than filling missing intervals.
+
+The live signal service also reads the persisted window when requesting intraday Yahoo candles. Live Alpaca execution is blocked while the selected stock-trading window is closed; crypto execution remains independent because crypto markets run continuously.
 
 The scanner includes [Volume-Confirmed Price Breakout](docs/VOLUME_PRICE_BREAKOUT.md), which checks for a new price high with an unusually large price gain and volume surge. Its pending signals and earlier closed trades appear alongside the other supported strategies.
 

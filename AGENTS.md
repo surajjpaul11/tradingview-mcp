@@ -1,16 +1,14 @@
-# TradingView MCP — Project Context
+# TradingView MCP — Agent Instructions
 
-## On First Prompt of Session
-
-Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
-
+Shared project context for any AI coding assistant (Claude Code, Codex, Cursor, Gemini/Antigravity, ...).
+Tool-specific instructions live in that tool's own file (e.g. `CLAUDE.md`); keep shared content here.
 
 ## What This Is
 
-A fork of [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp) — a Python FastMCP server providing TradingView market analysis tools to AI assistants. We are extending it with backtesting, and eventually paper trading and live trade execution.
+A Python FastMCP server providing TradingView market analysis tools to AI assistants, with backtesting, and eventually paper trading and live trade execution. Inspired by [atilaahmettaner/tradingview-mcp](https://github.com/atilaahmettaner/tradingview-mcp), but this is a standalone project, not a fork.
 
 Owner: Suraj Paul (suraj.j.paul@gmail.com)
-Fork: https://github.com/surajjpaul11/tradingview-mcp.git
+Repo: https://github.com/surajjpaul11/tradingview-mcp.git
 
 ## Architecture
 
@@ -53,6 +51,7 @@ strategies/                              # Strategy pairs: same name, .py + .pin
   enhanced_lines_strategy.py             # Enhanced Lines — channel bounce trading, volume-weighted sizing
   enhanced_lines_strategy.html           # Interactive visual of channel bounce concept
   compare_enhanced_lines.py             # Enhanced Lines vs Straight Line vs B&H comparison script
+  resistance_lines/                      # Resistance Lines — horizontal S/R bounce (long only): .py, .pine, compare script
 ```
 
 ### Strategy Convention
@@ -140,9 +139,18 @@ Every strategy gets two files with the **same filename**, different extensions:
    - Tuned defaults: dev=3.0, stop=2.0, hold=15 (tested 8 variants across 23 symbols)
    - Long-only mode: +1.40% avg across 23 symbols, best on high-vol assets (VXX +25.73% vs B&H)
 
+### Phase 1f: Resistance Lines Strategy (COMPLETE, on branch `claude`)
+
+1. **Created `strategies/resistance_lines/`** — horizontal support/resistance bounce, long only
+   - Levels = clusters of confirmed swing highs/lows (>= 2 touches within 0.75 ATR, last 500 bars)
+   - Buy: support-zone touch + close back above + hammer/bullish engulfing, RR >= 1.5
+   - Exit: stop 1.0 ATR below level, target = next resistance zone, or resistance bounce (shooting star/bearish engulfing)
+   - Daily bars by default — 1h tested and not viable after 0.30% round-trip costs
+   - Registered in `backtest_service._STRATEGY_MAP` as `resistance_lines`; Pine v6 port included (not yet compiled in TradingView)
+
 Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.md)
 
-### Available Backtest Strategies (12 total)
+### Available Backtest Strategies (13 total)
 
 | Strategy | Type | Sides | Description |
 |----------|------|-------|-------------|
@@ -158,6 +166,7 @@ Full strategy documentation: [`strategies/STRATEGIES.md`](strategies/STRATEGIES.
 | **straight_line** | **Trendline break** | **Long (+ optional short)** | **4-point trendline confirmation, 1.5% tolerance, 1-bar break confirm** |
 | **volatility_harvester** | **Mean reversion** | **Long + Short** | **ATR Z-Score + volume entries, ER regime gate, triple-layer exits** |
 | **enhanced_lines** | **Channel trend** | **Long + Short** | **Channel bounce trading, volume-weighted sizing, tax-optimized partial sells** |
+| **resistance_lines** | **Horizontal S/R bounce** | **Long only** | **Clustered swing-pivot levels, hammer/engulfing confirmation, stop beyond level, target next level** |
 
 ## What Needs To Be Done
 
@@ -203,7 +212,7 @@ Add more strategies following the paired `.py` + `.pine` convention:
 
 ## Key Design Decisions
 
-1. **Python-only for execution, Pine Script preserved for TradingView portability.** Claude can translate between the two. The `.pine` file lets users paste into TradingView; the `.py` file runs backtests and live trades.
+1. **Python-only for execution, Pine Script preserved for TradingView portability.** An AI assistant can translate between the two. The `.pine` file lets users paste into TradingView; the `.py` file runs backtests and live trades.
 
 2. **Zero external dependencies for core indicators/backtest.** The entire backtest engine uses only Python stdlib. This keeps the MCP server lightweight and avoids dependency conflicts.
 
@@ -219,11 +228,6 @@ Add more strategies following the paired `.py` + `.pine` convention:
 
 ```bash
 # Install
-
-## On First Prompt of Session
-
-Invoke `/session-resume` on the very first user message of this session. Do NOT invoke it again after that.
-
 uv sync
 
 # Start MCP server (stdio)
@@ -252,18 +256,45 @@ python strategies/volatility_harvester_strategy.py --symbol BTC-USD --no-volume-
 # Run standalone Enhanced Lines backtest
 python strategies/enhanced_lines_strategy.py --symbol SPY --period 2y
 python strategies/enhanced_lines_strategy.py --symbol QQQ --no-short
+
+# Run standalone Resistance Lines backtest (daily, 5y by default)
+python strategies/resistance_lines/resistance_lines_strategy.py --symbol SPY
+python strategies/resistance_lines/compare_resistance_lines.py      # variant comparison, 23 symbols
 ```
 
 ## Inspiration
 
-Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. Our fork goes further by adding execution capability.
-## Docker Container (Skills)
+Architecture inspired by [DaviddTech's video](https://youtu.be/uOC9vLRipsg) showing Claude + custom MCP server for TradingView backtesting. This project goes further by adding execution capability.
+
+## How To Test
+
+```bash
+uv run python -m unittest discover tests   # offline Python tests
+npm ci && npm run test:ui                  # dashboard browser smoke test (needs Chrome or Edge; uses live Yahoo data)
+```
+
+`npm ci` is required on a fresh checkout: `.gitignore` excludes `node_modules/playwright-core/lib/`.
+The browser test fails on any browser console error.
+
+## Docker Container
 
 This project runs inside a Docker container. Ports **8000–8004** are mapped to the host.
 
-Use these skills for details (loaded on-demand to save tokens):
-- `/docker-networking` — Server binding rules, port allocation
-- `/container-restart` — Pre-restart checklist to preserve work
-- `/session-resume` — Startup protocol for restoring state
-
 **Key rules:** Always bind to `0.0.0.0`. Only use ports 8000–8004. Commit and push before restarts.
+
+### Automatic port selection
+
+Both servers pick the first free port starting at `--port` / `$PORT` (default 8000), so several worktrees can run at once:
+- UI dashboard: `./start.command` (or `uv run python src/tradingview_mcp/ui/server.py [--port N]`) — prints the URL it chose.
+- MCP HTTP: `uv run tradingview-mcp streamable-http [--port N]`.
+- `--strict-port` or `PORT_STRICT=1` fails instead of moving. `PORT_MAX_TRIES` caps the scan (default 50); inside Docker set `PORT_MAX_TRIES=5` to stay within 8000–8004.
+- Logic lives in `src/tradingview_mcp/core/utils/ports.py` (also a CLI: `python -m tradingview_mcp.core.utils.ports`).
+
+## Bug Log
+
+`bugs_to_fix.json` is the running log of bugs: symptom, how to reproduce, confirmed cause, and fix (with commit). Add an entry to `.bugs` whenever a bug is noticed (`"fixed": false`, next `BUG-NNN` id); when fixed, set `"fixed": true` and fill `fix`, `verified`, `fixed_in`. Keep fixed entries for future reference.
+
+Don't read the whole file — filter with `jq`:
+- Open bugs: `jq '.bugs[] | select(.fixed == false) | {id, title}' bugs_to_fix.json`
+- Fixed bugs: `jq '.bugs[] | select(.fixed) | {id, title, fixed_in}' bugs_to_fix.json`
+- One bug in full: `jq '.bugs[] | select(.id == "BUG-001")' bugs_to_fix.json`

@@ -75,7 +75,7 @@ else
     echo -e "      ${GREEN}✓ Trade database ready (${TRADE_COUNT} trades logged).${NC}"
 fi
 
-# 4. Launch UI Server and open browser
+# 4. Launch the dashboard (launcher reserves the first free port: 8000, 8001, ...)
 echo -e "\n${BOLD}[4/4] Launching Trade Visualizer Dashboard...${NC}"
 echo -e "      ${CYAN}ℹ Selecting a free port and opening the browser...${NC}"
 echo -e "      ${YELLOW}ℹ Press [Ctrl + C] in this window to stop the server at any time.${NC}\n"

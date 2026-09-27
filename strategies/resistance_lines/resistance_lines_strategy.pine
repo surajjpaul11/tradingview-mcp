@@ -1,0 +1,147 @@
+//@version=6
+// Resistance Lines — horizontal support/resistance bounce strategy (long only)
+// Pine Script v6 port of strategies/resistance_lines/resistance_lines_strategy.py
+//
+// Levels: confirmed swing highs AND lows from the last `levelLb` bars, clustered by price
+//         (radius = zone ATR). A cluster with >= `minTouch` pivots is a horizontal level.
+// Buy:    bar dips into a support zone, closes back above the level (prior close above it),
+//         and prints a hammer or bullish engulfing candle. Fills next bar's open.
+// Exits:  stop = level - stopMult*ATR, target = bottom of next resistance zone,
+//         or a resistance bounce (shooting star / bearish engulfing at a level above).
+//
+// Known differences vs the Python backtester:
+//  - Reward/risk is checked against the signal bar's close (Python uses the actual fill price).
+//  - ta.pivothigh/pivotlow handle equal highs/lows differently from the Python pivot scan.
+//  - TradingView's broker emulator decides stop-vs-target order inside a bar from the OHLC path;
+//    Python always assumes the stop fills first.
+strategy("Resistance Lines (Horizontal S/R Bounce)", overlay = true,
+     initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     commission_type = strategy.commission.percent, commission_value = 0.1, slippage = 0,
+     pyramiding = 0, max_bars_back = 1000)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+pivotLb   = input.int(5,      "Pivot lookback (bars each side)", minval = 1)
+levelLb   = input.int(500,    "Level lookback (bars)",           minval = 20)
+minTouch  = input.int(2,      "Min touches per level",           minval = 1)
+zoneMult  = input.float(0.75, "Zone half-width (ATR)",           minval = 0.05, step = 0.05)
+stopMult  = input.float(1.0,  "Stop beyond level (ATR)",         minval = 0.1,  step = 0.1)
+minRR     = input.float(1.5,  "Min reward/risk (0 = off)",       minval = 0.0,  step = 0.1)
+atrLen    = input.int(14,     "ATR period",                      minval = 1)
+wickRatio = input.float(2.0,  "Hammer / shooting-star wick ratio", minval = 1.0, step = 0.5)
+
+// ── Indicators ────────────────────────────────────────────────────────────────
+atr  = ta.atr(atrLen)
+zone = zoneMult * atr
+
+// ── Pivot store (only confirmed pivots, pruned to the lookback window) ────────
+var array<float> pvPrice = array.new<float>()
+var array<int>   pvBar   = array.new<int>()
+
+ph = ta.pivothigh(high, pivotLb, pivotLb)
+pl = ta.pivotlow(low, pivotLb, pivotLb)
+if not na(ph)
+    pvPrice.push(ph)
+    pvBar.push(bar_index - pivotLb)
+if not na(pl)
+    pvPrice.push(pl)
+    pvBar.push(bar_index - pivotLb)
+while pvBar.size() > 0 and pvBar.get(0) < bar_index - levelLb
+    pvBar.shift()
+    pvPrice.shift()
+
+// ── Level clustering: returns ascending level prices and touch counts ─────────
+clusterLevels(array<float> prices, float radius, int minT) =>
+    array<float> lv = array.new<float>()
+    array<int>   tc = array.new<int>()
+    if prices.size() > 0 and radius > 0
+        array<float> s = prices.copy()
+        s.sort(order.ascending)
+        float sum = 0.0
+        int   cnt = 0
+        for p in s
+            if cnt > 0 and p - sum / cnt > radius
+                if cnt >= minT
+                    lv.push(sum / cnt)
+                    tc.push(cnt)
+                sum := 0.0
+                cnt := 0
+            sum += p
+            cnt += 1
+        if cnt >= minT
+            lv.push(sum / cnt)
+            tc.push(cnt)
+    [lv, tc]
+
+[levels, touches] = clusterLevels(pvPrice, zone, minTouch)
+
+// ── Candle patterns ───────────────────────────────────────────────────────────
+rng       = high - low
+body      = math.abs(close - open)
+lowerWick = math.min(open, close) - low
+upperWick = high - math.max(open, close)
+
+hammer    = rng > 0 and lowerWick >= wickRatio * math.max(body, rng * 0.05) and upperWick <= math.max(body, rng * 0.1) and (close - low) / rng >= 0.6
+bullEng   = close[1] < open[1] and close > open and close >= open[1] and open <= close[1]
+star      = rng > 0 and upperWick >= wickRatio * math.max(body, rng * 0.05) and lowerWick <= math.max(body, rng * 0.1) and (high - close) / rng >= 0.6
+bearEng   = close[1] > open[1] and close < open and close <= open[1] and open >= close[1]
+bullRev   = hammer or bullEng
+bearRev   = star or bearEng
+
+// ── Nearest levels (for plotting and targets) ─────────────────────────────────
+float nearSup = na
+float nearRes = na
+if levels.size() > 0
+    for k = 0 to levels.size() - 1
+        L = levels.get(k)
+        if L < close
+            nearSup := L
+        else if na(nearRes)
+            nearRes := L
+
+// ── Entry: support bounce ─────────────────────────────────────────────────────
+var float stopPx = na
+var float tgtPx  = na
+
+if strategy.position_size == 0 and levels.size() > 0 and not na(atr)
+    for k = levels.size() - 1 to 0
+        L = levels.get(k)
+        if L >= close
+            continue
+        if not (math.min(low, low[1]) <= L + zone and close[1] > L)
+            continue
+        if bullRev
+            float sl = L - stopMult * atr
+            float tp = na
+            for j = 0 to levels.size() - 1
+                if levels.get(j) - zone > close
+                    tp := levels.get(j) - zone
+                    break
+            float risk   = close - sl
+            float reward = na(tp) ? na : tp - close
+            bool  rrOk   = risk > 0 and (na(reward) or reward > 0) and (minRR <= 0 or na(reward) or reward / risk >= minRR)
+            if rrOk
+                stopPx := sl
+                tgtPx  := tp
+                strategy.entry("L", strategy.long, comment = hammer ? "hammer" : "engulf")
+        break
+
+// ── Exits: stop / target (re-issued every bar) and resistance bounce ─────────
+if not na(stopPx)
+    strategy.exit("SL/TP", "L", stop = stopPx, limit = tgtPx)
+
+if strategy.position_size > 0 and levels.size() > 0
+    for k = 0 to levels.size() - 1
+        L = levels.get(k)
+        if L <= close
+            continue
+        if not (math.max(high, high[1]) >= L - zone and close[1] < L)
+            continue
+        if bearRev
+            strategy.close("L", comment = "resistance bounce")
+        break
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(nearSup, "Nearest support",    color = color.new(color.green, 0), style = plot.style_circles, linewidth = 2)
+plot(nearRes, "Nearest resistance", color = color.new(color.red, 0),   style = plot.style_circles, linewidth = 2)
+plot(strategy.position_size > 0 ? stopPx : na, "Stop",   color = color.orange, style = plot.style_linebr)
+plot(strategy.position_size > 0 ? tgtPx  : na, "Target", color = color.aqua,   style = plot.style_linebr)

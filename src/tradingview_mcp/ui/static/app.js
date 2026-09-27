@@ -27,6 +27,7 @@ const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
+const vixIndicatorCheckbox = document.getElementById('vix-indicator-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
 const volumeIndicatorPane = document.getElementById('volume-indicator-pane');
 const rsiIndicatorPane = document.getElementById('rsi-indicator-pane');
@@ -297,6 +298,8 @@ const slopedWickGroup = document.getElementById('sloped-wick-group');
 const slopedWickCheckbox = document.getElementById('sloped-wick-checkbox');
 const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candles-group');
 const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
+const slopedPivotLookbackGroup = document.getElementById('sloped-pivot-lookback-group');
+const slopedPivotLookbackSelect = document.getElementById('sloped-pivot-lookback-select');
 const slopedInverseColorGroup = document.getElementById('sloped-inverse-color-group');
 const slopedInverseColorCheckbox = document.getElementById('sloped-inverse-color-checkbox');
 const slopedLineAngleGroup = document.getElementById('sloped-line-angle-group');
@@ -319,6 +322,12 @@ function getWickEnabled() {
 function getConfirmCandles() {
     if (!slopedConfirmCandlesSelect) return 0;
     return parseInt(slopedConfirmCandlesSelect.value, 10) || 0;
+}
+
+function getPivotLookback() {
+    if (!slopedPivotLookbackSelect) return 5;
+    const val = parseInt(slopedPivotLookbackSelect.value, 10);
+    return Number.isFinite(val) ? val : 5;
 }
 
 function getInverseColorTriggerEnabled() {
@@ -356,6 +365,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedFullCandleGroup) slopedFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedPivotLookbackGroup) slopedPivotLookbackGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedInverseColorGroup) slopedInverseColorGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
@@ -364,8 +374,10 @@ function syncChannelMultVisibility(strategy) {
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
 const bestParamsBadge = document.getElementById('best-params-badge');
+let bestParametersRequestGeneration = 0;
 
 async function applyBestParametersIfAvailable(strategy, symbol) {
+    const requestGeneration = ++bestParametersRequestGeneration;
     if (!strategy || !symbol || strategy === 'all') {
         if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
         return;
@@ -377,6 +389,11 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             return;
         }
         const result = await res.json();
+        if (
+            requestGeneration !== bestParametersRequestGeneration
+            || strategySelect?.value !== strategy
+            || tickerSelect?.value !== symbol
+        ) return;
         if (!result.found || !result.data || !result.data.parameters) {
             if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
             return;
@@ -394,6 +411,11 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             }
             if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
                 slopedConfirmCandlesSelect.value = String(p.confirm_candles);
+            }
+            if (p.pivot_lookback !== undefined && slopedPivotLookbackSelect) {
+                slopedPivotLookbackSelect.value = String(p.pivot_lookback);
+            } else if (slopedPivotLookbackSelect) {
+                slopedPivotLookbackSelect.value = '5';
             }
             if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
                 slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
@@ -446,11 +468,27 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
                 btn.classList.toggle('active', btn.dataset.res === activeResolution);
             });
         }
+        const resolutionLabels = {
+            '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
+            '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
+        };
+        const resolutionHint = document.getElementById('active-res-hint');
+        if (resolutionHint && result.data.timeframe) {
+            resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
+        }
         if (result.data.period && result.data.period !== activeTimeframe) {
             activeTimeframe = result.data.period;
             document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
             });
+        }
+        const timeframeLabels = {
+            '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
+            '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
+        };
+        const timeframeHint = document.getElementById('active-range-hint');
+        if (timeframeHint && result.data.period) {
+            timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
         }
 
         // Display Best Params badge
@@ -487,6 +525,8 @@ let rsiSeries = null;
 let rsiUpperGuide = null;
 let rsiLowerGuide = null;
 let rsiBoundsSeries = null;
+let vixSeries = null;
+let currentVixCandles = [];
 let currentCandles = [];
 let sessionZoneFrame = null;
 let chartDataUpdateInProgress = false;
@@ -627,7 +667,6 @@ function switchTab(tab) {
     requestAnimationFrame(() => requestAnimationFrame(refreshMainChartLayout));
     scheduleSessionZoneRender();
     if (filtersLoaded) {
-        ensureIntradayResolutionForExtendedWindow();
         updateDashboard();
     }
 }
@@ -689,6 +728,29 @@ function initChart() {
         });
     } else {
         console.error('[TV] Could not create candlestick series with loaded chart library.');
+    }
+
+    vixSeries = addLineSeriesCompat(chart, {
+        color: '#FF9800',
+        lineWidth: 2,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        priceScaleId: 'vix',
+        title: 'VIX',
+        visible: false,
+    });
+    if (vixSeries) {
+        chart.priceScale('vix').applyOptions({
+            scaleMargins: { top: 0.05, bottom: 0.3 },
+            borderVisible: true,
+            borderColor: '#FF9800',
+            textColor: '#FF9800',
+            visible: false,
+        });
+        vixSeries.createPriceLine({ price: 25, color: 'rgba(255,152,0,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 25' });
+        vixSeries.createPriceLine({ price: 30, color: 'rgba(255,87,34,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 30' });
+        vixSeries.createPriceLine({ price: 35, color: 'rgba(244,67,54,0.3)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'VIX 35' });
     }
 
     new ResizeObserver(entries => {
@@ -892,6 +954,30 @@ function renderAdvancedIndicators(candles) {
     });
 }
 
+function renderVixOverlay(candles, metadata = {}) {
+    const enabled = activeTab === 'advanced' && Boolean(vixIndicatorCheckbox?.checked);
+    currentVixCandles = (candles || [])
+        .filter(candle => candle && typeof candle.time === 'number' && Number.isFinite(Number(candle.close)))
+        .sort((a, b) => a.time - b.time)
+        .filter((candle, index, values) => index === 0 || candle.time !== values[index - 1].time);
+    const points = currentVixCandles.map(candle => ({
+        time: candle.time,
+        value: Number(candle.close),
+    }));
+    vixSeries?.setData(points);
+    const visible = enabled && points.length > 0;
+    vixSeries?.applyOptions({ visible });
+    chart?.priceScale('vix').applyOptions({ visible });
+    const container = document.getElementById('tv-chart');
+    if (container) {
+        container.dataset.vixPointCount = String(points.length);
+        container.dataset.vixVisible = String(visible);
+        container.dataset.vixResolution = metadata.timeframe || '';
+        container.dataset.vixTimeframe = metadata.period || '';
+        container.dataset.vixTradingWindow = metadata.trading_window || '';
+    }
+}
+
 function updateIndicatorVisibility() {
     const advanced = activeTab === 'advanced';
     const showVolume = advanced && Boolean(volumeIndicatorCheckbox?.checked);
@@ -899,6 +985,11 @@ function updateIndicatorVisibility() {
     indicatorStack?.classList.toggle('active', advanced && (showVolume || showRsi));
     volumeIndicatorPane?.classList.toggle('active', showVolume);
     rsiIndicatorPane?.classList.toggle('active', showRsi);
+    const showVix = advanced && Boolean(vixIndicatorCheckbox?.checked) && currentVixCandles.length > 0;
+    vixSeries?.applyOptions({ visible: showVix });
+    chart?.priceScale('vix').applyOptions({ visible: showVix });
+    const chartContainer = document.getElementById('tv-chart');
+    if (chartContainer) chartContainer.dataset.vixVisible = String(showVix);
     if (advanced) {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
@@ -1123,14 +1214,12 @@ async function loadFilters() {
         // Wire up change listeners — update both tabs
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
@@ -1203,6 +1292,12 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (slopedPivotLookbackSelect) {
+            slopedPivotLookbackSelect.onchange = () => {
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         if (slopedInverseColorCheckbox) {
             slopedInverseColorCheckbox.onchange = () => {
                 updateDashboard();
@@ -1234,7 +1329,6 @@ async function loadFilters() {
         // Trigger initial data load with best parameters if combination exists
         if (data.symbols && data.symbols.length > 0) {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
-            ensureIntradayResolutionForExtendedWindow();
             await updateDashboard();
         }
 
@@ -1581,11 +1675,11 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, isCurrent = () => true) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return summary;
@@ -1623,6 +1717,15 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 
             const snappedStart = findNearestCandleTime(startTime, candleData);
             let snappedEnd = findNearestCandleTime(endTime, candleData);
+            const candleTimes = new Set(candleData.map(candle => candle.time));
+            const projectedPoints = Array.isArray(tl.points)
+                ? tl.points
+                    .map(point => ({
+                        time: point.time || toChartTime(point.date),
+                        value: Number(point.value),
+                    }))
+                    .filter(point => candleTimes.has(point.time) && Number.isFinite(point.value))
+                : [];
 
             if (snappedEnd <= snappedStart) {
                 // Ensure strictly ascending time for Lightweight Charts
@@ -1664,19 +1767,30 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 && confirmationTime > snappedStart
                 && confirmationTime < snappedEnd
             ) {
-                const forming = addTrendlineSeries([
-                    { time: snappedStart, value: tl.start_price },
-                    { time: confirmationTime, value: tl.confirmation_price },
-                ], 2, 1, `${tl.label || ''} (forming)`);
-                const active = addTrendlineSeries([
-                    { time: confirmationTime, value: tl.confirmation_price },
-                    { time: snappedEnd, value: tl.end_price },
-                ], 0, 2, `${tl.label || ''} (active)`);
+                const formingData = projectedPoints.length
+                    ? projectedPoints.filter(point => point.time <= confirmationTime)
+                    : [
+                        { time: snappedStart, value: tl.start_price },
+                        { time: confirmationTime, value: tl.confirmation_price },
+                    ];
+                const activeData = projectedPoints.length
+                    ? projectedPoints.filter(point => point.time >= confirmationTime)
+                    : [
+                        { time: confirmationTime, value: tl.confirmation_price },
+                        { time: snappedEnd, value: tl.end_price },
+                    ];
+                const forming = addTrendlineSeries(formingData, 2, 1, `${tl.label || ''} (forming)`);
+                const active = addTrendlineSeries(activeData, 0, 2, `${tl.label || ''} (active)`);
                 if (forming || active) summary.drawn += 1;
-            } else if (addTrendlineSeries([
-                { time: snappedStart, value: tl.start_price },
-                { time: snappedEnd, value: tl.end_price },
-            ], lineStyle, 2, tl.label || '')) {
+            } else if (addTrendlineSeries(
+                projectedPoints.length ? projectedPoints : [
+                    { time: snappedStart, value: tl.start_price },
+                    { time: snappedEnd, value: tl.end_price },
+                ],
+                lineStyle,
+                2,
+                tl.label || '',
+            )) {
                 summary.drawn += 1;
             }
         });
@@ -1812,21 +1926,26 @@ async function updateDashboard() {
         const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
             : slopedParam;
 
-        const [candlesRes, tradesRes, statsRes] = await Promise.all([
+        const vixRequested = Boolean(vixIndicatorCheckbox?.checked);
+        const [candlesRes, tradesRes, statsRes, vixRes] = await Promise.all([
             fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`),
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`)
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
+            vixRequested
+                ? fetch(`/api/candles?symbol=${encodeURIComponent('^VIX')}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`)
+                : Promise.resolve(null),
         ]);
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
         const statsData = statsRes.ok ? await statsRes.json() : {};
+        const vixData = vixRes?.ok ? await vixRes.json() : { candles: [] };
         if (!isCurrentRequest()) return;
 
         // Update range hint if actual period was clamped by Yahoo Finance (e.g. 30m max 60d)
@@ -1857,6 +1976,7 @@ async function updateDashboard() {
             if (candlestickSeries) {
                 candlestickSeries.setData(sorted);
             }
+            renderVixOverlay(vixData.candles || [], vixData);
             renderAdvancedIndicators(sorted);
         } finally {
             chartDataUpdateInProgress = false;
@@ -1883,7 +2003,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
@@ -1969,7 +2089,7 @@ async function updateAdvDashboard() {
     try {
         const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2013,7 +2133,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
@@ -2094,6 +2214,11 @@ async function updateAdvDashboard() {
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    vixIndicatorCheckbox?.addEventListener('change', () => {
+        updateIndicatorVisibility();
+        if (vixIndicatorCheckbox.checked && filtersLoaded) updateDashboard();
+        if (!vixIndicatorCheckbox.checked) renderVixOverlay([]);
+    });
     const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
     if (savedActiveTab === 'advanced') switchTab('advanced');
     loadFilters().finally(startMarketRefresh);

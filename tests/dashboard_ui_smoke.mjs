@@ -191,6 +191,103 @@ try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
   await waitForAnyChart(page);
 
+  async function readSavedBestState(symbol) {
+    await page.locator('#ticker-select').selectOption(symbol);
+    await page.waitForFunction(expectedSymbol => {
+      const chart = document.querySelector('#tv-chart');
+      const badge = document.querySelector('#best-params-badge');
+      return chart?.dataset.renderStatus === 'ready'
+        && chart.dataset.symbol === expectedSymbol
+        && chart.dataset.resolution === '1d'
+        && chart.dataset.timeframe === '1y'
+        && badge?.title.includes(`for ${expectedSymbol} `);
+    }, symbol, { timeout: 90_000 });
+    return page.evaluate(() => ({
+      badge: document.querySelector('#best-params-badge')?.textContent.trim(),
+      confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
+      pivotLookback: document.querySelector('#sloped-pivot-lookback-select')?.value,
+      angle: document.querySelector('#sloped-line-angle-select')?.value,
+      stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
+      anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
+      resolution: document.querySelector('#tv-chart')?.dataset.resolution,
+      timeframe: document.querySelector('#tv-chart')?.dataset.timeframe,
+      resolutionHint: document.querySelector('#active-res-hint')?.textContent,
+      timeframeHint: document.querySelector('#active-range-hint')?.textContent,
+    }));
+  }
+
+  assert.deepEqual(await readSavedBestState('SPY'), {
+    badge: '★ Saved Best (+17.07%) baseline',
+    confirmation: '1',
+    pivotLookback: '5',
+    angle: '0',
+    stopLoss: 'atr_stop_buffer',
+    anchors: '2',
+    resolution: '1d',
+    timeframe: '1y',
+    resolutionHint: 'Daily (1D)',
+    timeframeHint: '1-Year (1Y)',
+  });
+  assert.deepEqual(await readSavedBestState('AAPL'), {
+    badge: '★ Saved Best (+46.71%) baseline',
+    confirmation: '0',
+    pivotLookback: '5',
+    angle: '3',
+    stopLoss: 'exit_peak_reclaim',
+    anchors: '2',
+    resolution: '1d',
+    timeframe: '1y',
+    resolutionHint: 'Daily (1D)',
+    timeframeHint: '1-Year (1Y)',
+  });
+
+  const pivotResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/trendlines?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+  ]);
+  await page.locator('#sloped-pivot-lookback-select').selectOption('2');
+  await pivotResponses;
+  await waitForStrategyChart(page, 'sloped_lines');
+  assert.equal(await page.locator('#sloped-pivot-lookback-select').inputValue(), '2');
+
+  const restoredPivotResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=5'),
+    { timeout: 90_000 },
+  );
+  await page.locator('#sloped-pivot-lookback-select').selectOption('5');
+  await restoredPivotResponse;
+  await waitForStrategyChart(page, 'sloped_lines');
+
+  const chartControlLayout = await page.evaluate(() => {
+    const chart = document.querySelector('#tv-chart')?.getBoundingClientRect();
+    const rail = document.querySelector('.chart-control-rail')?.getBoundingClientRect();
+    const tabs = document.querySelector('.tab-sidebar')?.getBoundingClientRect();
+    const chartWrapper = document.querySelector('.chart-wrapper')?.getBoundingClientRect();
+    const volumeChart = document.querySelector('#volume-chart')?.getBoundingClientRect();
+    const rsiChart = document.querySelector('#rsi-chart')?.getBoundingClientRect();
+    const railElement = document.querySelector('.chart-control-rail');
+    const tabElement = document.querySelector('.tab-sidebar');
+    return {
+      tabsInsideRail: Boolean(railElement && tabElement && railElement.contains(tabElement)),
+      tabButtonCount: document.querySelectorAll('.rail-tab-buttons .tab-btn').length,
+      railIsAboveChart: Boolean(chart && rail && rail.bottom <= chart.top + 2),
+      railWidth: rail?.width ?? 0,
+      tabsWidth: tabs?.width ?? 0,
+      chartWrapperWidth: chartWrapper?.width ?? 0,
+      volumeChartWidth: volumeChart?.width ?? 0,
+      rsiChartWidth: rsiChart?.width ?? 0,
+    };
+  });
+  assert.equal(chartControlLayout.tabsInsideRail, true, 'Regular/Advanced controls must be inside the chart rail');
+  assert.equal(chartControlLayout.tabButtonCount, 2, 'Regular/Advanced controls are incomplete');
+  assert.equal(chartControlLayout.railIsAboveChart, true, 'chart controls must remain above the graph');
+  assert.ok(
+    Math.abs(chartControlLayout.railWidth - chartControlLayout.chartWrapperWidth) <= 2,
+    `chart toolbar and graph widths differ: ${chartControlLayout.railWidth}px vs ${chartControlLayout.chartWrapperWidth}px`,
+  );
+  assert.ok(chartControlLayout.tabsWidth > 0, 'Regular/Advanced controls have no width');
+
   const axisLabels = await page.evaluate(() => ({
     fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
     fiveAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 9) / 1000, 3),
@@ -280,6 +377,56 @@ try {
     both: 'extended hours',
   });
 
+  const configuredTradingWindow = await page.locator('#trading-window-select').inputValue();
+  await page.evaluate(() => {
+    document.querySelector('#trading-window-select').value = 'extended hours';
+  });
+  await page.locator('#btn-res-30m').click();
+  await page.locator('#btn-range-3mo').click();
+  await waitForChart(page, '30m', '3mo');
+  assertRenderedGraph(await readChartState(page), 'extended-hours default 30m/3mo');
+  await page.evaluate(value => {
+    document.querySelector('#trading-window-select').value = value;
+  }, configuredTradingWindow);
+
+  const indicatorToggleOrder = await page.evaluate(() => (
+    Array.from(document.querySelectorAll('#advanced-indicator-controls input'), input => input.id)
+  ));
+  assert.deepEqual(indicatorToggleOrder, [
+    'volume-indicator-checkbox',
+    'rsi-indicator-checkbox',
+    'vix-indicator-checkbox',
+  ]);
+
+  await page.locator('#tab-advanced').click();
+  await page.locator('#btn-res-1d').click();
+  await page.locator('#btn-range-1y').click();
+  await waitForChart(page, '1d', '1y');
+  await page.locator('#vix-indicator-checkbox').check();
+  await page.waitForFunction(() => {
+    const chart = document.querySelector('#tv-chart');
+    return chart?.dataset.vixVisible === 'true'
+      && Number(chart.dataset.vixPointCount) > 0
+      && chart.dataset.vixResolution === '1d'
+      && chart.dataset.vixTimeframe === '1y';
+  }, null, { timeout: 90_000 });
+  const vixState = await page.evaluate(() => {
+    const chart = document.querySelector('#tv-chart');
+    return {
+      points: Number(chart?.dataset.vixPointCount ?? 0),
+      resolution: chart?.dataset.vixResolution,
+      timeframe: chart?.dataset.vixTimeframe,
+      tradingWindow: chart?.dataset.vixTradingWindow,
+      selectedTradingWindow: getActiveTradingWindow(),
+    };
+  });
+  assert.ok(vixState.points > 0, 'VIX overlay has no data');
+  assert.equal(vixState.resolution, '1d');
+  assert.equal(vixState.timeframe, '1y');
+  assert.equal(vixState.tradingWindow, vixState.selectedTradingWindow);
+  await page.locator('#vix-indicator-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.vixVisible === 'false');
+
   const panes = ['regular', 'advanced'];
   const resolutions = ['1d', '4h', '12h'];
   const timeframes = ['3mo', '1y', '5y'];
@@ -300,6 +447,13 @@ try {
         if (pane === 'advanced') {
           assert.ok(state.volumeCanvases > 0 && state.volumePoints > 0, `${context}: volume graph missing`);
           assert.ok(state.rsiCanvases > 0 && state.rsiPoints > 0, `${context}: RSI graph missing`);
+          const paneWidths = await page.evaluate(() => ({
+            main: document.querySelector('#tv-chart')?.getBoundingClientRect().width ?? 0,
+            volume: document.querySelector('#volume-chart')?.getBoundingClientRect().width ?? 0,
+            rsi: document.querySelector('#rsi-chart')?.getBoundingClientRect().width ?? 0,
+          }));
+          assert.ok(Math.abs(paneWidths.main - paneWidths.volume) <= 2, `${context}: Volume width differs from main chart`);
+          assert.ok(Math.abs(paneWidths.main - paneWidths.rsi) <= 2, `${context}: RSI width differs from main chart`);
         }
         results.push({ pane, resolution, timeframe, candles: state.candleCount });
       }

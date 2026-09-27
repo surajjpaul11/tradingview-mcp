@@ -343,48 +343,51 @@ select:focus {
 .loss { color: var(--loss-red); }
 
 /* ============================================================
-   CHART AREA with TAB SIDEBAR
+   CHART AREA
    ============================================================ */
 .chart-area-container {
-    display: flex;
-    gap: 0.75rem;
+    display: block;
     flex: 1;
     min-height: 0;
 }
 
-/* Vertical Tab Sidebar */
+/* Compact chart-mode controls inside the right rail */
 .tab-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 0.5rem;
-    width: 80px;
-    flex-shrink: 0;
-    align-items: center;
-    border-radius: 16px;
-    align-self: flex-start;
+    gap: 0.55rem;
+    padding: 0;
+    width: 100%;
+    align-items: stretch;
 }
 
 .tab-sidebar.advanced-mode {
-    width: 132px;
+    width: 100%;
+}
+
+.rail-tab-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
 }
 
 .advanced-indicator-controls {
     display: none;
     width: 100%;
-    padding: 0.7rem 0.4rem 0.25rem;
+    padding: 0.55rem 0 0;
     border-top: 1px solid var(--border-color);
-    gap: 0.65rem;
-    flex-direction: column;
+    gap: 0.45rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .tab-sidebar.advanced-mode .advanced-indicator-controls {
-    display: flex;
+    display: grid;
 }
 
 .indicator-controls-label {
+    grid-column: 1 / -1;
     color: var(--text-muted);
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-align: center;
@@ -393,10 +396,10 @@ select:focus {
 .indicator-toggle {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.3rem;
     color: var(--text-main);
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     font-weight: 600;
 }
 
@@ -406,12 +409,13 @@ select:focus {
 
 .tab-btn {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: center;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.75rem 0.5rem;
+    gap: 0.3rem;
+    padding: 0.48rem 0.3rem;
     border: 1px solid transparent;
-    border-radius: 12px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
@@ -433,12 +437,12 @@ select:focus {
 }
 
 .tab-icon {
-    font-size: 1.2rem;
+    font-size: 0.9rem;
     line-height: 1;
 }
 
 .tab-label {
-    font-size: 0.65rem;
+    font-size: 0.58rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -468,7 +472,7 @@ select:focus {
 
 .chart-workspace {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 208px;
+    grid-template-columns: minmax(0, 1fr) 164px;
     gap: 0.75rem;
     align-items: start;
 }
@@ -485,26 +489,27 @@ select:focus {
     top: 1rem;
     flex-direction: column;
     align-items: stretch;
-    gap: 1.2rem;
-    padding: 1rem;
+    gap: 0.8rem;
+    padding: 0.7rem;
 }
 
 .chart-control-rail .control-section {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.8rem;
+    gap: 0.55rem;
 }
 
 .chart-control-rail .timeframe-buttons {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
+    gap: 0.35rem;
 }
 
 .chart-control-rail .tf-btn {
     justify-content: center;
     width: 100%;
-    padding: 0.55rem 0.35rem;
+    padding: 0.44rem 0.2rem;
+    font-size: 0.74rem;
 }
 
 .chart-control-rail .control-divider {
@@ -522,6 +527,9 @@ select:focus {
         flex-direction: row;
         align-items: center;
         flex-wrap: wrap;
+    }
+    .rail-tab-controls {
+        flex: 1 1 100%;
     }
     .chart-control-rail .control-section {
         flex: 1 1 260px;
@@ -663,31 +671,20 @@ select:focus {
 }
 
 @media (max-width: 700px) {
-    .chart-area-container {
-        flex-direction: column;
-    }
     .tab-sidebar,
     .tab-sidebar.advanced-mode {
         width: 100%;
-        flex-direction: row;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
     }
     .tab-btn {
-        width: auto;
-        min-width: 74px;
+        width: 100%;
+        min-width: 0;
     }
     .advanced-indicator-controls,
     .tab-sidebar.advanced-mode .advanced-indicator-controls {
-        width: auto;
-        flex: 1;
-        flex-direction: row;
-        align-items: center;
-        justify-content: flex-end;
-        border-top: 0;
-        padding: 0 0.35rem;
-    }
-    .indicator-controls-label {
-        display: none;
+        width: 100%;
+        padding: 0.55rem 0 0;
     }
 }
 

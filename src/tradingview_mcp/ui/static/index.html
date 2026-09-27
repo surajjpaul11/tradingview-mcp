@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=17">
+    <link rel="stylesheet" href="/static/style.css?v=18">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -225,31 +225,8 @@
             </div>
         </div>
 
-        <!-- Chart Area with Tab Sidebar -->
+        <!-- Chart Area -->
         <div class="chart-area-container">
-            <!-- Vertical Tab Sidebar -->
-            <div class="tab-sidebar glass-panel">
-                <button class="tab-btn active" data-tab="regular" id="tab-regular">
-                    <span class="tab-icon">📊</span>
-                    <span class="tab-label">Regular</span>
-                </button>
-                <button class="tab-btn" data-tab="advanced" id="tab-advanced">
-                    <span class="tab-icon">⚡</span>
-                    <span class="tab-label">Advanced</span>
-                </button>
-                <div id="advanced-indicator-controls" class="advanced-indicator-controls">
-                    <span class="indicator-controls-label">INDICATORS</span>
-                    <label class="indicator-toggle" for="volume-indicator-checkbox">
-                        <input type="checkbox" id="volume-indicator-checkbox" checked>
-                        <span>Volume</span>
-                    </label>
-                    <label class="indicator-toggle" for="rsi-indicator-checkbox">
-                        <input type="checkbox" id="rsi-indicator-checkbox" checked>
-                        <span>RSI (14)</span>
-                    </label>
-                </div>
-            </div>
-
             <!-- Tab Content Panels -->
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
@@ -290,6 +267,32 @@
 
                     <!-- Persistent Resolution & Timeframe Rail -->
                     <aside class="timeframe-bar glass-panel dual-controls-bar chart-control-rail">
+                        <div class="tab-sidebar rail-tab-controls">
+                            <div class="rail-tab-buttons">
+                                <button class="tab-btn active" data-tab="regular" id="tab-regular">
+                                    <span class="tab-icon">📊</span>
+                                    <span class="tab-label">Regular</span>
+                                </button>
+                                <button class="tab-btn" data-tab="advanced" id="tab-advanced">
+                                    <span class="tab-icon">⚡</span>
+                                    <span class="tab-label">Advanced</span>
+                                </button>
+                            </div>
+                            <div id="advanced-indicator-controls" class="advanced-indicator-controls">
+                                <span class="indicator-controls-label">INDICATORS</span>
+                                <label class="indicator-toggle" for="volume-indicator-checkbox">
+                                    <input type="checkbox" id="volume-indicator-checkbox" checked>
+                                    <span>Volume</span>
+                                </label>
+                                <label class="indicator-toggle" for="rsi-indicator-checkbox">
+                                    <input type="checkbox" id="rsi-indicator-checkbox" checked>
+                                    <span>RSI (14)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="control-divider rail-tab-divider"></div>
+
                         <!-- Candle Resolution Group -->
                         <div class="control-section">
                             <div class="timeframe-info">

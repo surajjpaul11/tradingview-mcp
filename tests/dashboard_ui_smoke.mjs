@@ -191,6 +191,32 @@ try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
   await waitForAnyChart(page);
 
+  const chartControlLayout = await page.evaluate(() => {
+    const chart = document.querySelector('#tv-chart')?.getBoundingClientRect();
+    const rail = document.querySelector('.chart-control-rail')?.getBoundingClientRect();
+    const tabs = document.querySelector('.tab-sidebar')?.getBoundingClientRect();
+    const railElement = document.querySelector('.chart-control-rail');
+    const tabElement = document.querySelector('.tab-sidebar');
+    return {
+      tabsInsideRail: Boolean(railElement && tabElement && railElement.contains(tabElement)),
+      tabButtonCount: document.querySelectorAll('.rail-tab-buttons .tab-btn').length,
+      railIsRightOfChart: Boolean(chart && rail && rail.left >= chart.right - 2),
+      railWidth: rail?.width ?? 0,
+      tabsWidth: tabs?.width ?? 0,
+    };
+  });
+  assert.equal(chartControlLayout.tabsInsideRail, true, 'Regular/Advanced controls must be inside the chart rail');
+  assert.equal(chartControlLayout.tabButtonCount, 2, 'Regular/Advanced controls are incomplete');
+  assert.equal(chartControlLayout.railIsRightOfChart, true, 'chart controls must remain to the right of the graph');
+  assert.ok(
+    chartControlLayout.railWidth > 0 && chartControlLayout.railWidth <= 180,
+    `chart control rail is too wide: ${chartControlLayout.railWidth}px`,
+  );
+  assert.ok(
+    chartControlLayout.tabsWidth > 0 && chartControlLayout.tabsWidth <= 180,
+    `Regular/Advanced controls are too wide: ${chartControlLayout.tabsWidth}px`,
+  );
+
   const axisLabels = await page.evaluate(() => ({
     fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
     fiveAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 9) / 1000, 3),

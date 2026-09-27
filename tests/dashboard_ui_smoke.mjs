@@ -205,6 +205,7 @@ try {
     return page.evaluate(() => ({
       badge: document.querySelector('#best-params-badge')?.textContent.trim(),
       confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
+      pivotLookback: document.querySelector('#sloped-pivot-lookback-select')?.value,
       angle: document.querySelector('#sloped-line-angle-select')?.value,
       stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
       anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
@@ -218,6 +219,7 @@ try {
   assert.deepEqual(await readSavedBestState('SPY'), {
     badge: '★ Saved Best (+17.07%) baseline',
     confirmation: '1',
+    pivotLookback: '5',
     angle: '0',
     stopLoss: 'atr_stop_buffer',
     anchors: '2',
@@ -229,6 +231,7 @@ try {
   assert.deepEqual(await readSavedBestState('AAPL'), {
     badge: '★ Saved Best (+46.71%) baseline',
     confirmation: '0',
+    pivotLookback: '5',
     angle: '3',
     stopLoss: 'exit_peak_reclaim',
     anchors: '2',
@@ -237,6 +240,24 @@ try {
     resolutionHint: 'Daily (1D)',
     timeframeHint: '1-Year (1Y)',
   });
+
+  const pivotResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/trendlines?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
+  ]);
+  await page.locator('#sloped-pivot-lookback-select').selectOption('2');
+  await pivotResponses;
+  await waitForStrategyChart(page, 'sloped_lines');
+  assert.equal(await page.locator('#sloped-pivot-lookback-select').inputValue(), '2');
+
+  const restoredPivotResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=5'),
+    { timeout: 90_000 },
+  );
+  await page.locator('#sloped-pivot-lookback-select').selectOption('5');
+  await restoredPivotResponse;
+  await waitForStrategyChart(page, 'sloped_lines');
 
   const chartControlLayout = await page.evaluate(() => {
     const chart = document.querySelector('#tv-chart')?.getBoundingClientRect();

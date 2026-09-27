@@ -229,6 +229,22 @@ class TrendlineApiTests(unittest.TestCase):
         self.assertEqual(data["trendlines"], [])
         self.assertIn("error", data)
 
+    def test_api_forwards_selected_pivot_lookback(self):
+        candles = descending_waves_then_breakout()
+        with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
+            with patch("sloped_lines_strategy.run_sloped_lines_with_trendlines", return_value={"trendlines": []}) as run:
+                asyncio.run(server.api_trendlines(
+                    symbol="TEST",
+                    strategy="sloped_lines",
+                    pivot_lookback=2,
+                ))
+
+        self.assertEqual(run.call_args.kwargs["pivot_lookback"], 2)
+
+    def test_api_rejects_unsupported_pivot_lookback(self):
+        with self.assertRaisesRegex(ValueError, "pivot_lookback must be one of"):
+            server._resolve_sloped_params("TEST", pivot_lookback=9)
+
 
 if __name__ == "__main__":
     unittest.main()

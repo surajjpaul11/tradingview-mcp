@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const MAIN_TESTS_ONLY = process.env.MAIN_TESTS_ONLY === '1';
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -206,6 +207,9 @@ try {
       badge: document.querySelector('#best-params-badge')?.textContent.trim(),
       confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
       pivotLookback: document.querySelector('#sloped-pivot-lookback-select')?.value,
+      anchorSource: document.querySelector('#sloped-anchor-source-select')?.value,
+      validationBoundary: document.querySelector('#sloped-validation-boundary-select')?.value,
+      tolerance: document.querySelector('#sloped-tolerance-select')?.value,
       angle: document.querySelector('#sloped-line-angle-select')?.value,
       stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
       anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
@@ -220,6 +224,9 @@ try {
     badge: '★ Saved Best (+17.07%) baseline',
     confirmation: '1',
     pivotLookback: '5',
+    anchorSource: 'confirmed_pivots',
+    validationBoundary: 'body',
+    tolerance: '0',
     angle: '0',
     stopLoss: 'atr_stop_buffer',
     anchors: '2',
@@ -229,9 +236,12 @@ try {
     timeframeHint: '1-Year (1Y)',
   });
   assert.deepEqual(await readSavedBestState('AAPL'), {
-    badge: '★ Saved Best (+46.71%) baseline',
+    badge: '★ Saved Best (+47.61%) baseline',
     confirmation: '0',
     pivotLookback: '5',
+    anchorSource: 'any_valid_candle',
+    validationBoundary: 'close',
+    tolerance: '0.015',
     angle: '3',
     stopLoss: 'exit_peak_reclaim',
     anchors: '2',
@@ -257,6 +267,21 @@ try {
   );
   await page.locator('#sloped-pivot-lookback-select').selectOption('5');
   await restoredPivotResponse;
+  await waitForStrategyChart(page, 'sloped_lines');
+
+  const tuningResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('anchor_source=any_valid_candle') && response.url().includes('validation_boundary=close') && response.url().includes('trendline_tolerance=0.015'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('anchor_source=any_valid_candle') && response.url().includes('validation_boundary=close') && response.url().includes('trendline_tolerance=0.015'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/trendlines?') && response.url().includes('anchor_source=any_valid_candle') && response.url().includes('validation_boundary=close') && response.url().includes('trendline_tolerance=0.015'), { timeout: 90_000 }),
+  ]);
+  await page.evaluate(() => {
+    document.querySelector('#sloped-anchor-source-select').value = 'any_valid_candle';
+    document.querySelector('#sloped-validation-boundary-select').value = 'close';
+    const tolerance = document.querySelector('#sloped-tolerance-select');
+    tolerance.value = '0.015';
+    tolerance.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await tuningResponses;
   await waitForStrategyChart(page, 'sloped_lines');
 
   const chartControlLayout = await page.evaluate(() => {
@@ -377,6 +402,9 @@ try {
     both: 'extended hours',
   });
 
+  const results = [];
+
+  if (!MAIN_TESTS_ONLY) {
   const configuredTradingWindow = await page.locator('#trading-window-select').inputValue();
   await page.evaluate(() => {
     document.querySelector('#trading-window-select').value = 'extended hours';
@@ -430,8 +458,6 @@ try {
   const panes = ['regular', 'advanced'];
   const resolutions = ['1d', '4h', '12h'];
   const timeframes = ['3mo', '1y', '5y'];
-  const results = [];
-
   for (const pane of panes) {
     await page.locator(`#tab-${pane}`).click();
     for (const resolution of resolutions) {
@@ -471,6 +497,8 @@ try {
   await page.locator('#strategy-select').selectOption('sloped_lines');
   await waitForStrategyChart(page, 'sloped_lines');
   assertRenderedGraph(await readChartState(page), 'advanced sloped lines after strategy switch');
+
+  }
 
   // Five years of daily bars reliably contains sloped-line breakouts, so lines and markers must be drawn.
   await page.locator('#btn-res-1d').click();

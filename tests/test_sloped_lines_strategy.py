@@ -11,6 +11,7 @@ if str(STRATEGY_DIR) not in sys.path:
 
 from sloped_lines_strategy import (
     _entry_barrier_exit_reason,
+    _validation_boundary,
     build_ascending_support,
     build_descending_resistance,
 )
@@ -229,7 +230,17 @@ class TrendlineApiTests(unittest.TestCase):
         self.assertEqual(data["trendlines"], [])
         self.assertIn("error", data)
 
-    def test_api_forwards_selected_pivot_lookback(self):
+    def test_explicit_validation_boundary_selects_body_close_or_wick(self):
+        candles = [{"open": 100, "high": 110, "low": 90, "close": 105}]
+        closes = [105]
+
+        self.assertEqual(_validation_boundary(candles, closes, 0, "resistance", False, "body"), 105)
+        self.assertEqual(_validation_boundary(candles, closes, 0, "resistance", False, "close"), 105)
+        self.assertEqual(_validation_boundary(candles, closes, 0, "resistance", False, "wick"), 110)
+        self.assertEqual(_validation_boundary(candles, closes, 0, "support", False, "body"), 100)
+        self.assertEqual(_validation_boundary(candles, closes, 0, "support", False, "wick"), 90)
+
+    def test_api_forwards_selected_tuning_parameters(self):
         candles = descending_waves_then_breakout()
         with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
             with patch("sloped_lines_strategy.run_sloped_lines_with_trendlines", return_value={"trendlines": []}) as run:
@@ -237,13 +248,25 @@ class TrendlineApiTests(unittest.TestCase):
                     symbol="TEST",
                     strategy="sloped_lines",
                     pivot_lookback=2,
+                    anchor_source="any_valid_candle",
+                    validation_boundary="close",
+                    trendline_tolerance=0.015,
                 ))
 
         self.assertEqual(run.call_args.kwargs["pivot_lookback"], 2)
+        self.assertEqual(run.call_args.kwargs["anchor_source"], "any_valid_candle")
+        self.assertEqual(run.call_args.kwargs["validation_boundary"], "close")
+        self.assertEqual(run.call_args.kwargs["trendline_tolerance"], 0.015)
 
-    def test_api_rejects_unsupported_pivot_lookback(self):
+    def test_api_rejects_unsupported_tuning_parameters(self):
         with self.assertRaisesRegex(ValueError, "pivot_lookback must be one of"):
             server._resolve_sloped_params("TEST", pivot_lookback=9)
+        with self.assertRaisesRegex(ValueError, "anchor_source must be one of"):
+            server._resolve_sloped_params("TEST", anchor_source="future_candles")
+        with self.assertRaisesRegex(ValueError, "validation_boundary must be one of"):
+            server._resolve_sloped_params("TEST", validation_boundary="average")
+        with self.assertRaisesRegex(ValueError, "trendline_tolerance must be one of"):
+            server._resolve_sloped_params("TEST", trendline_tolerance=0.007)
 
 
 if __name__ == "__main__":

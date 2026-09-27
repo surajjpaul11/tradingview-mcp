@@ -11,7 +11,8 @@
     "build": "python -m build",
     "start": "uv run tradingview-mcp",
     "dev": "uv run tradingview-mcp stdio",
-    "test:ui": "node tests/dashboard_ui_smoke.mjs"
+    "test:ui": "node tests/dashboard_ui_smoke.mjs",
+    "test:main": "node --check src/tradingview_mcp/ui/static/app.js && PYTHONPATH=src .venv/bin/python -m unittest tests.test_sloped_lines_strategy tests.test_strategy_config -q && MAIN_TESTS_ONLY=1 node tests/dashboard_ui_smoke.mjs"
   },
   "keywords": [
     "mcp",

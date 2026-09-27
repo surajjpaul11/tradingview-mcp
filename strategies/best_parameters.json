@@ -18,19 +18,23 @@
             "inverse_color_trigger": false,
             "line_angle": 3.0,
             "stop_loss_mode": "exit_peak_reclaim",
-            "min_anchor_bars": 2
+            "min_anchor_bars": 2,
+            "pivot_lookback": 5,
+            "anchor_source": "any_valid_candle",
+            "validation_boundary": "close",
+            "trendline_tolerance": 0.015
           },
           "performance": {
-            "total_pnl": 4670.62,
-            "total_pnl_pct": 46.71,
-            "buy_and_hold_pct": 33.72,
-            "beats_bnh_pct": 12.99,
+            "total_pnl": 4761.26,
+            "total_pnl_pct": 47.61,
+            "buy_and_hold_pct": 34.01,
+            "beats_bnh_pct": 13.6,
             "win_rate_pct": 42.1,
             "total_trades": 38,
             "initial_capital": 10000.0
           },
-          "notes": "Optimal parameter set yielding +46.71% return, beating buy & hold (+33.72%) by +12.99%.",
-          "last_updated": "2026-09-23"
+          "notes": "Saved baseline parameter set yielding +47.61% on the fixed AAPL one-year dataset, using any valid candle anchors, close validation, and 1.5% line tolerance.",
+          "last_updated": "2026-09-27"
         },
         "NVDA": {
           "timeframe": "1d",
@@ -72,7 +76,7 @@
             "total_pnl": 38474.51,
             "total_pnl_pct": 384.75,
             "buy_and_hold_pct": 282.55,
-            "beats_bnh_pct": 102.20,
+            "beats_bnh_pct": 102.2,
             "win_rate_pct": 45.5,
             "total_trades": 22,
             "initial_capital": 10000.0

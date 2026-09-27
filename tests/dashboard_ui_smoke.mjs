@@ -195,27 +195,30 @@ try {
     const chart = document.querySelector('#tv-chart')?.getBoundingClientRect();
     const rail = document.querySelector('.chart-control-rail')?.getBoundingClientRect();
     const tabs = document.querySelector('.tab-sidebar')?.getBoundingClientRect();
+    const chartWrapper = document.querySelector('.chart-wrapper')?.getBoundingClientRect();
+    const volumeChart = document.querySelector('#volume-chart')?.getBoundingClientRect();
+    const rsiChart = document.querySelector('#rsi-chart')?.getBoundingClientRect();
     const railElement = document.querySelector('.chart-control-rail');
     const tabElement = document.querySelector('.tab-sidebar');
     return {
       tabsInsideRail: Boolean(railElement && tabElement && railElement.contains(tabElement)),
       tabButtonCount: document.querySelectorAll('.rail-tab-buttons .tab-btn').length,
-      railIsRightOfChart: Boolean(chart && rail && rail.left >= chart.right - 2),
+      railIsAboveChart: Boolean(chart && rail && rail.bottom <= chart.top + 2),
       railWidth: rail?.width ?? 0,
       tabsWidth: tabs?.width ?? 0,
+      chartWrapperWidth: chartWrapper?.width ?? 0,
+      volumeChartWidth: volumeChart?.width ?? 0,
+      rsiChartWidth: rsiChart?.width ?? 0,
     };
   });
   assert.equal(chartControlLayout.tabsInsideRail, true, 'Regular/Advanced controls must be inside the chart rail');
   assert.equal(chartControlLayout.tabButtonCount, 2, 'Regular/Advanced controls are incomplete');
-  assert.equal(chartControlLayout.railIsRightOfChart, true, 'chart controls must remain to the right of the graph');
+  assert.equal(chartControlLayout.railIsAboveChart, true, 'chart controls must remain above the graph');
   assert.ok(
-    chartControlLayout.railWidth > 0 && chartControlLayout.railWidth <= 180,
-    `chart control rail is too wide: ${chartControlLayout.railWidth}px`,
+    Math.abs(chartControlLayout.railWidth - chartControlLayout.chartWrapperWidth) <= 2,
+    `chart toolbar and graph widths differ: ${chartControlLayout.railWidth}px vs ${chartControlLayout.chartWrapperWidth}px`,
   );
-  assert.ok(
-    chartControlLayout.tabsWidth > 0 && chartControlLayout.tabsWidth <= 180,
-    `Regular/Advanced controls are too wide: ${chartControlLayout.tabsWidth}px`,
-  );
+  assert.ok(chartControlLayout.tabsWidth > 0, 'Regular/Advanced controls have no width');
 
   const axisLabels = await page.evaluate(() => ({
     fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
@@ -326,6 +329,13 @@ try {
         if (pane === 'advanced') {
           assert.ok(state.volumeCanvases > 0 && state.volumePoints > 0, `${context}: volume graph missing`);
           assert.ok(state.rsiCanvases > 0 && state.rsiPoints > 0, `${context}: RSI graph missing`);
+          const paneWidths = await page.evaluate(() => ({
+            main: document.querySelector('#tv-chart')?.getBoundingClientRect().width ?? 0,
+            volume: document.querySelector('#volume-chart')?.getBoundingClientRect().width ?? 0,
+            rsi: document.querySelector('#rsi-chart')?.getBoundingClientRect().width ?? 0,
+          }));
+          assert.ok(Math.abs(paneWidths.main - paneWidths.volume) <= 2, `${context}: Volume width differs from main chart`);
+          assert.ok(Math.abs(paneWidths.main - paneWidths.rsi) <= 2, `${context}: RSI width differs from main chart`);
         }
         results.push({ pane, resolution, timeframe, candles: state.candleCount });
       }

@@ -12,7 +12,12 @@
     "start": "uv run tradingview-mcp",
     "dev": "uv run tradingview-mcp stdio",
     "test:ui": "node tests/dashboard_ui_smoke.mjs",
-    "test:main": "node --check src/tradingview_mcp/ui/static/app.js && PYTHONPATH=src .venv/bin/python -m unittest tests.test_sloped_lines_strategy tests.test_strategy_config -q && MAIN_TESTS_ONLY=1 node tests/dashboard_ui_smoke.mjs"
+    "test:main": "node --check src/tradingview_mcp/ui/static/app.js && PYTHONPATH=src .venv/bin/python -m unittest tests.test_sloped_lines_strategy tests.test_strategy_config -q && MAIN_TESTS_ONLY=1 node tests/dashboard_ui_smoke.mjs",
+    "charts:dev": "vite --config charts.vite.config.js",
+    "charts:build": "vite build --config charts.vite.config.js",
+    "charts:lint": "oxlint src/tradingview_mcp/ui/charts_src",
+    "test:charts:unit": "node --test tests/charts_unit.test.mjs && PYTHONPATH=src .venv/bin/python -m unittest tests.test_chart_workspace -q",
+    "test:charts:main": "npm run charts:build && npm run charts:lint && npm run test:charts:unit && node tests/charts_ui_smoke.mjs"
   },
   "keywords": [
     "mcp",
@@ -50,6 +55,14 @@
     ]
   },
   "devDependencies": {
-    "playwright-core": "^1.63.0"
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "playwright-core": "^1.63.0",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "lightweight-charts": "^5.2.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }

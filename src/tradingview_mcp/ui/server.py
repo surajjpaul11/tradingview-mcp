@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import uuid
+import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
@@ -126,6 +127,15 @@ async def read_root():
     """Serve the single page application."""
     html_file = static_path / "index.html"
     return html_file.read_text()
+
+
+@app.get("/charts", response_class=HTMLResponse)
+async def read_charts():
+    """Serve the independently built React multi-pane chart workspace."""
+    html_file = static_path / "charts" / "index.html"
+    if not html_file.exists():
+        raise HTTPException(status_code=503, detail="Charts workspace is not built. Run npm run charts:build.")
+    return html_file.read_text(encoding="utf-8")
 
 
 @app.get("/opportunities", response_class=HTMLResponse)
@@ -292,6 +302,89 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     return result
 
 
+_HYPERLIQUID_INFO_URL = "https://api.hyperliquid.xyz/info"
+_PERIOD_SECONDS = {
+    "1d": 86_400, "5d": 5 * 86_400, "1mo": 30 * 86_400,
+    "3mo": 90 * 86_400, "6mo": 180 * 86_400, "1y": 365 * 86_400,
+    "2y": 2 * 365 * 86_400, "5y": 5 * 365 * 86_400,
+}
+
+
+def _aggregate_candles(candles: list[dict], seconds: int) -> list[dict]:
+    """Aggregate normalized OHLCV candles into deterministic UTC buckets."""
+    buckets: dict[int, dict] = {}
+    for candle in sorted(candles, key=lambda item: item["time"]):
+        bucket_time = int(candle["time"]) // seconds * seconds
+        bucket = buckets.get(bucket_time)
+        if bucket is None:
+            buckets[bucket_time] = {
+                "time": bucket_time,
+                "date": datetime.fromtimestamp(bucket_time, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                "open": candle["open"], "high": candle["high"], "low": candle["low"],
+                "close": candle["close"], "volume": candle.get("volume", 0.0),
+                "session": "24/7",
+            }
+        else:
+            bucket["high"] = max(bucket["high"], candle["high"])
+            bucket["low"] = min(bucket["low"], candle["low"])
+            bucket["close"] = candle["close"]
+            bucket["volume"] += candle.get("volume", 0.0)
+    return list(buckets.values())
+
+
+def fetch_hyperliquid_candles(coin: str, timeframe: str = "1m", period: str = "1d") -> tuple[list[dict], str, str]:
+    """Fetch normalized Hyperliquid candle history using candleSnapshot."""
+    tf = timeframe.lower().strip()
+    requested_period = period.lower().strip()
+    base_tf = "1d" if tf == "5d" else tf
+    supported = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d"}
+    if base_tf not in supported:
+        raise ValueError(f"Unsupported Hyperliquid timeframe: {timeframe}")
+    end_ms = int(time.time() * 1000)
+    seconds = _PERIOD_SECONDS.get(requested_period)
+    start_ms = 0 if seconds is None else end_ms - seconds * 1000
+    payload = json.dumps({
+        "type": "candleSnapshot",
+        "req": {"coin": coin.upper(), "interval": base_tf, "startTime": start_ms, "endTime": end_ms},
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        _HYPERLIQUID_INFO_URL,
+        data=payload,
+        headers={"Content-Type": "application/json", "User-Agent": "tradingview-mcp/0.7"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        raw = json.loads(response.read().decode("utf-8"))
+    candles = []
+    for item in raw:
+        try:
+            timestamp = int(item.get("t", item.get("T", 0))) // 1000
+            candles.append({
+                "time": timestamp,
+                "date": datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                "open": float(item["o"]), "high": float(item["h"]),
+                "low": float(item["l"]), "close": float(item["c"]),
+                "volume": float(item.get("v", 0.0)), "session": "24/7",
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    deduped = {candle["time"]: candle for candle in candles}
+    normalized = [deduped[key] for key in sorted(deduped)]
+    if tf == "5d":
+        normalized = _aggregate_candles(normalized, 5 * 86_400)
+    return normalized, tf, requested_period
+
+
+def fetch_source_candles(source: str, symbol: str, timeframe: str, period: str, trading_window: str = None):
+    """Dispatch a normalized candle request without changing legacy Yahoo defaults."""
+    selected_source = (source or "yahoo").lower().strip()
+    if selected_source == "hyperliquid":
+        return fetch_hyperliquid_candles(symbol, timeframe, period)
+    if selected_source != "yahoo":
+        raise ValueError(f"Unsupported chart source: {source}")
+    return fetch_market_candles(symbol, timeframe, period, trading_window)
+
+
 _SLOPED_PIVOT_LOOKBACK_OPTIONS = {2, 3, 4, 5, 6, 7, 8, 10}
 _SLOPED_ANCHOR_SOURCE_OPTIONS = {"confirmed_pivots", "any_valid_candle"}
 _SLOPED_VALIDATION_BOUNDARY_OPTIONS = {"body", "close", "wick"}
@@ -333,7 +426,7 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
 
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
+async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -350,7 +443,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
 
             p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, candles=candles, **p)
@@ -417,7 +510,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
                 if clean_sym in ("PORTFOLIO", "TOTAL"):
                     clean_sym = "SPY"
                 yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-                candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
+                candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
                 res = run_ec_backtest(
                     symbol=clean_sym,
                     period=actual_period,
@@ -475,7 +568,7 @@ async def api_trades(symbol: str, strategy: str = None, timeframe: str = "1d", p
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
+async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
     if strategy == "all" or not strategy:
         strategy = None
@@ -492,7 +585,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
 
             p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, candles=candles, **p)
@@ -544,7 +637,7 @@ async def api_stats(symbol: str = "PORTFOLIO", strategy: str = None, timeframe: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_market_candles(yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
 
             res = run_ec_backtest(
                 symbol=clean_sym,
@@ -610,8 +703,29 @@ async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: 
     return {"candles": candles, "timeframe": actual_tf, "period": actual_period,
             "trading_window": normalize_trading_window(trading_window, load_market_config())}
 
+@app.get("/api/chart/candles")
+async def api_chart_candles(source: str = "yahoo", symbol: str = "SPY", timeframe: str = "1d", period: str = "1y", trading_window: str = None):
+    """Return normalized OHLCV candles for the React chart workspace."""
+    clean_symbol = symbol.strip().upper()
+    if source.lower() == "yahoo":
+        clean_symbol = clean_symbol.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
+    try:
+        candles, actual_tf, actual_period = await asyncio.to_thread(
+            fetch_source_candles, source, clean_symbol, timeframe, period, trading_window
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{source} candle request failed: {exc}") from exc
+    return {
+        "source": source.lower(), "symbol": clean_symbol, "candles": candles,
+        "timeframe": actual_tf, "period": actual_period,
+        "trading_window": "24/7" if source.lower() == "hyperliquid" else normalize_trading_window(trading_window, load_market_config()),
+    }
+
+
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", trading_window: str = None, full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
+async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", trading_window: str = None, full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None):
     """
     Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
     and return trendline segments for chart overlay.
@@ -635,7 +749,7 @@ async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timefram
     base_dir = Path(__file__).resolve().parents[3]
 
     try:
-        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
+        candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window)
         if not candles:
             return {"trendlines": [], "error": "No candle data available"}
 
@@ -664,7 +778,7 @@ async def api_trendlines(symbol: str, strategy: str = "enhanced_lines", timefram
         return {"trendlines": [], "error": str(e)}
 
 @app.get("/api/channels")
-async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", trading_window: str = None, channel_mult: float = 1.7, lookback: int = 50):
+async def api_channels(symbol: str, source: str = "yahoo", timeframe: str = "1d", period: str = "5y", trading_window: str = None, channel_mult: float = 1.7, lookback: int = 50):
     """
     Run the enhanced_channel strategy on OHLCV data and return channel overlays
     (Tactical Upper, Tactical Lower, Tactical Mid, Intermediate Mid, Macro Mid)
@@ -690,7 +804,7 @@ async def api_channels(symbol: str, timeframe: str = "1d", period: str = "5y", t
             sys.path.insert(0, str(strategy_dir))
 
         from enhanced_channel_strategy import run_enhanced_channel
-        candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
+        candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window)
         if not candles:
             return {"overlays": [], "error": "No candle data available"}
 

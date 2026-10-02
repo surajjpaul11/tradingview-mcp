@@ -10,7 +10,7 @@ const SLOPED_FIELDS=[
   ['validation_boundary','Validation','select',['body','close','wick']],
   ['trendline_tolerance','Tolerance','select',[0,0.005,0.01,0.015,0.02]],
   ['confirm_candles','Confirm','select',[0,1,2,3]],
-  ['line_angle','Angle','select',[0,2,3,5,8]],
+  ['line_angle','Angle','select',[0,2,3,4,5,6,7,8]],
   ['stop_loss_mode','Stop','select',['none','exit_peak_reclaim','barrier_trap_reentry','atr_stop_buffer']],
   ['min_anchor_bars','Anchor bars','select',[0,1,2,3,4,5]],
 ];

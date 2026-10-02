@@ -399,29 +399,48 @@ function syncChannelMultVisibility(strategy) {
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
 const bestParamsBadge = document.getElementById('best-params-badge');
+const bestParamsMessage = document.getElementById('best-params-message');
 let bestParametersRequestGeneration = 0;
 
-async function applyBestParametersIfAvailable(strategy, symbol) {
+function showBestParamsMessage(message, isError = false) {
+    if (!bestParamsMessage) return;
+    bestParamsMessage.textContent = message || '';
+    bestParamsMessage.classList.toggle('error', isError);
+    bestParamsMessage.hidden = !message;
+}
+
+function resetBestParamsButton() {
+    if (!bestParamsBadge) return;
+    bestParamsBadge.innerHTML = '<span class="star-icon">★</span> Load Saved Best';
+    bestParamsBadge.title = 'Load saved best parameters for this ticker and strategy';
+}
+
+async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false } = {}) {
     const requestGeneration = ++bestParametersRequestGeneration;
+    if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = symbol ? 'flex' : 'none';
     if (!strategy || !symbol || strategy === 'all') {
-        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-        return;
+        resetBestParamsButton();
+        if (showFeedback) showBestParamsMessage('Choose a ticker and a specific strategy to load saved parameters.', true);
+        return false;
     }
+    if (!showFeedback) showBestParamsMessage('');
     try {
         const res = await fetch(`/api/best-parameters?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}`);
         if (!res.ok) {
-            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-            return;
+            resetBestParamsButton();
+            if (showFeedback) showBestParamsMessage(`Could not load saved parameters for ${symbol} and ${strategy}.`, true);
+            return false;
         }
         const result = await res.json();
         if (
             requestGeneration !== bestParametersRequestGeneration
             || strategySelect?.value !== strategy
             || tickerSelect?.value !== symbol
-        ) return;
+        ) return false;
         if (!result.found || !result.data || !result.data.parameters) {
-            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-            return;
+            resetBestParamsButton();
+            if (showFeedback) showBestParamsMessage(`No saved best parameters exist for ${symbol} and ${strategy}.`, true);
+            return false;
         }
 
         const p = result.data.parameters;
@@ -540,9 +559,17 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
+        if (showFeedback) showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.`);
+        if (refresh) {
+            await updateDashboard();
+            if (activeTab === 'advanced' && advChart) await updateAdvDashboard();
+        }
+        return true;
     } catch (e) {
         console.warn('[TV] Error applying best parameters:', e);
-        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+        resetBestParamsButton();
+        if (showFeedback) showBestParamsMessage(`Could not load saved parameters for ${symbol} and ${strategy}.`, true);
+        return false;
     }
 }
 
@@ -1246,6 +1273,19 @@ async function loadFilters() {
         syncChannelMultVisibility(strategySelect.value);
 
         // Wire up change listeners — update both tabs
+        if (bestParamsBadge) {
+            bestParamsBadge.onclick = async () => {
+                bestParamsBadge.disabled = true;
+                try {
+                    await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value, {
+                        showFeedback: true,
+                        refresh: true,
+                    });
+                } finally {
+                    bestParamsBadge.disabled = false;
+                }
+            };
+        }
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();

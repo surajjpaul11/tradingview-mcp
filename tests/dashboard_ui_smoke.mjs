@@ -251,6 +251,34 @@ try {
     timeframeHint: '1-Year (1Y)',
   });
 
+  const manualToleranceResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?') && response.url().includes('trendline_tolerance=0'),
+    { timeout: 90_000 },
+  );
+  await page.locator('#sloped-tolerance-select').selectOption('0');
+  await manualToleranceResponse;
+
+  const restoredBestResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/best-parameters?') && response.url().includes('symbol=AAPL'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('trendline_tolerance=0.015'), { timeout: 90_000 }),
+  ]);
+  await page.locator('#best-params-badge').click();
+  await restoredBestResponses;
+  assert.equal(await page.locator('#sloped-tolerance-select').inputValue(), '0.015');
+  await page.waitForFunction(() => document.querySelector('#best-params-message')?.textContent.includes('Loaded saved best parameters'));
+
+  await page.locator('#strategy-select').selectOption('bollinger');
+  await waitForStrategyChart(page, 'bollinger');
+  await page.locator('#best-params-badge').click();
+  await page.waitForFunction(() => {
+    const message = document.querySelector('#best-params-message');
+    return message?.classList.contains('error')
+      && message.textContent.includes('No saved best parameters exist for AAPL and bollinger.');
+  });
+
+  await page.locator('#strategy-select').selectOption('sloped_lines');
+  await waitForStrategyChart(page, 'sloped_lines');
+
   const pivotResponses = Promise.all([
     page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
     page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),

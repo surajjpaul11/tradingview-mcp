@@ -38,6 +38,33 @@
         "commit": "6806d65",
         "date": "2026-09-25"
       }
+    },
+    {
+      "id": "BUG-002",
+      "title": "Sloped trendlines can reactivate after crossing through price",
+      "fixed": true,
+      "found": "2026-09-26",
+      "branch": "codex/codex",
+      "found_by": "AAPL 1Y / 1D chart review showed the descending resistance anchored on December 3 and December 26 crossing candle bodies before its January 27 breakout.",
+      "where": [
+        "strategies/sloped_lines/sloped_lines_strategy.py → build_descending_resistance()",
+        "strategies/sloped_lines/sloped_lines_strategy.py → build_ascending_support()",
+        "src/tradingview_mcp/ui/static/app.js → fetchAndRenderTrendlines()"
+      ],
+      "symptom": "A trendline could visibly cut through one or more later candles, disappear as a valid candidate, then be selected again after price moved back to the other side. The chart also labeled the second anchor as the confirmation date even though a pivot becomes knowable only after the lookback bars complete.",
+      "reproduce": [
+        "Open AAPL with the saved Sloped Lines configuration at 1D / 1Y.",
+        "Inspect the descending resistance beginning December 3, 2025 and anchored again December 26, 2025.",
+        "Observe candle bodies crossing the projected line after the second anchor before the line ends on January 27, 2026."
+      ],
+      "cause": "Candidate validation checked candles only between the two anchors plus the current evaluation candle. It skipped every candle after anchor two and before the current candle, allowing an invalidated candidate to become valid again later. Swing points also discarded their actual confirmation bar, and the UI redrew only endpoint interpolation instead of the strategy's per-bar projection.",
+      "fix": "Preserve each swing's actual confirmation bar; validate every candle from anchor one through the current bar; permit formation tolerance only before anchor two; invalidate on any selected body or wick touch after anchor two; use inclusive active-line breaks; and send one projected trendline value per candle to the UI.",
+      "verified": "The former December 3 → December 26 → January 27 line no longer appears. AAPL now draws a clear December 3 → April 23 resistance, activates it after the April 30 pivot confirmation, and ends it May 1. 42 Python tests pass and the 19-case dashboard browser matrix passes across Regular/Advanced, 1D/4H/12H, and 3M/1Y/5Y.",
+      "performance_impact": "For AAPL's saved 1Y / 1D parameters on data from 2025-09-26 through 2026-09-25, the corrected engine returns 15.83% across 4 trades with a 50.0% win rate. The stored 46.71% badge remains a historical baseline from the previous engine and requires re-optimization before replacement.",
+      "fixed_in": {
+        "commit": "feeb2c0",
+        "date": "2026-09-26"
+      }
     }
   ]
 }

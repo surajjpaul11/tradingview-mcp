@@ -55,6 +55,10 @@ DEFAULT_LINE_ANGLE   = 3.0     # default minimum percentage angle/slope threshol
 DEFAULT_STOP_LOSS_MODE = "exit_peak_reclaim"  # default stop loss behavior
 DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: touch break)
 DEFAULT_MIN_ANCHOR_BARS = 2    # default minimum bar distance between anchors
+DEFAULT_ANCHOR_SOURCE = "confirmed_pivots"
+DEFAULT_VALIDATION_BOUNDARY = "body"
+ANCHOR_SOURCES = {"confirmed_pivots", "any_valid_candle"}
+VALIDATION_BOUNDARIES = {"body", "close", "wick"}
 
 
 def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
@@ -204,14 +208,67 @@ def _validation_boundary(
     bar: int,
     line_type: str,
     use_wick: bool,
+    validation_boundary: str | None = None,
 ) -> float:
     """Return the candle boundary that must remain clear of a candidate line."""
     if candles is None or bar >= len(candles):
         return closes[bar]
+    mode = validation_boundary or ("wick" if use_wick else "body")
+    if mode not in VALIDATION_BOUNDARIES:
+        raise ValueError(f"validation_boundary must be one of {sorted(VALIDATION_BOUNDARIES)}")
+    if mode == "close":
+        return float(closes[bar])
     candle = candles[bar]
     if line_type == "resistance":
-        return float(candle["high"] if use_wick else max(candle["open"], candle["close"]))
-    return float(candle["low"] if use_wick else min(candle["open"], candle["close"]))
+        return float(candle["high"] if mode == "wick" else max(candle["open"], candle["close"]))
+    return float(candle["low"] if mode == "wick" else min(candle["open"], candle["close"]))
+
+
+def _anchor(point: tuple[int, float] | tuple[int, float, int]) -> tuple[int, float]:
+    """Return the bar/price portion of a swing point."""
+    return int(point[0]), float(point[1])
+
+
+def _confirmed_at(point: tuple[int, float] | tuple[int, float, int]) -> int:
+    """Return when a swing became knowable, preserving compatibility with pair inputs."""
+    return int(point[2]) if len(point) > 2 else int(point[0])
+
+
+def _candidate_line_is_clear(
+    a1: tuple[int, float],
+    a2: tuple[int, float],
+    closes: list[float],
+    candles: list[dict] | None,
+    line_type: str,
+    use_wick: bool,
+    tolerance: float,
+    current_bar: int | None,
+    validation_boundary: str | None = None,
+) -> bool:
+    """Reject a candidate crossed before it could become active.
+
+    Crossings between the anchors invalidate the geometry. After anchor two,
+    even an exact touch invalidates the candidate: a line cannot disappear
+    through price and later be resurrected when price moves back across it.
+    """
+    last_bar = a2[0] if current_bar is None else min(current_bar, len(closes) - 1)
+    for bar in range(a1[0] + 1, last_bar + 1):
+        if bar == a2[0] or bar < 0 or bar >= len(closes):
+            continue
+        projected = trendline_value(a1, a2, bar)
+        if projected <= 0:
+            continue
+        boundary = _validation_boundary(
+            candles, closes, bar, line_type, use_wick, validation_boundary,
+        )
+        if bar < a2[0]:
+            threshold = projected * (1 + tolerance if line_type == "resistance" else 1 - tolerance)
+            crossed = boundary > threshold if line_type == "resistance" else boundary < threshold
+        else:
+            crossed = boundary >= projected if line_type == "resistance" else boundary <= projected
+        if crossed:
+            return False
+    return True
 
 
 def build_descending_resistance(
@@ -227,6 +284,7 @@ def build_descending_resistance(
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
     use_wick: bool = False,
+    validation_boundary: str | None = None,
 ) -> dict | None:
     """
     Build a descending resistance line from confirmed swing highs (lower highs).
@@ -263,7 +321,8 @@ def build_descending_resistance(
             eligible_a2.sort(key=lambda x: x[0])
 
             best = None
-            for a2 in eligible_a2:
+            for a2_point in eligible_a2:
+                a2 = _anchor(a2_point)
                 # Must be descending (lower highs)
                 if a2[1] >= a1[1]:
                     continue
@@ -277,25 +336,10 @@ def build_descending_resistance(
                     if not is_green_candle(candles[a2[0]]):
                         continue
 
-                # Validate: no close between a1 and a2 is above the line
-                valid = True
-                for bar in range(a1[0] + 1, min(a2[0], len(closes))):
-                    if bar < 0 or bar >= len(closes):
-                        continue
-                    projected = trendline_value(a1, a2, bar)
-                    if projected <= 0:
-                        continue
-                    boundary = _validation_boundary(candles, closes, bar, "resistance", use_wick)
-                    if boundary > projected * (1 + tolerance):
-                        valid = False
-                        break
-
-                # Line must still hold at the current evaluation bar
-                if valid and current_bar is not None and current_bar < len(closes):
-                    p_now = trendline_value(a1, a2, current_bar)
-                    boundary_now = _validation_boundary(candles, closes, current_bar, "resistance", use_wick)
-                    if p_now > 0 and boundary_now > p_now * (1 + tolerance):
-                        valid = False
+                valid = _candidate_line_is_clear(
+                    a1, a2, closes, candles, "resistance", use_wick, tolerance, current_bar,
+                    validation_boundary,
+                )
 
                 if valid:
                     line = {
@@ -303,7 +347,7 @@ def build_descending_resistance(
                         "direction": "descending",
                         "anchor1": a1,
                         "anchor2": a2,
-                        "confirmed_at_bar": a2[0],
+                        "confirmed_at_bar": _confirmed_at(a2_point),
                     }
                     if best is None or a2[0] > best["anchor2"][0]:
                         best = line
@@ -312,7 +356,7 @@ def build_descending_resistance(
                 return best
 
     # Otherwise, search across confirmed / candidate highs after search point
-    eligible = [(b, p) for b, p in confirmed_highs if b >= search_after_bar]
+    eligible = [p for p in confirmed_highs if p[0] >= search_after_bar]
     if candidate_highs:
         for p in candidate_highs:
             if p[0] >= search_after_bar and p not in eligible:
@@ -323,13 +367,15 @@ def build_descending_resistance(
 
     best = None
     for i in range(len(eligible) - 2, -1, -1):
-        a1 = eligible[i]
+        a1_point = eligible[i]
+        a1 = _anchor(a1_point)
         if inverse_color_trigger and candles is not None and a1[0] < len(candles):
             if not is_red_candle(candles[a1[0]]):
                 continue
 
         for j in range(i + 1, len(eligible)):
-            a2 = eligible[j]
+            a2_point = eligible[j]
+            a2 = _anchor(a2_point)
 
             if a2[0] <= a1[0] or a2[0] < a1[0] + min_anchor_bars:
                 continue
@@ -345,23 +391,10 @@ def build_descending_resistance(
                 if not is_green_candle(candles[a2[0]]):
                     continue
 
-            valid = True
-            for bar in range(a1[0] + 1, min(a2[0], len(closes))):
-                if bar < 0 or bar >= len(closes):
-                    continue
-                projected = trendline_value(a1, a2, bar)
-                if projected <= 0:
-                    continue
-                boundary = _validation_boundary(candles, closes, bar, "resistance", use_wick)
-                if boundary > projected * (1 + tolerance):
-                    valid = False
-                    break
-
-            if valid and current_bar is not None and current_bar < len(closes):
-                p_now = trendline_value(a1, a2, current_bar)
-                boundary_now = _validation_boundary(candles, closes, current_bar, "resistance", use_wick)
-                if p_now > 0 and boundary_now > p_now * (1 + tolerance):
-                    valid = False
+            valid = _candidate_line_is_clear(
+                a1, a2, closes, candles, "resistance", use_wick, tolerance, current_bar,
+                validation_boundary,
+            )
 
             if valid:
                 line = {
@@ -369,7 +402,7 @@ def build_descending_resistance(
                     "direction": "descending",
                     "anchor1": a1,
                     "anchor2": a2,
-                    "confirmed_at_bar": a2[0],
+                    "confirmed_at_bar": max(_confirmed_at(a1_point), _confirmed_at(a2_point)),
                 }
                 if best is None:
                     best = line
@@ -379,7 +412,7 @@ def build_descending_resistance(
                     elif line["anchor2"][0] == best["anchor2"][0] and line["anchor1"][0] > best["anchor1"][0]:
                         best = line
 
-            if best is not None and best["anchor1"] == eligible[i]:
+            if best is not None and best["anchor1"] == _anchor(eligible[i]):
                 break
 
     return best
@@ -398,6 +431,7 @@ def build_ascending_support(
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
     use_wick: bool = False,
+    validation_boundary: str | None = None,
 ) -> dict | None:
     """
     Build an ascending support line from confirmed swing lows (higher lows).
@@ -434,7 +468,8 @@ def build_ascending_support(
             eligible_a2.sort(key=lambda x: x[0])
 
             best = None
-            for a2 in eligible_a2:
+            for a2_point in eligible_a2:
+                a2 = _anchor(a2_point)
                 # Must be ascending (higher lows)
                 if a2[1] <= a1[1]:
                     continue
@@ -448,25 +483,10 @@ def build_ascending_support(
                     if not is_red_candle(candles[a2[0]]):
                         continue
 
-                # Validate: no close between a1 and a2 is below the line
-                valid = True
-                for bar in range(a1[0] + 1, min(a2[0], len(closes))):
-                    if bar < 0 or bar >= len(closes):
-                        continue
-                    projected = trendline_value(a1, a2, bar)
-                    if projected <= 0:
-                        continue
-                    boundary = _validation_boundary(candles, closes, bar, "support", use_wick)
-                    if boundary < projected * (1 - tolerance):
-                        valid = False
-                        break
-
-                # Line must still hold at the current evaluation bar
-                if valid and current_bar is not None and current_bar < len(closes):
-                    p_now = trendline_value(a1, a2, current_bar)
-                    boundary_now = _validation_boundary(candles, closes, current_bar, "support", use_wick)
-                    if p_now > 0 and boundary_now < p_now * (1 - tolerance):
-                        valid = False
+                valid = _candidate_line_is_clear(
+                    a1, a2, closes, candles, "support", use_wick, tolerance, current_bar,
+                    validation_boundary,
+                )
 
                 if valid:
                     line = {
@@ -474,7 +494,7 @@ def build_ascending_support(
                         "direction": "ascending",
                         "anchor1": a1,
                         "anchor2": a2,
-                        "confirmed_at_bar": a2[0],
+                        "confirmed_at_bar": _confirmed_at(a2_point),
                     }
                     if best is None or a2[0] > best["anchor2"][0]:
                         best = line
@@ -483,7 +503,7 @@ def build_ascending_support(
                 return best
 
     # Otherwise, search across confirmed / candidate lows after search point
-    eligible = [(b, p) for b, p in confirmed_lows if b >= search_after_bar]
+    eligible = [p for p in confirmed_lows if p[0] >= search_after_bar]
     if candidate_lows:
         for p in candidate_lows:
             if p[0] >= search_after_bar and p not in eligible:
@@ -494,13 +514,15 @@ def build_ascending_support(
 
     best = None
     for i in range(len(eligible) - 2, -1, -1):
-        a1 = eligible[i]
+        a1_point = eligible[i]
+        a1 = _anchor(a1_point)
         if inverse_color_trigger and candles is not None and a1[0] < len(candles):
             if not is_green_candle(candles[a1[0]]):
                 continue
 
         for j in range(i + 1, len(eligible)):
-            a2 = eligible[j]
+            a2_point = eligible[j]
+            a2 = _anchor(a2_point)
 
             if a2[0] <= a1[0] or a2[0] < a1[0] + min_anchor_bars:
                 continue
@@ -516,23 +538,10 @@ def build_ascending_support(
                 if not is_red_candle(candles[a2[0]]):
                     continue
 
-            valid = True
-            for bar in range(a1[0] + 1, min(a2[0], len(closes))):
-                if bar < 0 or bar >= len(closes):
-                    continue
-                projected = trendline_value(a1, a2, bar)
-                if projected <= 0:
-                    continue
-                boundary = _validation_boundary(candles, closes, bar, "support", use_wick)
-                if boundary < projected * (1 - tolerance):
-                    valid = False
-                    break
-
-            if valid and current_bar is not None and current_bar < len(closes):
-                p_now = trendline_value(a1, a2, current_bar)
-                boundary_now = _validation_boundary(candles, closes, current_bar, "support", use_wick)
-                if p_now > 0 and boundary_now < p_now * (1 - tolerance):
-                    valid = False
+            valid = _candidate_line_is_clear(
+                a1, a2, closes, candles, "support", use_wick, tolerance, current_bar,
+                validation_boundary,
+            )
 
             if valid:
                 line = {
@@ -540,7 +549,7 @@ def build_ascending_support(
                     "direction": "ascending",
                     "anchor1": a1,
                     "anchor2": a2,
-                    "confirmed_at_bar": a2[0],
+                    "confirmed_at_bar": max(_confirmed_at(a1_point), _confirmed_at(a2_point)),
                 }
                 if best is None:
                     best = line
@@ -550,7 +559,7 @@ def build_ascending_support(
                     elif line["anchor2"][0] == best["anchor2"][0] and line["anchor1"][0] > best["anchor1"][0]:
                         best = line
 
-            if best is not None and best["anchor1"] == eligible[i]:
+            if best is not None and best["anchor1"] == _anchor(eligible[i]):
                 break
 
     return best
@@ -573,6 +582,8 @@ def run_sloped_lines(
     line_angle: float = 3.0,
     stop_loss_mode: str = "exit_peak_reclaim",
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    anchor_source: str = DEFAULT_ANCHOR_SOURCE,
+    validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -599,6 +610,10 @@ def run_sloped_lines(
                     Lines with anchor rise/fall below this threshold are not formed.
       - stop_loss_mode: "none" (default), "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer".
       - min_anchor_bars: Minimum bar distance between anchor 1 and anchor 2 (default 2).
+      - anchor_source: "confirmed_pivots" limits anchors to confirmed swing points;
+                       "any_valid_candle" evaluates every candle after the search start.
+      - validation_boundary: Price boundary a candidate line may not cross: "body", "close", or "wick".
+      - trendline_tolerance: Fractional penetration allowed during validation (0.0 to 0.02 in the UI).
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -606,6 +621,10 @@ def run_sloped_lines(
     """
     if not candles:
         return [], []
+    if anchor_source not in ANCHOR_SOURCES:
+        raise ValueError(f"anchor_source must be one of {sorted(ANCHOR_SOURCES)}")
+    if validation_boundary not in VALIDATION_BOUNDARIES:
+        raise ValueError(f"validation_boundary must be one of {sorted(VALIDATION_BOUNDARIES)}")
 
     highs  = [c["high"] if use_wick else max(c["open"], c["close"]) for c in candles]
     lows   = [c["low"] if use_wick else min(c["open"], c["close"]) for c in candles]
@@ -616,8 +635,8 @@ def run_sloped_lines(
     swing_highs, swing_lows = find_swings(highs, lows, pivot_lookback)
 
     # --- Progressive confirmation tracking ---
-    confirmed_highs: list[tuple[int, float]] = []
-    confirmed_lows:  list[tuple[int, float]] = []
+    confirmed_highs: list[tuple[int, float, int]] = []
+    confirmed_lows:  list[tuple[int, float, int]] = []
     sh_ptr = sl_ptr = 0
 
     # --- State ---
@@ -644,10 +663,10 @@ def run_sloped_lines(
 
         # --- Confirm new swing points ---
         while sh_ptr < len(swing_highs) and swing_highs[sh_ptr][2] <= i:
-            confirmed_highs.append(swing_highs[sh_ptr][:2])
+            confirmed_highs.append(swing_highs[sh_ptr])
             sh_ptr += 1
         while sl_ptr < len(swing_lows) and swing_lows[sl_ptr][2] <= i:
-            confirmed_lows.append(swing_lows[sl_ptr][:2])
+            confirmed_lows.append(swing_lows[sl_ptr])
             sl_ptr += 1
 
         # --- Check special stop-loss re-entry modes when out of position ---
@@ -713,7 +732,7 @@ def run_sloped_lines(
 
             if state == "waiting_for_buy" or state == "short":
                 # Watching descending resistance — break ABOVE = buy signal
-                is_break = (price > projected) if full_candle else (highs[i] > projected)
+                is_break = (price >= projected) if full_candle else (highs[i] >= projected)
                 if tl["type"] == "resistance":
                     if break_start_bar is None:
                         if is_break:
@@ -814,7 +833,7 @@ def run_sloped_lines(
 
             elif state == "holding":
                 # Watching ascending support — break BELOW = sell signal
-                is_break = (price < projected) if full_candle else (lows[i] < projected)
+                is_break = (price <= projected) if full_candle else (lows[i] <= projected)
                 if tl["type"] == "support" and is_break:
                     if inverse_color_trigger and not is_red_candle(candles[i]):
                         # Inverse color rule: sell can only trigger on a red candle!
@@ -869,11 +888,15 @@ def run_sloped_lines(
         if active_trendline is None:
             if state == "waiting_for_buy" or state == "short":
                 # Build descending resistance starting with sell candle high as anchor1!
+                candidate_highs = (
+                    [(bar, highs[bar]) for bar in range(search_after_bar, i + 1)]
+                    if anchor_source == "any_valid_candle" else None
+                )
                 tl = build_descending_resistance(
                     confirmed_highs, closes,
                     search_after_bar=search_after_bar,
                     exit_point=last_sell_point,
-                    candidate_highs=None,
+                    candidate_highs=candidate_highs,
                     current_bar=i,
                     tolerance=trendline_tolerance,
                     min_anchor_bars=min_anchor_bars,
@@ -881,6 +904,7 @@ def run_sloped_lines(
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
                     use_wick=use_wick,
+                    validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
                     active_trendline = tl
@@ -937,11 +961,15 @@ def run_sloped_lines(
 
                 # Build ascending support starting with entry candle low as anchor1!
                 entry_pt = (position["entry_bar"], position["entry_low"])
+                candidate_lows = (
+                    [(bar, lows[bar]) for bar in range(position["entry_bar"], i + 1)]
+                    if anchor_source == "any_valid_candle" else None
+                )
                 tl = build_ascending_support(
                     confirmed_lows, closes,
                     search_after_bar=position["entry_bar"],
                     entry_point=entry_pt,
-                    candidate_lows=None,
+                    candidate_lows=candidate_lows,
                     current_bar=i,
                     tolerance=trendline_tolerance,
                     min_anchor_bars=min_anchor_bars,
@@ -949,6 +977,7 @@ def run_sloped_lines(
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
                     use_wick=use_wick,
+                    validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
                     active_trendline = tl
@@ -1076,8 +1105,8 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
     """
     Convert trendline dicts into overlay line series for visualize.py.
 
-    Each trendline becomes a separate line overlay with just 2 points
-    (start and end) — Lightweight Charts draws a straight line between them.
+    Each trendline contains one projected value per candle so the visual line
+    follows the same bar-index geometry used by the strategy engine.
 
     Colors:
       - Descending resistance (lower highs) = green (#3fb950)
@@ -1103,16 +1132,15 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
             continue
         slope = (a2_price - a1_price) / (a2_bar - a1_bar)
 
-        # Just 2 points: start and end of the line
         if a1_bar < 0 or a1_bar >= len(candles) or end_bar < 0 or end_bar >= len(candles):
             continue
 
-        start_price = a1_price
-        end_price = a1_price + slope * (end_bar - a1_bar)
-
         points = [
-            {"time": candles[a1_bar]["date"], "value": round(start_price, 4)},
-            {"time": candles[end_bar]["date"], "value": round(end_price, 4)},
+            {
+                "time": candles[bar]["date"],
+                "value": round(a1_price + slope * (bar - a1_bar), 4),
+            }
+            for bar in range(a1_bar, end_bar + 1)
         ]
 
         # Color: green for descending resistance, blue for ascending support
@@ -1155,6 +1183,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
+    anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
+    validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1168,6 +1198,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
         min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source,
+        validation_boundary=validation_boundary,
     )
     return trades
 
@@ -1188,6 +1220,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
+    anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
+    validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1202,6 +1236,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
         min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source,
+        validation_boundary=validation_boundary,
     )
 
     formatted_trendlines = []
@@ -1220,6 +1256,16 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
 
         slope = (a2_price - a1_price) / (a2_bar - a1_bar)
         end_price = a1_price + slope * (end_bar - a1_bar)
+        confirmation_bar = max(a2_bar, min(int(tl.get("confirmed_at_bar", a2_bar)), end_bar))
+        confirmation_price = a1_price + slope * (confirmation_bar - a1_bar)
+        points = [
+            {
+                "time": candles[bar].get("time"),
+                "date": candles[bar]["date"],
+                "value": round(a1_price + slope * (bar - a1_bar), 4),
+            }
+            for bar in range(a1_bar, end_bar + 1)
+        ]
 
         is_res = (tl.get("type") == "resistance" or tl.get("direction") == "descending")
         color = "#10B981" if is_res else "#3B82F6"
@@ -1231,9 +1277,12 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
             "start_date": candles[a1_bar]["date"],
             "start_time": candles[a1_bar].get("time"),
             "start_price": round(a1_price, 4),
-            "confirmation_date": candles[a2_bar]["date"],
-            "confirmation_time": candles[a2_bar].get("time"),
-            "confirmation_price": round(a2_price, 4),
+            "anchor2_date": candles[a2_bar]["date"],
+            "anchor2_time": candles[a2_bar].get("time"),
+            "anchor2_price": round(a2_price, 4),
+            "confirmation_date": candles[confirmation_bar]["date"],
+            "confirmation_time": candles[confirmation_bar].get("time"),
+            "confirmation_price": round(confirmation_price, 4),
             "end_date": candles[end_bar]["date"],
             "end_time": candles[end_bar].get("time"),
             "end_price": round(end_price, 4),
@@ -1242,6 +1291,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
             "slope_per_bar": round(slope, 6),
             "color": color,
             "label": label,
+            "points": points,
         })
 
     return {
@@ -1272,6 +1322,8 @@ def run_backtest(
     line_angle: float = DEFAULT_LINE_ANGLE,
     stop_loss_mode: str = DEFAULT_STOP_LOSS_MODE,
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    anchor_source: str = DEFAULT_ANCHOR_SOURCE,
+    validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1289,7 +1341,10 @@ def run_backtest(
             "trade_log": [],
         }
     raw_trades, trendlines = run_sloped_lines(
-        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
+        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick,
+        confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger,
+        line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source, validation_boundary=validation_boundary,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -1318,6 +1373,8 @@ def run_backtest(
         "parameters": {
             "pivot_lookback": pivot_lookback,
             "trendline_tolerance": trendline_tolerance,
+            "anchor_source": anchor_source,
+            "validation_boundary": validation_boundary,
             "confirm_bars": confirm_bars,
             "enable_short": enable_short,
             "full_candle": full_candle,
@@ -1361,7 +1418,9 @@ def main():
     parser.add_argument("--commission", type=float, default=COMMISSION_PCT, help="Commission %% per trade")
     parser.add_argument("--slippage", type=float, default=SLIPPAGE_PCT, help="Slippage %% per trade")
     parser.add_argument("--pivot-lookback", type=int, default=PIVOT_LOOKBACK, help="Bars left/right for swing detection (default: 5)")
-    parser.add_argument("--trendline-tolerance", type=float, default=TRENDLINE_TOLERANCE, help="Tolerance for trendline validation (default: 0 = strict)")
+    parser.add_argument("--trendline-tolerance", type=float, default=TRENDLINE_TOLERANCE, choices=[0.0, 0.005, 0.01, 0.015, 0.02], help="Tolerance for trendline validation (default: 0 = strict)")
+    parser.add_argument("--anchor-source", default=DEFAULT_ANCHOR_SOURCE, choices=sorted(ANCHOR_SOURCES), help="Eligible trendline anchors")
+    parser.add_argument("--validation-boundary", default=DEFAULT_VALIDATION_BOUNDARY, choices=sorted(VALIDATION_BOUNDARIES), help="Price boundary candidate lines may not cross")
     parser.add_argument("--confirm-bars", type=int, default=CONFIRM_BARS, help="Consecutive bars beyond trendline to confirm break (default: 1)")
     parser.add_argument("--confirm-candles", type=int, default=0, choices=[0, 1, 2, 3], help="Number of additional supporting confirmation candles before buy (default: 0)")
     parser.add_argument("--inverse-color", "--inverse-color-trigger", action="store_true", default=False, dest="inverse_color_trigger", help="Require ascending support to start green/end red, and descending resistance to start red/end green")
@@ -1392,6 +1451,8 @@ def main():
         inverse_color_trigger=args.inverse_color_trigger,
         line_angle=args.line_angle,
         stop_loss_mode=args.stop_loss_mode,
+        anchor_source=args.anchor_source,
+        validation_boundary=args.validation_boundary,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

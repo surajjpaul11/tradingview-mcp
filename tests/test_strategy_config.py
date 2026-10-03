@@ -19,12 +19,16 @@ class TestStrategyConfig(unittest.TestCase):
         self.assertEqual(params["line_angle"], 3.0)
         self.assertEqual(params["stop_loss_mode"], "exit_peak_reclaim")
         self.assertEqual(params["min_anchor_bars"], 2)
+        self.assertEqual(params["pivot_lookback"], 5)
+        self.assertEqual(params["anchor_source"], "any_valid_candle")
+        self.assertEqual(params["validation_boundary"], "close")
+        self.assertEqual(params["trendline_tolerance"], 0.015)
 
         perf = aapl_cfg["performance"]
-        self.assertEqual(perf["total_pnl"], 4670.62)
-        self.assertEqual(perf["total_pnl_pct"], 46.71)
-        self.assertEqual(perf["buy_and_hold_pct"], 33.72)
-        self.assertEqual(perf["beats_bnh_pct"], 12.99)
+        self.assertEqual(perf["total_pnl"], 4761.26)
+        self.assertEqual(perf["total_pnl_pct"], 47.61)
+        self.assertEqual(perf["buy_and_hold_pct"], 34.01)
+        self.assertEqual(perf["beats_bnh_pct"], 13.60)
         self.assertEqual(perf["win_rate_pct"], 42.1)
         self.assertEqual(perf["total_trades"], 38)
 

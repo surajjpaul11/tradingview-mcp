@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=17">
+    <link rel="stylesheet" href="/static/style.css?v=20">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +19,7 @@
                     <div class="logo"></div>
                     <h1>Trade Visualizer</h1>
                     <a href="/opportunities" style="margin-left: 1rem; color: #80baff; font-size: .9rem;">Opportunity research →</a>
+                    <a href="/charts" style="margin-left: .75rem; color: #7dd3fc; font-size: .9rem;">Hyperliquid charts →</a>
                 </div>
 
                 <div class="brand-divider"></div>
@@ -61,10 +62,11 @@
                     </div>
                 </div>
 
-                <div class="filter-group" id="best-params-badge-group" style="display: none;">
-                    <span id="best-params-badge" class="best-params-badge" title="Optimal parameters loaded from config">
-                        <span class="star-icon">★</span> Best Params
-                    </span>
+                <div class="filter-group best-params-control" id="best-params-badge-group" style="display: none;">
+                    <button type="button" id="best-params-badge" class="best-params-badge" title="Load saved best parameters for this ticker and strategy">
+                        <span class="star-icon">★</span> Load Saved Best
+                    </button>
+                    <span id="best-params-message" class="best-params-message" role="status" aria-live="polite" hidden></span>
                 </div>
 
                 <div class="filter-group" id="channel-mult-group" style="display: none;">
@@ -137,7 +139,7 @@
                 <div class="filter-group" id="sloped-wick-group" style="display: flex;">
                     <label class="checkbox-container" for="sloped-wick-checkbox">
                         <input type="checkbox" id="sloped-wick-checkbox">
-                        <span class="checkbox-text">Wick</span>
+                        <span class="checkbox-text">Wick Anchors</span>
                     </label>
                 </div>
 
@@ -149,6 +151,56 @@
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3">3</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-pivot-lookback-group" style="display: flex;">
+                    <label for="sloped-pivot-lookback-select">Pivot Lookback</label>
+                    <div class="custom-select">
+                        <select id="sloped-pivot-lookback-select" title="Bars on each side required to confirm a swing high or low">
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5" selected>5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-anchor-source-group" style="display: flex;">
+                    <label for="sloped-anchor-source-select">Anchor Source</label>
+                    <div class="custom-select">
+                        <select id="sloped-anchor-source-select" title="Candles eligible to become trendline anchors">
+                            <option value="confirmed_pivots" selected>Confirmed Pivots</option>
+                            <option value="any_valid_candle">Any Valid Candle</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-validation-boundary-group" style="display: flex;">
+                    <label for="sloped-validation-boundary-select">Line Validation</label>
+                    <div class="custom-select">
+                        <select id="sloped-validation-boundary-select" title="Price boundary that a valid trendline may not cross">
+                            <option value="body" selected>Candle Body</option>
+                            <option value="close">Closing Price</option>
+                            <option value="wick">Candle Wick</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="sloped-tolerance-group" style="display: flex;">
+                    <label for="sloped-tolerance-select">Line Tolerance</label>
+                    <div class="custom-select">
+                        <select id="sloped-tolerance-select" title="Allowed price penetration before a trendline is invalid">
+                            <option value="0" selected>0%</option>
+                            <option value="0.005">0.5%</option>
+                            <option value="0.01">1.0%</option>
+                            <option value="0.015">1.5%</option>
+                            <option value="0.02">2.0%</option>
                         </select>
                     </div>
                 </div>
@@ -225,31 +277,8 @@
             </div>
         </div>
 
-        <!-- Chart Area with Tab Sidebar -->
+        <!-- Chart Area -->
         <div class="chart-area-container">
-            <!-- Vertical Tab Sidebar -->
-            <div class="tab-sidebar glass-panel">
-                <button class="tab-btn active" data-tab="regular" id="tab-regular">
-                    <span class="tab-icon">📊</span>
-                    <span class="tab-label">Regular</span>
-                </button>
-                <button class="tab-btn" data-tab="advanced" id="tab-advanced">
-                    <span class="tab-icon">⚡</span>
-                    <span class="tab-label">Advanced</span>
-                </button>
-                <div id="advanced-indicator-controls" class="advanced-indicator-controls">
-                    <span class="indicator-controls-label">INDICATORS</span>
-                    <label class="indicator-toggle" for="volume-indicator-checkbox">
-                        <input type="checkbox" id="volume-indicator-checkbox" checked>
-                        <span>Volume</span>
-                    </label>
-                    <label class="indicator-toggle" for="rsi-indicator-checkbox">
-                        <input type="checkbox" id="rsi-indicator-checkbox" checked>
-                        <span>RSI (14)</span>
-                    </label>
-                </div>
-            </div>
-
             <!-- Tab Content Panels -->
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
@@ -288,8 +317,38 @@
                     </div>
                         </div>
 
-                    <!-- Persistent Resolution & Timeframe Rail -->
+                    <!-- Chart mode, resolution, and timeframe toolbar -->
                     <aside class="timeframe-bar glass-panel dual-controls-bar chart-control-rail">
+                        <div class="tab-sidebar rail-tab-controls">
+                            <div class="rail-tab-buttons">
+                                <button class="tab-btn active" data-tab="regular" id="tab-regular">
+                                    <span class="tab-icon">📊</span>
+                                    <span class="tab-label">Regular</span>
+                                </button>
+                                <button class="tab-btn" data-tab="advanced" id="tab-advanced">
+                                    <span class="tab-icon">⚡</span>
+                                    <span class="tab-label">Advanced</span>
+                                </button>
+                            </div>
+                            <div id="advanced-indicator-controls" class="advanced-indicator-controls">
+                                <span class="indicator-controls-label">INDICATORS</span>
+                                <label class="indicator-toggle" for="volume-indicator-checkbox">
+                                    <input type="checkbox" id="volume-indicator-checkbox" checked>
+                                    <span>Volume</span>
+                                </label>
+                                <label class="indicator-toggle" for="rsi-indicator-checkbox">
+                                    <input type="checkbox" id="rsi-indicator-checkbox" checked>
+                                    <span>RSI (14)</span>
+                                </label>
+                                <label class="indicator-toggle" for="vix-indicator-checkbox">
+                                    <input type="checkbox" id="vix-indicator-checkbox">
+                                    <span>VIX</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="control-divider rail-tab-divider"></div>
+
                         <!-- Candle Resolution Group -->
                         <div class="control-section">
                             <div class="timeframe-info">
@@ -336,6 +395,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=54"></script>
+    <script src="/static/app.js?v=60"></script>
 </body>
 </html>

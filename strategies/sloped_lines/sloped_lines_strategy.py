@@ -55,6 +55,10 @@ DEFAULT_LINE_ANGLE   = 3.0     # default minimum percentage angle/slope threshol
 DEFAULT_STOP_LOSS_MODE = "exit_peak_reclaim"  # default stop loss behavior
 DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: touch break)
 DEFAULT_MIN_ANCHOR_BARS = 2    # default minimum bar distance between anchors
+DEFAULT_ANCHOR_SOURCE = "confirmed_pivots"
+DEFAULT_VALIDATION_BOUNDARY = "body"
+ANCHOR_SOURCES = {"confirmed_pivots", "any_valid_candle"}
+VALIDATION_BOUNDARIES = {"body", "close", "wick"}
 
 
 def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
@@ -204,14 +208,20 @@ def _validation_boundary(
     bar: int,
     line_type: str,
     use_wick: bool,
+    validation_boundary: str | None = None,
 ) -> float:
     """Return the candle boundary that must remain clear of a candidate line."""
     if candles is None or bar >= len(candles):
         return closes[bar]
+    mode = validation_boundary or ("wick" if use_wick else "body")
+    if mode not in VALIDATION_BOUNDARIES:
+        raise ValueError(f"validation_boundary must be one of {sorted(VALIDATION_BOUNDARIES)}")
+    if mode == "close":
+        return float(closes[bar])
     candle = candles[bar]
     if line_type == "resistance":
-        return float(candle["high"] if use_wick else max(candle["open"], candle["close"]))
-    return float(candle["low"] if use_wick else min(candle["open"], candle["close"]))
+        return float(candle["high"] if mode == "wick" else max(candle["open"], candle["close"]))
+    return float(candle["low"] if mode == "wick" else min(candle["open"], candle["close"]))
 
 
 def _anchor(point: tuple[int, float] | tuple[int, float, int]) -> tuple[int, float]:
@@ -233,6 +243,7 @@ def _candidate_line_is_clear(
     use_wick: bool,
     tolerance: float,
     current_bar: int | None,
+    validation_boundary: str | None = None,
 ) -> bool:
     """Reject a candidate crossed before it could become active.
 
@@ -247,7 +258,9 @@ def _candidate_line_is_clear(
         projected = trendline_value(a1, a2, bar)
         if projected <= 0:
             continue
-        boundary = _validation_boundary(candles, closes, bar, line_type, use_wick)
+        boundary = _validation_boundary(
+            candles, closes, bar, line_type, use_wick, validation_boundary,
+        )
         if bar < a2[0]:
             threshold = projected * (1 + tolerance if line_type == "resistance" else 1 - tolerance)
             crossed = boundary > threshold if line_type == "resistance" else boundary < threshold
@@ -271,6 +284,7 @@ def build_descending_resistance(
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
     use_wick: bool = False,
+    validation_boundary: str | None = None,
 ) -> dict | None:
     """
     Build a descending resistance line from confirmed swing highs (lower highs).
@@ -324,6 +338,7 @@ def build_descending_resistance(
 
                 valid = _candidate_line_is_clear(
                     a1, a2, closes, candles, "resistance", use_wick, tolerance, current_bar,
+                    validation_boundary,
                 )
 
                 if valid:
@@ -378,6 +393,7 @@ def build_descending_resistance(
 
             valid = _candidate_line_is_clear(
                 a1, a2, closes, candles, "resistance", use_wick, tolerance, current_bar,
+                validation_boundary,
             )
 
             if valid:
@@ -415,6 +431,7 @@ def build_ascending_support(
     inverse_color_trigger: bool = False,
     line_angle: float = 3.0,
     use_wick: bool = False,
+    validation_boundary: str | None = None,
 ) -> dict | None:
     """
     Build an ascending support line from confirmed swing lows (higher lows).
@@ -468,6 +485,7 @@ def build_ascending_support(
 
                 valid = _candidate_line_is_clear(
                     a1, a2, closes, candles, "support", use_wick, tolerance, current_bar,
+                    validation_boundary,
                 )
 
                 if valid:
@@ -522,6 +540,7 @@ def build_ascending_support(
 
             valid = _candidate_line_is_clear(
                 a1, a2, closes, candles, "support", use_wick, tolerance, current_bar,
+                validation_boundary,
             )
 
             if valid:
@@ -563,6 +582,8 @@ def run_sloped_lines(
     line_angle: float = 3.0,
     stop_loss_mode: str = "exit_peak_reclaim",
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    anchor_source: str = DEFAULT_ANCHOR_SOURCE,
+    validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -589,6 +610,10 @@ def run_sloped_lines(
                     Lines with anchor rise/fall below this threshold are not formed.
       - stop_loss_mode: "none" (default), "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer".
       - min_anchor_bars: Minimum bar distance between anchor 1 and anchor 2 (default 2).
+      - anchor_source: "confirmed_pivots" limits anchors to confirmed swing points;
+                       "any_valid_candle" evaluates every candle after the search start.
+      - validation_boundary: Price boundary a candidate line may not cross: "body", "close", or "wick".
+      - trendline_tolerance: Fractional penetration allowed during validation (0.0 to 0.02 in the UI).
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -596,6 +621,10 @@ def run_sloped_lines(
     """
     if not candles:
         return [], []
+    if anchor_source not in ANCHOR_SOURCES:
+        raise ValueError(f"anchor_source must be one of {sorted(ANCHOR_SOURCES)}")
+    if validation_boundary not in VALIDATION_BOUNDARIES:
+        raise ValueError(f"validation_boundary must be one of {sorted(VALIDATION_BOUNDARIES)}")
 
     highs  = [c["high"] if use_wick else max(c["open"], c["close"]) for c in candles]
     lows   = [c["low"] if use_wick else min(c["open"], c["close"]) for c in candles]
@@ -859,11 +888,15 @@ def run_sloped_lines(
         if active_trendline is None:
             if state == "waiting_for_buy" or state == "short":
                 # Build descending resistance starting with sell candle high as anchor1!
+                candidate_highs = (
+                    [(bar, highs[bar]) for bar in range(search_after_bar, i + 1)]
+                    if anchor_source == "any_valid_candle" else None
+                )
                 tl = build_descending_resistance(
                     confirmed_highs, closes,
                     search_after_bar=search_after_bar,
                     exit_point=last_sell_point,
-                    candidate_highs=None,
+                    candidate_highs=candidate_highs,
                     current_bar=i,
                     tolerance=trendline_tolerance,
                     min_anchor_bars=min_anchor_bars,
@@ -871,6 +904,7 @@ def run_sloped_lines(
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
                     use_wick=use_wick,
+                    validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
                     active_trendline = tl
@@ -927,11 +961,15 @@ def run_sloped_lines(
 
                 # Build ascending support starting with entry candle low as anchor1!
                 entry_pt = (position["entry_bar"], position["entry_low"])
+                candidate_lows = (
+                    [(bar, lows[bar]) for bar in range(position["entry_bar"], i + 1)]
+                    if anchor_source == "any_valid_candle" else None
+                )
                 tl = build_ascending_support(
                     confirmed_lows, closes,
                     search_after_bar=position["entry_bar"],
                     entry_point=entry_pt,
-                    candidate_lows=None,
+                    candidate_lows=candidate_lows,
                     current_bar=i,
                     tolerance=trendline_tolerance,
                     min_anchor_bars=min_anchor_bars,
@@ -939,6 +977,7 @@ def run_sloped_lines(
                     inverse_color_trigger=inverse_color_trigger,
                     line_angle=line_angle,
                     use_wick=use_wick,
+                    validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
                     active_trendline = tl
@@ -1144,6 +1183,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
+    anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
+    validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1157,6 +1198,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
         min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source,
+        validation_boundary=validation_boundary,
     )
     return trades
 
@@ -1177,6 +1220,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     line_angle = kwargs.get("line_angle", DEFAULT_LINE_ANGLE)
     stop_loss_mode = kwargs.get("stop_loss_mode", DEFAULT_STOP_LOSS_MODE)
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
+    anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
+    validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1191,6 +1236,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         line_angle=line_angle,
         stop_loss_mode=stop_loss_mode,
         min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source,
+        validation_boundary=validation_boundary,
     )
 
     formatted_trendlines = []
@@ -1275,6 +1322,8 @@ def run_backtest(
     line_angle: float = DEFAULT_LINE_ANGLE,
     stop_loss_mode: str = DEFAULT_STOP_LOSS_MODE,
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    anchor_source: str = DEFAULT_ANCHOR_SOURCE,
+    validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1292,7 +1341,10 @@ def run_backtest(
             "trade_log": [],
         }
     raw_trades, trendlines = run_sloped_lines(
-        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick, confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger, line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
+        candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick,
+        confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger,
+        line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
+        anchor_source=anchor_source, validation_boundary=validation_boundary,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -1321,6 +1373,8 @@ def run_backtest(
         "parameters": {
             "pivot_lookback": pivot_lookback,
             "trendline_tolerance": trendline_tolerance,
+            "anchor_source": anchor_source,
+            "validation_boundary": validation_boundary,
             "confirm_bars": confirm_bars,
             "enable_short": enable_short,
             "full_candle": full_candle,
@@ -1364,7 +1418,9 @@ def main():
     parser.add_argument("--commission", type=float, default=COMMISSION_PCT, help="Commission %% per trade")
     parser.add_argument("--slippage", type=float, default=SLIPPAGE_PCT, help="Slippage %% per trade")
     parser.add_argument("--pivot-lookback", type=int, default=PIVOT_LOOKBACK, help="Bars left/right for swing detection (default: 5)")
-    parser.add_argument("--trendline-tolerance", type=float, default=TRENDLINE_TOLERANCE, help="Tolerance for trendline validation (default: 0 = strict)")
+    parser.add_argument("--trendline-tolerance", type=float, default=TRENDLINE_TOLERANCE, choices=[0.0, 0.005, 0.01, 0.015, 0.02], help="Tolerance for trendline validation (default: 0 = strict)")
+    parser.add_argument("--anchor-source", default=DEFAULT_ANCHOR_SOURCE, choices=sorted(ANCHOR_SOURCES), help="Eligible trendline anchors")
+    parser.add_argument("--validation-boundary", default=DEFAULT_VALIDATION_BOUNDARY, choices=sorted(VALIDATION_BOUNDARIES), help="Price boundary candidate lines may not cross")
     parser.add_argument("--confirm-bars", type=int, default=CONFIRM_BARS, help="Consecutive bars beyond trendline to confirm break (default: 1)")
     parser.add_argument("--confirm-candles", type=int, default=0, choices=[0, 1, 2, 3], help="Number of additional supporting confirmation candles before buy (default: 0)")
     parser.add_argument("--inverse-color", "--inverse-color-trigger", action="store_true", default=False, dest="inverse_color_trigger", help="Require ascending support to start green/end red, and descending resistance to start red/end green")
@@ -1395,6 +1451,8 @@ def main():
         inverse_color_trigger=args.inverse_color_trigger,
         line_angle=args.line_angle,
         stop_loss_mode=args.stop_loss_mode,
+        anchor_source=args.anchor_source,
+        validation_boundary=args.validation_boundary,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

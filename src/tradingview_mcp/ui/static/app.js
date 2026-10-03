@@ -300,6 +300,12 @@ const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candle
 const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
 const slopedPivotLookbackGroup = document.getElementById('sloped-pivot-lookback-group');
 const slopedPivotLookbackSelect = document.getElementById('sloped-pivot-lookback-select');
+const slopedAnchorSourceGroup = document.getElementById('sloped-anchor-source-group');
+const slopedAnchorSourceSelect = document.getElementById('sloped-anchor-source-select');
+const slopedValidationBoundaryGroup = document.getElementById('sloped-validation-boundary-group');
+const slopedValidationBoundarySelect = document.getElementById('sloped-validation-boundary-select');
+const slopedToleranceGroup = document.getElementById('sloped-tolerance-group');
+const slopedToleranceSelect = document.getElementById('sloped-tolerance-select');
 const slopedInverseColorGroup = document.getElementById('sloped-inverse-color-group');
 const slopedInverseColorCheckbox = document.getElementById('sloped-inverse-color-checkbox');
 const slopedLineAngleGroup = document.getElementById('sloped-line-angle-group');
@@ -328,6 +334,22 @@ function getPivotLookback() {
     if (!slopedPivotLookbackSelect) return 5;
     const val = parseInt(slopedPivotLookbackSelect.value, 10);
     return Number.isFinite(val) ? val : 5;
+}
+
+function getAnchorSource() {
+    if (!slopedAnchorSourceSelect) return 'confirmed_pivots';
+    return slopedAnchorSourceSelect.value || 'confirmed_pivots';
+}
+
+function getValidationBoundary() {
+    if (!slopedValidationBoundarySelect) return 'body';
+    return slopedValidationBoundarySelect.value || 'body';
+}
+
+function getTrendlineTolerance() {
+    if (!slopedToleranceSelect) return 0;
+    const val = parseFloat(slopedToleranceSelect.value);
+    return Number.isFinite(val) ? val : 0;
 }
 
 function getInverseColorTriggerEnabled() {
@@ -366,6 +388,9 @@ function syncChannelMultVisibility(strategy) {
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedPivotLookbackGroup) slopedPivotLookbackGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedAnchorSourceGroup) slopedAnchorSourceGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedValidationBoundaryGroup) slopedValidationBoundaryGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedToleranceGroup) slopedToleranceGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedInverseColorGroup) slopedInverseColorGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
@@ -374,29 +399,48 @@ function syncChannelMultVisibility(strategy) {
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
 const bestParamsBadge = document.getElementById('best-params-badge');
+const bestParamsMessage = document.getElementById('best-params-message');
 let bestParametersRequestGeneration = 0;
 
-async function applyBestParametersIfAvailable(strategy, symbol) {
+function showBestParamsMessage(message, isError = false) {
+    if (!bestParamsMessage) return;
+    bestParamsMessage.textContent = message || '';
+    bestParamsMessage.classList.toggle('error', isError);
+    bestParamsMessage.hidden = !message;
+}
+
+function resetBestParamsButton() {
+    if (!bestParamsBadge) return;
+    bestParamsBadge.innerHTML = '<span class="star-icon">★</span> Load Saved Best';
+    bestParamsBadge.title = 'Load saved best parameters for this ticker and strategy';
+}
+
+async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false } = {}) {
     const requestGeneration = ++bestParametersRequestGeneration;
+    if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = symbol ? 'flex' : 'none';
     if (!strategy || !symbol || strategy === 'all') {
-        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-        return;
+        resetBestParamsButton();
+        if (showFeedback) showBestParamsMessage('Choose a ticker and a specific strategy to load saved parameters.', true);
+        return false;
     }
+    if (!showFeedback) showBestParamsMessage('');
     try {
         const res = await fetch(`/api/best-parameters?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}`);
         if (!res.ok) {
-            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-            return;
+            resetBestParamsButton();
+            if (showFeedback) showBestParamsMessage(`Could not load saved parameters for ${symbol} and ${strategy}.`, true);
+            return false;
         }
         const result = await res.json();
         if (
             requestGeneration !== bestParametersRequestGeneration
             || strategySelect?.value !== strategy
             || tickerSelect?.value !== symbol
-        ) return;
+        ) return false;
         if (!result.found || !result.data || !result.data.parameters) {
-            if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
-            return;
+            resetBestParamsButton();
+            if (showFeedback) showBestParamsMessage(`No saved best parameters exist for ${symbol} and ${strategy}.`, true);
+            return false;
         }
 
         const p = result.data.parameters;
@@ -416,6 +460,15 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
                 slopedPivotLookbackSelect.value = String(p.pivot_lookback);
             } else if (slopedPivotLookbackSelect) {
                 slopedPivotLookbackSelect.value = '5';
+            }
+            if (slopedAnchorSourceSelect) {
+                slopedAnchorSourceSelect.value = p.anchor_source || 'confirmed_pivots';
+            }
+            if (slopedValidationBoundarySelect) {
+                slopedValidationBoundarySelect.value = p.validation_boundary || 'body';
+            }
+            if (slopedToleranceSelect) {
+                slopedToleranceSelect.value = String(p.trendline_tolerance ?? 0);
             }
             if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
                 slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
@@ -506,9 +559,17 @@ async function applyBestParametersIfAvailable(strategy, symbol) {
             bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
+        if (showFeedback) showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.`);
+        if (refresh) {
+            await updateDashboard();
+            if (activeTab === 'advanced' && advChart) await updateAdvDashboard();
+        }
+        return true;
     } catch (e) {
         console.warn('[TV] Error applying best parameters:', e);
-        if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = 'none';
+        resetBestParamsButton();
+        if (showFeedback) showBestParamsMessage(`Could not load saved parameters for ${symbol} and ${strategy}.`, true);
+        return false;
     }
 }
 
@@ -1212,6 +1273,19 @@ async function loadFilters() {
         syncChannelMultVisibility(strategySelect.value);
 
         // Wire up change listeners — update both tabs
+        if (bestParamsBadge) {
+            bestParamsBadge.onclick = async () => {
+                bestParamsBadge.disabled = true;
+                try {
+                    await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value, {
+                        showFeedback: true,
+                        refresh: true,
+                    });
+                } finally {
+                    bestParamsBadge.disabled = false;
+                }
+            };
+        }
         tickerSelect.onchange = async () => {
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
@@ -1297,6 +1371,14 @@ async function loadFilters() {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
+        }
+        for (const select of [slopedAnchorSourceSelect, slopedValidationBoundarySelect, slopedToleranceSelect]) {
+            if (select) {
+                select.onchange = () => {
+                    updateDashboard();
+                    if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+                };
+            }
         }
         if (slopedInverseColorCheckbox) {
             slopedInverseColorCheckbox.onchange = () => {
@@ -1675,11 +1757,11 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, isCurrent = () => true) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return summary;
@@ -1926,7 +2008,7 @@ async function updateDashboard() {
         const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2003,7 +2085,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), isCurrentRequest);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
@@ -2089,7 +2171,7 @@ async function updateAdvDashboard() {
     try {
         const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2133,7 +2215,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;

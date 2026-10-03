@@ -33,7 +33,7 @@ tradingview-mcp = "tradingview_mcp.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-tradingview_mcp = ["coinlist/*.txt"]
+tradingview_mcp = ["coinlist/*.txt", "ui/static/**/*"]
 
 [tool.uv]
 package = true

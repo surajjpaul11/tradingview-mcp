@@ -362,10 +362,13 @@ try {
   assert.ok(chartControlLayout.tabsWidth > 0, 'Regular/Advanced controls have no width');
 
   const axisLabels = await page.evaluate(() => ({
+    hover: formatMarketChartTime(Date.UTC(2026, 6, 21, 16) / 1000, true, true),
     fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
     fiveAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 9) / 1000, 3),
     dateBoundary: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 2),
   }));
+  assert.match(axisLabels.hover, /2026/);
+  delete axisLabels.hover;
   assert.deepEqual(axisLabels, {
     fourAm: '4',
     fiveAm: '5',
@@ -450,6 +453,20 @@ try {
     both: 'extended hours',
   });
 
+  await page.locator('#tab-advanced').click();
+  await page.locator('#volume-profile-indicator-checkbox').check();
+  await page.waitForFunction(() => {
+    const chart = document.querySelector('#tv-chart');
+    const layer = chart?.querySelector('.volume-profile-layer');
+    return chart?.dataset.volumeProfileVisible === 'true'
+      && Number(chart.dataset.volumeProfileBinCount) === 30
+      && Number(chart.dataset.volumeProfileCandleCount) > 0
+      && layer && !layer.hidden && layer.width > 0 && layer.height > 0;
+  }, null, { timeout: 90_000 });
+  await page.locator('#volume-profile-indicator-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.volumeProfileVisible === 'false');
+  await page.locator('#tab-regular').click();
+
   const results = [];
 
   if (!MAIN_TESTS_ONLY) {
@@ -470,6 +487,7 @@ try {
   ));
   assert.deepEqual(indicatorToggleOrder, [
     'volume-indicator-checkbox',
+    'volume-profile-indicator-checkbox',
     'rsi-indicator-checkbox',
     'vix-indicator-checkbox',
   ]);

@@ -583,6 +583,54 @@ def build_ascending_support(
     return best
 
 
+def build_staggered_resistance(
+    active_resistance: dict,
+    confirmed_local_highs: list[tuple[int, float]],
+    closes: list[float],
+    current_bar: int,
+    tolerance: float = TRENDLINE_TOLERANCE,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    candles: list[dict] | None = None,
+    inverse_color_trigger: bool = False,
+    line_angle: float = 3.0,
+    use_wick: bool = False,
+    validation_boundary: str | None = None,
+) -> dict | None:
+    """Build the next tighter resistance from the active line's last touch.
+
+    The second anchor is a one-bar local maximum that has already been
+    confirmed by the following candle. The candidate must sit below the active
+    resistance when promoted, allowing its earlier break to trigger the buy.
+    """
+    if active_resistance.get("type") != "resistance":
+        return None
+
+    candidate = build_descending_resistance(
+        confirmed_local_highs,
+        closes,
+        search_after_bar=active_resistance["anchor2"][0],
+        exit_point=active_resistance["anchor2"],
+        current_bar=current_bar,
+        tolerance=tolerance,
+        min_anchor_bars=min_anchor_bars,
+        candles=candles,
+        inverse_color_trigger=inverse_color_trigger,
+        line_angle=line_angle,
+        use_wick=use_wick,
+        validation_boundary=validation_boundary,
+    )
+    if candidate is None or candidate["confirmed_at_bar"] > current_bar:
+        return None
+
+    active_value = trendline_value(active_resistance["anchor1"], active_resistance["anchor2"], current_bar)
+    candidate_value = trendline_value(candidate["anchor1"], candidate["anchor2"], current_bar)
+    if candidate_value >= active_value:
+        return None
+
+    candidate["level"] = int(active_resistance.get("level", 1)) + 1
+    return candidate
+
+
 def build_staggered_support(
     active_support: dict,
     confirmed_lows: list[tuple[int, float]],
@@ -596,13 +644,7 @@ def build_staggered_support(
     use_wick: bool = False,
     validation_boundary: str | None = None,
 ) -> dict | None:
-    """Return a later, tighter support built only from confirmed higher-low pivots.
-
-    A staggered support never changes the historical primary line in place. It
-    needs two pivots after the active line's second anchor, must pass the same
-    clearance rules as any other support, and must project above the active
-    support on the bar where it becomes available.
-    """
+    """Return a later, tighter support built from two confirmed higher-low pivots."""
     if active_support.get("type") != "support":
         return None
 
@@ -687,8 +729,8 @@ def run_sloped_lines(
                 its body is strictly above the previous green candle's body.
       - gap_down: Exit long at the close of the second consecutive red candle when
                   its body is strictly below the previous red candle's body.
-      - staggered_lines: While holding, promote later pairs of confirmed higher-low
-                         pivots into progressively tighter support levels.
+      - staggered_lines: For resistance, reuse the latest touch with the next confirmed
+                         local maximum. For support, promote later confirmed higher-low pairs.
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -708,11 +750,13 @@ def run_sloped_lines(
 
     # --- Find all swings ---
     swing_highs, swing_lows = find_swings(highs, lows, pivot_lookback)
+    local_highs, _ = find_swings(highs, lows, 1) if staggered_lines else ([], [])
 
     # --- Progressive confirmation tracking ---
     confirmed_highs: list[tuple[int, float, int]] = []
     confirmed_lows:  list[tuple[int, float, int]] = []
-    sh_ptr = sl_ptr = 0
+    confirmed_local_highs: list[tuple[int, float, int]] = []
+    sh_ptr = sl_ptr = local_high_ptr = 0
 
     # --- State ---
     trades: list[dict] = []
@@ -743,6 +787,9 @@ def run_sloped_lines(
         while sl_ptr < len(swing_lows) and swing_lows[sl_ptr][2] <= i:
             confirmed_lows.append(swing_lows[sl_ptr])
             sl_ptr += 1
+        while local_high_ptr < len(local_highs) and local_highs[local_high_ptr][2] <= i:
+            confirmed_local_highs.append(local_highs[local_high_ptr])
+            local_high_ptr += 1
 
         # Optional completed-candle body-gap signals. These run before the
         # trendline and pre-line protection checks so the selected gap rule owns
@@ -1012,20 +1059,12 @@ def run_sloped_lines(
                     confirm_count = 0
                     continue
 
-        # Optional trailing support ladder. A new level is promoted only after
-        # both later pivot lows are confirmed and the candidate sits above the
-        # currently active support. This avoids future-data leakage while
-        # allowing a later breakdown to protect more of an open gain.
-        if (
-            staggered_lines
-            and state == "holding"
-            and active_trendline is not None
-            and active_trendline.get("type") == "support"
-        ):
-            tighter_support = build_staggered_support(
-                active_trendline,
-                confirmed_lows,
-                closes,
+        # Optional staggered ladder. Resistance reuses the latest touch with the
+        # next confirmed one-bar local maximum; support retains the established
+        # two-later-pivot rule. All pivots are confirmed before promotion.
+        if staggered_lines and active_trendline is not None:
+            common = dict(
+                closes=closes,
                 current_bar=i,
                 tolerance=trendline_tolerance,
                 min_anchor_bars=min_anchor_bars,
@@ -1035,7 +1074,16 @@ def run_sloped_lines(
                 use_wick=use_wick,
                 validation_boundary=validation_boundary,
             )
-            if tighter_support is not None:
+            tighter_line = None
+            if state in ("waiting_for_buy", "short") and active_trendline.get("type") == "resistance":
+                tighter_line = build_staggered_resistance(
+                    active_trendline, confirmed_local_highs, **common,
+                )
+            elif state == "holding" and active_trendline.get("type") == "support":
+                tighter_line = build_staggered_support(
+                    active_trendline, confirmed_lows, **common,
+                )
+            if tighter_line is not None:
                 trendlines.append({
                     **active_trendline,
                     "end_bar": i,
@@ -1044,7 +1092,7 @@ def run_sloped_lines(
                     "break_date": None,
                     "status": "superseded",
                 })
-                active_trendline = tighter_support
+                active_trendline = tighter_line
                 break_start_bar = None
                 confirm_count = 0
 
@@ -1071,6 +1119,7 @@ def run_sloped_lines(
                     validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
+                    tl["level"] = 1
                     active_trendline = tl
                     break_count = 0
 
@@ -1317,7 +1366,8 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
             res_count += 1
             color = "#3fb950"  # green
             # Only label the first one to avoid legend spam
-            label = "▼ Resistance (lower highs)" if res_count == 1 else ""
+            level = int(tl.get("level", 1))
+            label = f"▼ Resistance L{level} (lower highs)"
         else:
             sup_count += 1
             color = "#58a6ff"  # blue
@@ -1454,12 +1504,12 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         is_res = (tl.get("type") == "resistance" or tl.get("direction") == "descending")
         color = "#10B981" if is_res else "#3B82F6"
         level = int(tl.get("level", 1))
-        label = "▼ Resistance (Breakout = Buy)" if is_res else f"▲ Support L{level} (Breakdown = Sell)"
+        label = f"▼ Resistance L{level} (Breakout = Buy)" if is_res else f"▲ Support L{level} (Breakdown = Sell)"
 
         formatted_trendlines.append({
             "type": "resistance" if is_res else "support",
             "direction": "descending" if is_res else "ascending",
-            "level": level if not is_res else None,
+            "level": level,
             "status": tl.get("status", "broken" if break_bar is not None else "active"),
             "start_date": candles[a1_bar]["date"],
             "start_time": candles[a1_bar].get("time"),
@@ -1556,7 +1606,7 @@ def run_backtest(
             "break_price": tl.get("break_price"),
             "break_date": tl.get("break_date"),
             "end_bar": tl.get("end_bar"),
-            "level": tl.get("level", 1) if tl.get("type") == "support" else None,
+            "level": tl.get("level", 1),
             "status": tl.get("status"),
         })
 

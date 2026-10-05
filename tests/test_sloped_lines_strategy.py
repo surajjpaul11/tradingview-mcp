@@ -14,6 +14,7 @@ from sloped_lines_strategy import (
     _validation_boundary,
     build_ascending_support,
     build_descending_resistance,
+    build_staggered_resistance,
     build_staggered_support,
     is_body_gap_down,
     is_body_gap_up,
@@ -201,32 +202,25 @@ class StrictTrendlineValidationTests(unittest.TestCase):
         self.assertEqual(line["confirmed_at_bar"], 4)
 
 
-class StaggeredSupportTests(unittest.TestCase):
-    def test_promotes_two_later_confirmed_higher_lows_above_active_support(self):
-        lows = [100, 101, 102, 108, 110, 112, 114, 118]
-        candles = [
-            {"open": low, "high": low + 2, "low": low - 1, "close": low + 1}
-            for low in lows
+class StaggeredLineTests(unittest.TestCase):
+    @staticmethod
+    def candles(values):
+        return [
+            {"open": value, "high": value + 0.5, "low": value - 0.5, "close": value}
+            for value in values
         ]
+
+    def test_support_promotes_two_later_confirmed_higher_lows(self):
+        candles = self.candles([100, 101, 102, 108, 110, 112, 114, 118])
         active = {
-            "type": "support",
-            "direction": "ascending",
-            "anchor1": (0, 100),
-            "anchor2": (2, 102),
-            "confirmed_at_bar": 3,
-            "level": 1,
+            "type": "support", "direction": "ascending",
+            "anchor1": (0, 100), "anchor2": (2, 102), "level": 1,
         }
 
         promoted = build_staggered_support(
-            active,
-            [(4, 110, 5), (6, 114, 7)],
-            [c["close"] for c in candles],
-            current_bar=7,
-            tolerance=0,
-            min_anchor_bars=2,
-            candles=candles,
-            line_angle=0,
-            validation_boundary="body",
+            active, [(4, 110, 5), (6, 114, 7)], [c["close"] for c in candles],
+            current_bar=7, tolerance=0, min_anchor_bars=2, candles=candles,
+            line_angle=0, validation_boundary="body",
         )
 
         self.assertIsNotNone(promoted)
@@ -235,11 +229,30 @@ class StaggeredSupportTests(unittest.TestCase):
         self.assertEqual(promoted["confirmed_at_bar"], 7)
         self.assertEqual(promoted["level"], 2)
 
-    def test_does_not_promote_until_two_later_pivots_are_confirmed(self):
+    def test_resistance_reuses_latest_touch_and_next_confirmed_local_high(self):
+        candles = self.candles([110, 109, 108, 105, 100, 95, 89])
+        active = {
+            "type": "resistance", "direction": "descending",
+            "anchor1": (0, 110), "anchor2": (3, 105), "level": 1,
+        }
+
+        promoted = build_staggered_resistance(
+            active, [(5, 95, 6)], [c["close"] for c in candles],
+            current_bar=6, tolerance=0, min_anchor_bars=2, candles=candles,
+            line_angle=0, validation_boundary="body",
+        )
+
+        self.assertIsNotNone(promoted)
+        self.assertEqual(promoted["anchor1"], (3, 105.0))
+        self.assertEqual(promoted["anchor2"], (5, 95.0))
+        self.assertEqual(promoted["confirmed_at_bar"], 6)
+        self.assertEqual(promoted["level"], 2)
+
+    def test_does_not_promote_without_a_later_confirmed_extremum(self):
         active = {"type": "support", "anchor1": (0, 100), "anchor2": (2, 102), "level": 1}
-        candles = [{"open": 110, "high": 112, "low": 109, "close": 111}] * 8
+        candles = self.candles([100, 101, 102, 108])
         self.assertIsNone(build_staggered_support(
-            active, [(4, 110, 5)], [111] * 8, current_bar=7, candles=candles, line_angle=0
+            active, [], [c["close"] for c in candles], current_bar=3, candles=candles, line_angle=0
         ))
 
 
@@ -309,6 +322,8 @@ class TrendlineApiTests(unittest.TestCase):
         self.assertGreater(len(data["trendlines"]), 0)
         line = data["trendlines"][0]
         self.assertEqual(line["type"], "resistance")
+        self.assertEqual(line["level"], 1)
+        self.assertIn("Resistance L1", line["label"])
         # Fields the dashboard needs to draw the line on the chart.
         times = {c["time"] for c in candles}
         self.assertIn(line["start_time"], times)

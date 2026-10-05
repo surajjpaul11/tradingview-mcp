@@ -26,6 +26,7 @@ const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
+const volumeProfileIndicatorCheckbox = document.getElementById('volume-profile-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
 const vixIndicatorCheckbox = document.getElementById('vix-indicator-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
@@ -54,7 +55,7 @@ function formatMarketChartTime(time, includeDate = true, includeZone = false) {
     if (!date || Number.isNaN(date.getTime())) return '';
     return new Intl.DateTimeFormat('en-US', {
         timeZone: MARKET_TIME_ZONE,
-        ...(includeDate ? { month: 'short', day: 'numeric' } : {}),
+        ...(includeDate ? { month: 'short', day: 'numeric', year: 'numeric' } : {}),
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
@@ -620,6 +621,7 @@ let vixSeries = null;
 let currentVixCandles = [];
 let currentCandles = [];
 let sessionZoneFrame = null;
+let volumeProfileFrame = null;
 let chartDataUpdateInProgress = false;
 let dashboardRequestGeneration = 0;
 
@@ -725,6 +727,109 @@ function renderAllSessionZones() {
 function scheduleSessionZoneRender() {
     if (sessionZoneFrame != null) cancelAnimationFrame(sessionZoneFrame);
     sessionZoneFrame = requestAnimationFrame(renderAllSessionZones);
+}
+
+function ensureVolumeProfileLayer() {
+    const container = document.getElementById('tv-chart');
+    if (!container) return null;
+    let canvas = container.querySelector(':scope > .volume-profile-layer');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.className = 'volume-profile-layer';
+        canvas.setAttribute('aria-hidden', 'true');
+        container.appendChild(canvas);
+    }
+    return canvas;
+}
+
+function buildVisibleVolumeProfile(candles, binCount = 30) {
+    if (!candles.length || binCount < 1) return null;
+    const priceLow = Math.min(...candles.map(candle => Number(candle.low)));
+    const priceHigh = Math.max(...candles.map(candle => Number(candle.high)));
+    const binSize = (priceHigh - priceLow) / binCount || 1;
+    const volumes = new Array(binCount).fill(0);
+    candles.forEach(candle => {
+        const volume = Number(candle.volume || 0);
+        const range = Math.max(Number(candle.high) - Number(candle.low), 0);
+        const first = Math.max(0, Math.min(binCount - 1, Math.floor((Number(candle.low) - priceLow) / binSize)));
+        const last = Math.max(0, Math.min(binCount - 1, Math.floor((Number(candle.high) - priceLow) / binSize)));
+        if (range === 0 || first === last) {
+            volumes[first] += volume;
+            return;
+        }
+        for (let index = first; index <= last; index += 1) {
+            const low = priceLow + index * binSize;
+            const overlap = Math.min(Number(candle.high), low + binSize) - Math.max(Number(candle.low), low);
+            volumes[index] += volume * Math.max(overlap, 0) / range;
+        }
+    });
+    const maxVolume = Math.max(...volumes);
+    return {
+        maxVolume,
+        pocIndex: volumes.indexOf(maxVolume),
+        bins: volumes.map((volume, index) => ({
+            low: priceLow + index * binSize,
+            high: priceLow + (index + 1) * binSize,
+            volume,
+        })),
+    };
+}
+
+function renderVolumeProfile() {
+    volumeProfileFrame = null;
+    const container = document.getElementById('tv-chart');
+    const canvas = ensureVolumeProfileLayer();
+    if (!container || !canvas) return;
+    const enabled = activeTab === 'advanced' && Boolean(volumeProfileIndicatorCheckbox?.checked);
+    container.dataset.volumeProfileVisible = String(enabled);
+    if (!enabled || !chart || !candlestickSeries || !currentCandles.length) {
+        canvas.hidden = true;
+        container.dataset.volumeProfileBinCount = '0';
+        container.dataset.volumeProfileCandleCount = '0';
+        return;
+    }
+
+    let logicalRange = null;
+    try { logicalRange = chart.timeScale().getVisibleLogicalRange(); } catch (_) {}
+    const first = Math.max(0, Math.floor(logicalRange?.from ?? 0));
+    const last = Math.min(currentCandles.length - 1, Math.ceil(logicalRange?.to ?? (currentCandles.length - 1)));
+    const visibleCandles = currentCandles.slice(first, last + 1);
+    const profile = buildVisibleVolumeProfile(visibleCandles, 30);
+    if (!profile || profile.maxVolume <= 0) {
+        canvas.hidden = true;
+        container.dataset.volumeProfileBinCount = '0';
+        container.dataset.volumeProfileCandleCount = String(visibleCandles.length);
+        return;
+    }
+
+    canvas.hidden = false;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(width * ratio));
+    canvas.height = Math.max(1, Math.round(height * ratio));
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const context = canvas.getContext('2d');
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    const paneRight = Math.min(width, chart.timeScale().width?.() || width);
+    const maxBarWidth = paneRight * 0.24;
+    profile.bins.forEach((bin, index) => {
+        const top = candlestickSeries.priceToCoordinate(bin.high);
+        const bottom = candlestickSeries.priceToCoordinate(bin.low);
+        if (top == null || bottom == null || bin.volume <= 0) return;
+        const barWidth = (bin.volume / profile.maxVolume) * maxBarWidth;
+        context.fillStyle = index === profile.pocIndex ? 'rgba(255, 183, 77, 0.58)' : 'rgba(59, 130, 246, 0.28)';
+        context.fillRect(paneRight - barWidth, top, barWidth, Math.max(1, bottom - top - 1));
+    });
+    container.dataset.volumeProfileBinCount = String(profile.bins.length);
+    container.dataset.volumeProfileCandleCount = String(visibleCandles.length);
+}
+
+function scheduleVolumeProfileRender() {
+    if (volumeProfileFrame != null) cancelAnimationFrame(volumeProfileFrame);
+    volumeProfileFrame = requestAnimationFrame(renderVolumeProfile);
 }
 
 // ============================================================
@@ -851,12 +956,14 @@ function initChart() {
             if (width > 50 && height > 50) {
                 chart.applyOptions({ width, height });
                 scheduleSessionZoneRender();
+                scheduleVolumeProfileRender();
             }
         }
     }).observe(container);
 
     chart.timeScale().subscribeVisibleTimeRangeChange(range => {
         scheduleSessionZoneRender();
+        scheduleVolumeProfileRender();
         if (!range || activeTab !== 'advanced' || chartDataUpdateInProgress) return;
         safelySetIndicatorRange(volumeChart, volumeIndicatorCheckbox?.checked, range);
         safelySetIndicatorRange(rsiChart, rsiIndicatorCheckbox?.checked, range);
@@ -1081,6 +1188,7 @@ function updateIndicatorVisibility() {
     chart?.priceScale('vix').applyOptions({ visible: showVix });
     const chartContainer = document.getElementById('tv-chart');
     if (chartContainer) chartContainer.dataset.vixVisible = String(showVix);
+    scheduleVolumeProfileRender();
     if (advanced) {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
@@ -2103,6 +2211,7 @@ async function updateDashboard() {
             }
             if (candlestickSeries) {
                 candlestickSeries.setData(sorted);
+                scheduleVolumeProfileRender();
             }
             renderVixOverlay(vixData.candles || [], vixData);
             renderAdvancedIndicators(sorted);
@@ -2341,6 +2450,7 @@ async function updateAdvDashboard() {
     initTabs();
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    volumeProfileIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     vixIndicatorCheckbox?.addEventListener('change', () => {
         updateIndicatorVisibility();

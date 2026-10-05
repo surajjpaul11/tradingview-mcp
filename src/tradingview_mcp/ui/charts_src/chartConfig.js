@@ -1,5 +1,19 @@
 import { ColorType } from 'lightweight-charts';
 
+const MARKET_TIME_ZONE = 'America/New_York';
+
+export function formatCrosshairTime(time) {
+  const businessDay = time && typeof time === 'object';
+  const date = businessDay
+    ? new Date(Date.UTC(time.year, time.month - 1, time.day, 12))
+    : new Date(Number(time) * 1000);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKET_TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric',
+    ...(businessDay ? {} : { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' }),
+  }).format(date);
+}
+
 // Canvas colors can't read CSS variables, so these mirror the tokens in index.css.
 const COLORS = {
   background: '#1e222d',
@@ -11,6 +25,7 @@ const COLORS = {
 
 export const CHART_OPTIONS = {
   autoSize: true,
+  localization: { locale: 'en-US', timeFormatter: formatCrosshairTime },
   layout: {
     background: { type: ColorType.Solid, color: COLORS.background },
     textColor: COLORS.text,

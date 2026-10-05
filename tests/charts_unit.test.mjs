@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { aggregateCandles, createLiveAggregator } from '../src/tradingview_mcp/ui/charts_src/candles.js';
 import { findFairValueGaps, buildVolumeProfile } from '../src/tradingview_mcp/ui/charts_src/indicators.js';
 import { parseHyperliquidCandle, parseYahooChart } from '../src/tradingview_mcp/ui/charts_src/feeds/parsers.js';
+import { formatCrosshairTime } from '../src/tradingview_mcp/ui/charts_src/chartConfig.js';
+
+test('crosshair time includes the year',()=>{
+  assert.match(formatCrosshairTime(Date.UTC(2026,6,31,16)/1000),/2026/);
+  assert.match(formatCrosshairTime({year:2022,month:9,day:12}),/2022/);
+});
 
 test('normalizes Hyperliquid and Yahoo candles',()=>{
   assert.deepEqual(parseHyperliquidCandle({t:2000,o:'1',h:'3',l:'0.5',c:'2',v:'9'}),{time:2,open:1,high:3,low:.5,close:2,volume:9});

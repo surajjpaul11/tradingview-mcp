@@ -14,6 +14,9 @@ from sloped_lines_strategy import (
     _validation_boundary,
     build_ascending_support,
     build_descending_resistance,
+    is_body_gap_down,
+    is_body_gap_up,
+    run_sloped_lines,
 )
 from tradingview_mcp.ui import server
 
@@ -197,6 +200,58 @@ class StrictTrendlineValidationTests(unittest.TestCase):
         self.assertEqual(line["confirmed_at_bar"], 4)
 
 
+class BodyGapSignalTests(unittest.TestCase):
+    @staticmethod
+    def candle(date, open_price, close_price):
+        return {
+            "time": 1_700_000_000,
+            "date": date,
+            "open": open_price,
+            "high": max(open_price, close_price) + 0.5,
+            "low": min(open_price, close_price) - 0.5,
+            "close": close_price,
+            "volume": 1_000,
+        }
+
+    def test_gap_rules_require_consecutive_colors_and_strict_body_separation(self):
+        green1 = self.candle("g1", 100, 102)
+        green2 = self.candle("g2", 103, 105)
+        touching_green = self.candle("g3", 105, 106)
+        red1 = self.candle("r1", 104, 103)
+        red2 = self.candle("r2", 102, 100)
+
+        self.assertTrue(is_body_gap_up(green1, green2))
+        self.assertFalse(is_body_gap_up(green2, touching_green))
+        self.assertTrue(is_body_gap_down(red1, red2))
+        self.assertFalse(is_body_gap_up(red1, green2))
+        self.assertFalse(is_body_gap_down(green1, red2))
+
+    def test_enabled_gap_up_buys_and_gap_down_sells_on_second_completed_candle(self):
+        candles = [
+            self.candle("2026-07-30", 100, 102),
+            self.candle("2026-07-31", 103, 105),
+            self.candle("2026-08-03", 104, 103),
+            self.candle("2026-08-04", 102, 100),
+        ]
+
+        trades, _ = run_sloped_lines(
+            candles,
+            pivot_lookback=2,
+            line_angle=0,
+            stop_loss_mode="none",
+            gap_up=True,
+            gap_down=True,
+        )
+
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0]["entry_date"], "2026-07-31")
+        self.assertEqual(trades[0]["entry_price"], 105)
+        self.assertEqual(trades[0]["entry_reason"], "gap_up")
+        self.assertEqual(trades[0]["exit_date"], "2026-08-04")
+        self.assertEqual(trades[0]["exit_price"], 100)
+        self.assertEqual(trades[0]["exit_reason"], "gap_down")
+
+
 class TrendlineApiTests(unittest.TestCase):
     def fetch(self, candles):
         with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
@@ -251,12 +306,16 @@ class TrendlineApiTests(unittest.TestCase):
                     anchor_source="any_valid_candle",
                     validation_boundary="close",
                     trendline_tolerance=0.015,
+                    gap_up=True,
+                    gap_down=True,
                 ))
 
         self.assertEqual(run.call_args.kwargs["pivot_lookback"], 2)
         self.assertEqual(run.call_args.kwargs["anchor_source"], "any_valid_candle")
         self.assertEqual(run.call_args.kwargs["validation_boundary"], "close")
         self.assertEqual(run.call_args.kwargs["trendline_tolerance"], 0.015)
+        self.assertTrue(run.call_args.kwargs["gap_up"])
+        self.assertTrue(run.call_args.kwargs["gap_down"])
 
     def test_api_rejects_unsupported_tuning_parameters(self):
         with self.assertRaisesRegex(ValueError, "pivot_lookback must be one of"):

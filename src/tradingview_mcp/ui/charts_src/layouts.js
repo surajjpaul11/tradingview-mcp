@@ -6,7 +6,7 @@ export const DEFAULT_STRATEGY = {
   enabled: false,
   name: 'sloped_lines',
   parameters: {
-    full_candle: false, use_wick: false, confirm_candles: 0, pivot_lookback: 5,
+    full_candle: false, use_wick: false, gap_up: false, gap_down: false, confirm_candles: 0, pivot_lookback: 5,
     anchor_source: 'confirmed_pivots', validation_boundary: 'body', trendline_tolerance: 0,
     inverse_color_trigger: false, line_angle: 3, stop_loss_mode: 'exit_peak_reclaim', min_anchor_bars: 2,
   },

@@ -179,6 +179,24 @@ def is_red_candle(c: dict) -> bool:
     return c["close"] < c["open"]
 
 
+def is_body_gap_up(previous: dict, current: dict) -> bool:
+    """Two green candles whose bodies are strictly separated upward."""
+    return (
+        current["close"] > current["open"]
+        and previous["close"] > previous["open"]
+        and min(current["open"], current["close"]) > max(previous["open"], previous["close"])
+    )
+
+
+def is_body_gap_down(previous: dict, current: dict) -> bool:
+    """Two red candles whose bodies are strictly separated downward."""
+    return (
+        current["close"] < current["open"]
+        and previous["close"] < previous["open"]
+        and max(current["open"], current["close"]) < min(previous["open"], previous["close"])
+    )
+
+
 def calc_atr(candles: list[dict], period: int = 14) -> list[float]:
     """Calculate Average True Range (ATR) across candles."""
     if not candles:
@@ -584,6 +602,8 @@ def run_sloped_lines(
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
     anchor_source: str = DEFAULT_ANCHOR_SOURCE,
     validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
+    gap_up: bool = False,
+    gap_down: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -614,6 +634,10 @@ def run_sloped_lines(
                        "any_valid_candle" evaluates every candle after the search start.
       - validation_boundary: Price boundary a candidate line may not cross: "body", "close", or "wick".
       - trendline_tolerance: Fractional penetration allowed during validation (0.0 to 0.02 in the UI).
+      - gap_up: Enter long at the close of the second consecutive green candle when
+                its body is strictly above the previous green candle's body.
+      - gap_down: Exit long at the close of the second consecutive red candle when
+                  its body is strictly below the previous red candle's body.
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -668,6 +692,59 @@ def run_sloped_lines(
         while sl_ptr < len(swing_lows) and swing_lows[sl_ptr][2] <= i:
             confirmed_lows.append(swing_lows[sl_ptr])
             sl_ptr += 1
+
+        # Optional completed-candle body-gap signals. These run before the
+        # trendline and pre-line protection checks so the selected gap rule owns
+        # the signal on the second completed candle.
+        if gap_up and i > 0 and state in ("waiting_for_buy", "short") and is_body_gap_up(candles[i - 1], candles[i]):
+            if position is not None and position["side"] == "short":
+                trades.append({
+                    "entry_date": position["entry_date"],
+                    "entry_price": position["entry_price"],
+                    "exit_date": date,
+                    "exit_price": price,
+                    "side": "short",
+                    "entry_reason": position.get("entry_reason", "support_break"),
+                    "exit_reason": "gap_up",
+                    "strategy": "sloped_lines",
+                })
+            position = {
+                "entry_date": date,
+                "entry_price": price,
+                "entry_bar": i,
+                "entry_low": lows[i],
+                "side": "long",
+                "entry_reason": "gap_up",
+            }
+            state = "holding"
+            active_trendline = None
+            search_after_bar = i
+            last_sell_point = None
+            trap_info = None
+            break_start_bar = None
+            confirm_count = 0
+            continue
+
+        if gap_down and i > 0 and state == "holding" and is_body_gap_down(candles[i - 1], candles[i]):
+            trades.append({
+                "entry_date": position["entry_date"],
+                "entry_price": position["entry_price"],
+                "exit_date": date,
+                "exit_price": price,
+                "side": "long",
+                "entry_reason": position.get("entry_reason", "breakout"),
+                "exit_reason": "gap_down",
+                "strategy": "sloped_lines",
+            })
+            position = None
+            state = "waiting_for_buy"
+            active_trendline = None
+            search_after_bar = i
+            last_sell_point = (i, highs[i])
+            trap_info = None
+            break_start_bar = None
+            confirm_count = 0
+            continue
 
         # --- Check special stop-loss re-entry modes when out of position ---
         if state == "waiting_for_buy":
@@ -1185,6 +1262,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
     anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
     validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
+    gap_up = bool(kwargs.get("gap_up", False))
+    gap_down = bool(kwargs.get("gap_down", False))
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1200,6 +1279,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source,
         validation_boundary=validation_boundary,
+        gap_up=gap_up,
+        gap_down=gap_down,
     )
     return trades
 
@@ -1222,6 +1303,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     min_anchor_bars = int(kwargs.get("min_anchor_bars", DEFAULT_MIN_ANCHOR_BARS))
     anchor_source = kwargs.get("anchor_source", DEFAULT_ANCHOR_SOURCE)
     validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
+    gap_up = bool(kwargs.get("gap_up", False))
+    gap_down = bool(kwargs.get("gap_down", False))
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1238,6 +1321,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source,
         validation_boundary=validation_boundary,
+        gap_up=gap_up,
+        gap_down=gap_down,
     )
 
     formatted_trendlines = []
@@ -1324,6 +1409,8 @@ def run_backtest(
     min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
     anchor_source: str = DEFAULT_ANCHOR_SOURCE,
     validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
+    gap_up: bool = False,
+    gap_down: bool = False,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1345,6 +1432,7 @@ def run_backtest(
         confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger,
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
+        gap_up=gap_up, gap_down=gap_down,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -1383,6 +1471,8 @@ def run_backtest(
             "inverse_color_trigger": inverse_color_trigger,
             "line_angle": line_angle,
             "stop_loss_mode": stop_loss_mode,
+            "gap_up": gap_up,
+            "gap_down": gap_down,
         },
         "period": period,
         "interval": interval,
@@ -1430,6 +1520,8 @@ def main():
     parser.add_argument("--full-candle", action="store_true", default=DEFAULT_FULL_CANDLE, help="Require candle to close across trendline for breakout (default: False)")
     parser.add_argument("--touch-break", action="store_false", dest="full_candle", help="Allow intrabar touch/wick to break trendline (default)")
     parser.add_argument("--use-wick", action="store_true", default=False, help="Use candle wicks instead of body for trendline contact points (default: False)")
+    parser.add_argument("--gap-up", action="store_true", default=False, help="Buy on two completed green candles with non-overlapping bodies")
+    parser.add_argument("--gap-down", action="store_true", default=False, help="Sell on two completed red candles with non-overlapping bodies")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart with trendlines")
     args = parser.parse_args()
 
@@ -1453,6 +1545,8 @@ def main():
         stop_loss_mode=args.stop_loss_mode,
         anchor_source=args.anchor_source,
         validation_boundary=args.validation_boundary,
+        gap_up=args.gap_up,
+        gap_down=args.gap_down,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

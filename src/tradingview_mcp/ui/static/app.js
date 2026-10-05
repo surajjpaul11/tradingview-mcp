@@ -296,6 +296,10 @@ const slopedFullCandleGroup = document.getElementById('sloped-full-candle-group'
 const slopedFullCandleCheckbox = document.getElementById('sloped-full-candle-checkbox');
 const slopedWickGroup = document.getElementById('sloped-wick-group');
 const slopedWickCheckbox = document.getElementById('sloped-wick-checkbox');
+const slopedGapUpGroup = document.getElementById('sloped-gap-up-group');
+const slopedGapUpCheckbox = document.getElementById('sloped-gap-up-checkbox');
+const slopedGapDownGroup = document.getElementById('sloped-gap-down-group');
+const slopedGapDownCheckbox = document.getElementById('sloped-gap-down-checkbox');
 const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candles-group');
 const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
 const slopedPivotLookbackGroup = document.getElementById('sloped-pivot-lookback-group');
@@ -323,6 +327,14 @@ function getFullCandleEnabled() {
 function getWickEnabled() {
     if (!slopedWickCheckbox) return false;
     return slopedWickCheckbox.checked;
+}
+
+function getGapUpEnabled() {
+    return Boolean(slopedGapUpCheckbox?.checked);
+}
+
+function getGapDownEnabled() {
+    return Boolean(slopedGapDownCheckbox?.checked);
 }
 
 function getConfirmCandles() {
@@ -386,6 +398,8 @@ function syncChannelMultVisibility(strategy) {
     if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
     if (slopedFullCandleGroup) slopedFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedGapUpGroup) slopedGapUpGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedGapDownGroup) slopedGapDownGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedPivotLookbackGroup) slopedPivotLookbackGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAnchorSourceGroup) slopedAnchorSourceGroup.style.display = isSloped ? 'flex' : 'none';
@@ -452,6 +466,12 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             }
             if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
                 slopedWickCheckbox.checked = p.use_wick;
+            }
+            if (slopedGapUpCheckbox) {
+                slopedGapUpCheckbox.checked = Boolean(p.gap_up);
+            }
+            if (slopedGapDownCheckbox) {
+                slopedGapDownCheckbox.checked = Boolean(p.gap_down);
             }
             if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
                 slopedConfirmCandlesSelect.value = String(p.confirm_candles);
@@ -1360,6 +1380,14 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        for (const checkbox of [slopedGapUpCheckbox, slopedGapDownCheckbox]) {
+            if (checkbox) {
+                checkbox.onchange = () => {
+                    updateDashboard();
+                    if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+                };
+            }
+        }
         if (slopedConfirmCandlesSelect) {
             slopedConfirmCandlesSelect.onchange = () => {
                 updateDashboard();
@@ -1564,6 +1592,9 @@ function getSlopedEntryMarkerStyle(reason, isLong) {
             color: isLong ? '#059669' : '#DC2626',
         };
     }
+    if (reason === 'gap_up') {
+        return { markerClass: 'sloped-gap-up', prefix: 'BODY GAP UP ', color: '#14B8A6' };
+    }
     if (reason === 'exit_peak_reclaim') {
         return { markerClass: 'sloped-reentry', prefix: 'PEAK RECLAIM ', color: '#6EE7B7' };
     }
@@ -1580,6 +1611,9 @@ function getSlopedExitMarkerStyle(reason, isLong, isWin) {
             prefix: reason === 'support_break' ? 'LINE SUPPORT BREAK ' : 'LINE RESISTANCE BREAK ',
             color: reason === 'support_break' ? '#DC2626' : '#059669',
         };
+    }
+    if (reason === 'gap_down') {
+        return { markerClass: 'sloped-gap-down', prefix: 'BODY GAP DOWN ', color: '#E11D48' };
     }
     if (reason === 'entry_barrier_break') {
         return { markerClass: 'sloped-protection', prefix: 'ENTRY BARRIER ', color: '#F59E0B' };
@@ -1757,11 +1791,11 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, isCurrent = () => true) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return summary;
@@ -1904,6 +1938,8 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
             <div class="channel-pill">Dashed = forming · Solid = active</div>
             <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
             <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
+            <div class="channel-pill"><span style="color: #14B8A6;">▲</span> Body gap-up buy</div>
+            <div class="channel-pill"><span style="color: #E11D48;">▼</span> Body gap-down sell</div>
             <div class="channel-pill"><span style="color: #DC2626;">▼</span> Line support-break sell</div>
             <div class="channel-pill"><span style="color: #F59E0B;">▼</span> Protection / other sell</div>
         `;
@@ -2008,7 +2044,7 @@ async function updateDashboard() {
         const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2085,7 +2121,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), isCurrentRequest);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
@@ -2171,7 +2207,7 @@ async function updateAdvDashboard() {
     try {
         const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2215,7 +2251,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;

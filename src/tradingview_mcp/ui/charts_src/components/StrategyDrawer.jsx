@@ -54,6 +54,8 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       }}>{options.map((value)=><option key={value} value={value}>{key==='trendline_tolerance'?`${Number(value)*100}%`:label(value)}</option>)}</select></label>)}
       <label><span>Full candle</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.full_candle)} onChange={(e)=>patchParam('full_candle',e.target.checked)}/></label>
       <label><span>Wick anchors</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.use_wick)} onChange={(e)=>patchParam('use_wick',e.target.checked)}/></label>
+      <label><span>Gap Up</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_up)} onChange={(e)=>patchParam('gap_up',e.target.checked)}/></label>
+      <label><span>Gap Down</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_down)} onChange={(e)=>patchParam('gap_down',e.target.checked)}/></label>
     </div>}
     {pane.strategy.name==='enhanced_channel'&&<div className="strategy-fields">
       <label><span>Channel width</span><input type="number" min="1" max="3" step="0.1" value={pane.strategy.parameters.channel_mult??1.7} onChange={(e)=>patchParam('channel_mult',Number(e.target.value))}/></label>

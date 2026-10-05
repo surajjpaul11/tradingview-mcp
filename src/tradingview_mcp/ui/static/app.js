@@ -303,6 +303,8 @@ const slopedGapDownGroup = document.getElementById('sloped-gap-down-group');
 const slopedGapDownCheckbox = document.getElementById('sloped-gap-down-checkbox');
 const slopedStaggeredLinesGroup = document.getElementById('sloped-staggered-lines-group');
 const slopedStaggeredLinesCheckbox = document.getElementById('sloped-staggered-lines-checkbox');
+const slopedTrendlineLabelsGroup = document.getElementById('sloped-trendline-labels-group');
+const slopedTrendlineLabelsCheckbox = document.getElementById('sloped-trendline-labels-checkbox');
 const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candles-group');
 const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
 const slopedPivotLookbackGroup = document.getElementById('sloped-pivot-lookback-group');
@@ -342,6 +344,10 @@ function getGapDownEnabled() {
 
 function getStaggeredLinesEnabled() {
     return Boolean(slopedStaggeredLinesCheckbox?.checked);
+}
+
+function getTrendlineLabelsEnabled() {
+    return Boolean(slopedTrendlineLabelsCheckbox?.checked);
 }
 
 function getConfirmCandles() {
@@ -408,6 +414,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedGapUpGroup) slopedGapUpGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedGapDownGroup) slopedGapDownGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStaggeredLinesGroup) slopedStaggeredLinesGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedTrendlineLabelsGroup) slopedTrendlineLabelsGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedPivotLookbackGroup) slopedPivotLookbackGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAnchorSourceGroup) slopedAnchorSourceGroup.style.display = isSloped ? 'flex' : 'none';
@@ -483,6 +490,9 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             }
             if (slopedStaggeredLinesCheckbox) {
                 slopedStaggeredLinesCheckbox.checked = Boolean(p.staggered_lines);
+            }
+            if (slopedTrendlineLabelsCheckbox) {
+                slopedTrendlineLabelsCheckbox.checked = Boolean(p.trendline_labels);
             }
             if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
                 slopedConfirmCandlesSelect.value = String(p.confirm_candles);
@@ -1498,7 +1508,7 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
-        for (const checkbox of [slopedGapUpCheckbox, slopedGapDownCheckbox, slopedStaggeredLinesCheckbox]) {
+        for (const checkbox of [slopedGapUpCheckbox, slopedGapDownCheckbox, slopedStaggeredLinesCheckbox, slopedTrendlineLabelsCheckbox]) {
             if (checkbox) {
                 checkbox.onchange = () => {
                     updateDashboard();
@@ -1909,7 +1919,7 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, isCurrent = () => true) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, showTrendlineLabels = false, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0 };
     try {
@@ -1925,12 +1935,20 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
         existingSeriesList.length = 0;
         if (!data.trendlines || data.trendlines.length === 0) return summary;
         summary.returned = data.trendlines.length;
+        const chartContainer = document.getElementById('tv-chart');
+        if (chartContainer && chartInstance === chart) {
+            chartContainer.dataset.trendlineLabelsVisible = String(Boolean(showTrendlineLabels));
+            chartContainer.dataset.activeTrendlineLabelCount = String(
+                data.trendlines.filter(line => line.status === 'active').length
+            );
+        }
 
         if (candleData.length === 0) return summary;
         const firstCandle = candleData[0].time;
         const lastCandle = candleData[candleData.length - 1].time;
 
         data.trendlines.forEach(tl => {
+            const showAxisLabel = Boolean(showTrendlineLabels && tl.status === 'active');
             const startTime = tl.start_time || toChartTime(tl.start_date);
             const endTime = tl.end_time || toChartTime(tl.end_date);
 
@@ -1978,9 +1996,9 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                     lineWidth: width,
                     lineStyle: style,
                     crosshairMarkerVisible: false,
-                    lastValueVisible: false,
+                    lastValueVisible: showAxisLabel,
                     priceLineVisible: false,
-                    title,
+                    title: showAxisLabel ? title : '',
                 };
                 let lineSeries;
                 if (typeof chartInstance.addLineSeries === 'function') {
@@ -2053,7 +2071,7 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
-            <div class="channel-pill">Dashed = forming · Solid = active</div>
+            <div class="channel-pill">Dashed = forming · Solid = active · Axis label = active line only</div>
             <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
             <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
             <div class="channel-pill"><span style="color: #14B8A6;">▲</span> Body gap-up buy</div>
@@ -2240,7 +2258,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled(), isCurrentRequest);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
@@ -2370,7 +2388,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;

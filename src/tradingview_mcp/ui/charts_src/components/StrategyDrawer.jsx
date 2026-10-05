@@ -57,6 +57,7 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       <label><span>Gap Up</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_up)} onChange={(e)=>patchParam('gap_up',e.target.checked)}/></label>
       <label><span>Gap Down</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_down)} onChange={(e)=>patchParam('gap_down',e.target.checked)}/></label>
       <label title="Build tighter resistance from the latest touch and local maximum; build tighter support from later higher-low pivots"><span>Staggered Lines</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.staggered_lines)} onChange={(e)=>patchParam('staggered_lines',e.target.checked)}/></label>
+      <label title="Show a price-axis label only for the currently active support or resistance"><span>Active Line Labels</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.trendline_labels)} onChange={(e)=>patchParam('trendline_labels',e.target.checked)}/></label>
     </div>}
     {pane.strategy.name==='enhanced_channel'&&<div className="strategy-fields">
       <label><span>Channel width</span><input type="number" min="1" max="3" step="0.1" value={pane.strategy.parameters.channel_mult??1.7} onChange={(e)=>patchParam('channel_mult',Number(e.target.value))}/></label>

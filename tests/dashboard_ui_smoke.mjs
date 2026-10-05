@@ -213,6 +213,7 @@ try {
       gapUp: document.querySelector('#sloped-gap-up-checkbox')?.checked,
       gapDown: document.querySelector('#sloped-gap-down-checkbox')?.checked,
       staggeredLines: document.querySelector('#sloped-staggered-lines-checkbox')?.checked,
+      trendlineLabels: document.querySelector('#sloped-trendline-labels-checkbox')?.checked,
       angle: document.querySelector('#sloped-line-angle-select')?.value,
       stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
       anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
@@ -233,6 +234,7 @@ try {
     gapUp: false,
     gapDown: false,
     staggeredLines: false,
+    trendlineLabels: false,
     angle: '0',
     stopLoss: 'atr_stop_buffer',
     anchors: '2',
@@ -251,6 +253,7 @@ try {
     gapUp: false,
     gapDown: false,
     staggeredLines: false,
+    trendlineLabels: false,
     angle: '3',
     stopLoss: 'exit_peak_reclaim',
     anchors: '2',
@@ -308,6 +311,17 @@ try {
   assert.equal(await page.locator('#sloped-staggered-lines-checkbox').isChecked(), true);
   await page.locator('#sloped-staggered-lines-checkbox').uncheck();
   await waitForStrategyChart(page, 'sloped_lines');
+
+  const labelResponse = page.waitForResponse(
+    response => response.url().includes('/api/trendlines?') && response.url().includes('strategy=sloped_lines'),
+    { timeout: 90_000 },
+  );
+  await page.locator('#sloped-trendline-labels-checkbox').check();
+  await labelResponse;
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.trendlineLabelsVisible === 'true');
+  assert.equal(await page.locator('#sloped-trendline-labels-checkbox').isChecked(), true);
+  await page.locator('#sloped-trendline-labels-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.trendlineLabelsVisible === 'false');
 
   const restoredPivotResponse = page.waitForResponse(
     response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=5'),

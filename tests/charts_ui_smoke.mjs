@@ -42,6 +42,9 @@ try{
   await page.getByRole('checkbox',{name:'Show strategy'}).check();
   await page.getByRole('checkbox',{name:'Staggered Lines'}).check();
   assert.equal(await page.getByRole('checkbox',{name:'Staggered Lines'}).isChecked(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Active Line Labels'}).isChecked(),false);
+  await page.getByRole('checkbox',{name:'Active Line Labels'}).check();
+  assert.equal(await page.getByRole('checkbox',{name:'Active Line Labels'}).isChecked(),true);
   await page.waitForFunction(()=>document.querySelector('.chart-widget [role="group"][aria-label="Candle resolution"] [aria-pressed="true"]')?.textContent==='1h'&&document.querySelector('.chart-widget [role="group"][aria-label="Timeline"] [aria-pressed="true"]')?.textContent==='1M');
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.markerCount)>=2&&Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.overlayCount)>=1);
   assert.match(await page.locator('.pane-stats').first().innerText(),/12.5%/);

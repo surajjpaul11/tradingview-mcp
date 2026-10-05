@@ -42,12 +42,13 @@ export default function LightweightChart({symbol,pane,strategyData,onStatusChang
   useEffect(()=>{
     const chart=chartRef.current;if(!chart)return;overlayRef.current.forEach((series)=>{try{chart.removeSeries(series);}catch{}});overlayRef.current=[];
     const overlays=[...(strategyData.trendlines||[]),...(strategyData.channels||[])];
-    overlays.forEach((overlay,index)=>{
+    overlays.forEach((overlay)=>{
       const points=linePoints(overlay,candles); if(points.length<2)return;
-      const series=chart.addSeries(LineSeries,{color:overlay.color||(overlay.type==='support'?'#3b82f6':'#10b981'),lineWidth:2,lineStyle:overlay.status==='forming'?2:0,priceLineVisible:false,lastValueVisible:false,title:index<3?(overlay.label||overlay.type||''):''});
+      const showLabel=Boolean(pane.strategy.parameters.trendline_labels&&overlay.status==='active');
+      const series=chart.addSeries(LineSeries,{color:overlay.color||(overlay.type==='support'?'#3b82f6':'#10b981'),lineWidth:2,lineStyle:overlay.status==='forming'?2:0,priceLineVisible:false,lastValueVisible:showLabel,title:showLabel?(overlay.label||overlay.type||''):''});
       series.setData(points);overlayRef.current.push(series);
     });
-  },[strategyData.trendlines,strategyData.channels,candles]);
+  },[strategyData.trendlines,strategyData.channels,candles,pane.strategy.parameters.trendline_labels]);
   const detail=selected?markerBundle.details.get(selected.time):null;
   return <><div ref={containerRef} className="lightweight-chart" data-source={symbol.source} data-symbol={symbol.id} data-candle-count={candles.length} data-marker-count={markerBundle.markers.length} data-overlay-count={(strategyData.trendlines?.length||0)+(strategyData.channels?.length||0)}/>{detail&&<button type="button" className="signal-detail" onClick={()=>setSelected(null)}><b>{detail.kind}</b> {detail.price?`$${Number(detail.price).toFixed(2)}`:''} {detail.reason||''} {detail.pnl!==undefined?`· ${Number(detail.pnl).toFixed(1)}%`:''}</button>}</>;
 }

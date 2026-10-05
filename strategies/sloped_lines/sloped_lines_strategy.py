@@ -583,6 +583,54 @@ def build_ascending_support(
     return best
 
 
+def build_staggered_support(
+    active_support: dict,
+    confirmed_lows: list[tuple[int, float]],
+    closes: list[float],
+    current_bar: int,
+    tolerance: float = TRENDLINE_TOLERANCE,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    candles: list[dict] | None = None,
+    inverse_color_trigger: bool = False,
+    line_angle: float = 3.0,
+    use_wick: bool = False,
+    validation_boundary: str | None = None,
+) -> dict | None:
+    """Return a later, tighter support built only from confirmed higher-low pivots.
+
+    A staggered support never changes the historical primary line in place. It
+    needs two pivots after the active line's second anchor, must pass the same
+    clearance rules as any other support, and must project above the active
+    support on the bar where it becomes available.
+    """
+    if active_support.get("type") != "support":
+        return None
+
+    candidate = build_ascending_support(
+        confirmed_lows,
+        closes,
+        search_after_bar=active_support["anchor2"][0] + 1,
+        current_bar=current_bar,
+        tolerance=tolerance,
+        min_anchor_bars=min_anchor_bars,
+        candles=candles,
+        inverse_color_trigger=inverse_color_trigger,
+        line_angle=line_angle,
+        use_wick=use_wick,
+        validation_boundary=validation_boundary,
+    )
+    if candidate is None or candidate["confirmed_at_bar"] > current_bar:
+        return None
+
+    active_value = trendline_value(active_support["anchor1"], active_support["anchor2"], current_bar)
+    candidate_value = trendline_value(candidate["anchor1"], candidate["anchor2"], current_bar)
+    if candidate_value <= active_value:
+        return None
+
+    candidate["level"] = int(active_support.get("level", 1)) + 1
+    return candidate
+
+
 # ==============================================================================
 # STRATEGY ENGINE
 # ==============================================================================
@@ -604,6 +652,7 @@ def run_sloped_lines(
     validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
     gap_up: bool = False,
     gap_down: bool = False,
+    staggered_lines: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -638,6 +687,8 @@ def run_sloped_lines(
                 its body is strictly above the previous green candle's body.
       - gap_down: Exit long at the close of the second consecutive red candle when
                   its body is strictly below the previous red candle's body.
+      - staggered_lines: While holding, promote later pairs of confirmed higher-low
+                         pivots into progressively tighter support levels.
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -961,6 +1012,42 @@ def run_sloped_lines(
                     confirm_count = 0
                     continue
 
+        # Optional trailing support ladder. A new level is promoted only after
+        # both later pivot lows are confirmed and the candidate sits above the
+        # currently active support. This avoids future-data leakage while
+        # allowing a later breakdown to protect more of an open gain.
+        if (
+            staggered_lines
+            and state == "holding"
+            and active_trendline is not None
+            and active_trendline.get("type") == "support"
+        ):
+            tighter_support = build_staggered_support(
+                active_trendline,
+                confirmed_lows,
+                closes,
+                current_bar=i,
+                tolerance=trendline_tolerance,
+                min_anchor_bars=min_anchor_bars,
+                candles=candles,
+                inverse_color_trigger=inverse_color_trigger,
+                line_angle=line_angle,
+                use_wick=use_wick,
+                validation_boundary=validation_boundary,
+            )
+            if tighter_support is not None:
+                trendlines.append({
+                    **active_trendline,
+                    "end_bar": i,
+                    "break_bar": None,
+                    "break_price": None,
+                    "break_date": None,
+                    "status": "superseded",
+                })
+                active_trendline = tighter_support
+                break_start_bar = None
+                confirm_count = 0
+
         # --- Try to build trendlines if we don't have an active one ---
         if active_trendline is None:
             if state == "waiting_for_buy" or state == "short":
@@ -1057,6 +1144,7 @@ def run_sloped_lines(
                     validation_boundary=validation_boundary,
                 )
                 if tl is not None and tl["confirmed_at_bar"] <= i:
+                    tl["level"] = 1
                     active_trendline = tl
                     break_count = 0
 
@@ -1199,8 +1287,11 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
 
         # Determine end bar for the line
         break_bar = tl.get("break_bar")
+        explicit_end_bar = tl.get("end_bar")
         if break_bar is not None:
             end_bar = min(break_bar + 1, len(candles) - 1)
+        elif explicit_end_bar is not None:
+            end_bar = min(explicit_end_bar, len(candles) - 1)
         else:
             end_bar = len(candles) - 1
 
@@ -1230,7 +1321,8 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
         else:
             sup_count += 1
             color = "#58a6ff"  # blue
-            label = "▲ Support (higher lows)" if sup_count == 1 else ""
+            level = int(tl.get("level", 1))
+            label = f"▲ Support L{level} (higher lows)"
 
         overlays.append({
             "label": label,
@@ -1264,6 +1356,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
+    staggered_lines = bool(kwargs.get("staggered_lines", False))
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1281,6 +1374,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         validation_boundary=validation_boundary,
         gap_up=gap_up,
         gap_down=gap_down,
+        staggered_lines=staggered_lines,
     )
     return trades
 
@@ -1305,6 +1399,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     validation_boundary = kwargs.get("validation_boundary", DEFAULT_VALIDATION_BOUNDARY)
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
+    staggered_lines = bool(kwargs.get("staggered_lines", False))
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1323,6 +1418,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         validation_boundary=validation_boundary,
         gap_up=gap_up,
         gap_down=gap_down,
+        staggered_lines=staggered_lines,
     )
 
     formatted_trendlines = []
@@ -1330,9 +1426,12 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         a1_bar, a1_price = tl["anchor1"]
         a2_bar, a2_price = tl["anchor2"]
         break_bar = tl.get("break_bar")
+        explicit_end_bar = tl.get("end_bar")
 
         if break_bar is not None:
             end_bar = max(a1_bar + 1, min(break_bar, len(candles) - 1))
+        elif explicit_end_bar is not None:
+            end_bar = max(a1_bar + 1, min(explicit_end_bar, len(candles) - 1))
         else:
             end_bar = len(candles) - 1
 
@@ -1354,11 +1453,14 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
 
         is_res = (tl.get("type") == "resistance" or tl.get("direction") == "descending")
         color = "#10B981" if is_res else "#3B82F6"
-        label = "▼ Resistance (Breakout = Buy)" if is_res else "▲ Support (Breakdown = Sell)"
+        level = int(tl.get("level", 1))
+        label = "▼ Resistance (Breakout = Buy)" if is_res else f"▲ Support L{level} (Breakdown = Sell)"
 
         formatted_trendlines.append({
             "type": "resistance" if is_res else "support",
             "direction": "descending" if is_res else "ascending",
+            "level": level if not is_res else None,
+            "status": tl.get("status", "broken" if break_bar is not None else "active"),
             "start_date": candles[a1_bar]["date"],
             "start_time": candles[a1_bar].get("time"),
             "start_price": round(a1_price, 4),
@@ -1411,6 +1513,7 @@ def run_backtest(
     validation_boundary: str = DEFAULT_VALIDATION_BOUNDARY,
     gap_up: bool = False,
     gap_down: bool = False,
+    staggered_lines: bool = False,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1432,7 +1535,7 @@ def run_backtest(
         confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger,
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
-        gap_up=gap_up, gap_down=gap_down,
+        gap_up=gap_up, gap_down=gap_down, staggered_lines=staggered_lines,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -1452,6 +1555,9 @@ def run_backtest(
             "break_bar": tl.get("break_bar"),
             "break_price": tl.get("break_price"),
             "break_date": tl.get("break_date"),
+            "end_bar": tl.get("end_bar"),
+            "level": tl.get("level", 1) if tl.get("type") == "support" else None,
+            "status": tl.get("status"),
         })
 
     return {
@@ -1473,6 +1579,7 @@ def run_backtest(
             "stop_loss_mode": stop_loss_mode,
             "gap_up": gap_up,
             "gap_down": gap_down,
+            "staggered_lines": staggered_lines,
         },
         "period": period,
         "interval": interval,

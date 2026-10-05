@@ -212,6 +212,7 @@ try {
       tolerance: document.querySelector('#sloped-tolerance-select')?.value,
       gapUp: document.querySelector('#sloped-gap-up-checkbox')?.checked,
       gapDown: document.querySelector('#sloped-gap-down-checkbox')?.checked,
+      staggeredLines: document.querySelector('#sloped-staggered-lines-checkbox')?.checked,
       angle: document.querySelector('#sloped-line-angle-select')?.value,
       stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
       anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
@@ -231,6 +232,7 @@ try {
     tolerance: '0',
     gapUp: false,
     gapDown: false,
+    staggeredLines: false,
     angle: '0',
     stopLoss: 'atr_stop_buffer',
     anchors: '2',
@@ -248,6 +250,7 @@ try {
     tolerance: '0.015',
     gapUp: false,
     gapDown: false,
+    staggeredLines: false,
     angle: '3',
     stopLoss: 'exit_peak_reclaim',
     anchors: '2',
@@ -294,6 +297,17 @@ try {
   await pivotResponses;
   await waitForStrategyChart(page, 'sloped_lines');
   assert.equal(await page.locator('#sloped-pivot-lookback-select').inputValue(), '2');
+
+  const staggeredResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('staggered_lines=true'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/trendlines?') && response.url().includes('staggered_lines=true'), { timeout: 90_000 }),
+  ]);
+  await page.locator('#sloped-staggered-lines-checkbox').check();
+  await staggeredResponses;
+  await waitForStrategyChart(page, 'sloped_lines');
+  assert.equal(await page.locator('#sloped-staggered-lines-checkbox').isChecked(), true);
+  await page.locator('#sloped-staggered-lines-checkbox').uncheck();
+  await waitForStrategyChart(page, 'sloped_lines');
 
   const restoredPivotResponse = page.waitForResponse(
     response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=5'),

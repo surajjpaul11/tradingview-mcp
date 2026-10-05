@@ -40,6 +40,8 @@ try{
   await page.locator('.chart-widget').nth(1).locator('select[aria-label="Symbol"]').selectOption('AAPL');
   await page.locator('.chart-widget').first().getByRole('button',{name:'Strategy'}).click();
   await page.getByRole('checkbox',{name:'Show strategy'}).check();
+  await page.getByRole('checkbox',{name:'Staggered Lines'}).check();
+  assert.equal(await page.getByRole('checkbox',{name:'Staggered Lines'}).isChecked(),true);
   await page.waitForFunction(()=>document.querySelector('.chart-widget [role="group"][aria-label="Candle resolution"] [aria-pressed="true"]')?.textContent==='1h'&&document.querySelector('.chart-widget [role="group"][aria-label="Timeline"] [aria-pressed="true"]')?.textContent==='1M');
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.markerCount)>=2&&Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.overlayCount)>=1);
   assert.match(await page.locator('.pane-stats').first().innerText(),/12.5%/);

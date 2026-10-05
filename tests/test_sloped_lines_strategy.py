@@ -14,6 +14,7 @@ from sloped_lines_strategy import (
     _validation_boundary,
     build_ascending_support,
     build_descending_resistance,
+    build_staggered_support,
     is_body_gap_down,
     is_body_gap_up,
     run_sloped_lines,
@@ -200,6 +201,48 @@ class StrictTrendlineValidationTests(unittest.TestCase):
         self.assertEqual(line["confirmed_at_bar"], 4)
 
 
+class StaggeredSupportTests(unittest.TestCase):
+    def test_promotes_two_later_confirmed_higher_lows_above_active_support(self):
+        lows = [100, 101, 102, 108, 110, 112, 114, 118]
+        candles = [
+            {"open": low, "high": low + 2, "low": low - 1, "close": low + 1}
+            for low in lows
+        ]
+        active = {
+            "type": "support",
+            "direction": "ascending",
+            "anchor1": (0, 100),
+            "anchor2": (2, 102),
+            "confirmed_at_bar": 3,
+            "level": 1,
+        }
+
+        promoted = build_staggered_support(
+            active,
+            [(4, 110, 5), (6, 114, 7)],
+            [c["close"] for c in candles],
+            current_bar=7,
+            tolerance=0,
+            min_anchor_bars=2,
+            candles=candles,
+            line_angle=0,
+            validation_boundary="body",
+        )
+
+        self.assertIsNotNone(promoted)
+        self.assertEqual(promoted["anchor1"], (4, 110.0))
+        self.assertEqual(promoted["anchor2"], (6, 114.0))
+        self.assertEqual(promoted["confirmed_at_bar"], 7)
+        self.assertEqual(promoted["level"], 2)
+
+    def test_does_not_promote_until_two_later_pivots_are_confirmed(self):
+        active = {"type": "support", "anchor1": (0, 100), "anchor2": (2, 102), "level": 1}
+        candles = [{"open": 110, "high": 112, "low": 109, "close": 111}] * 8
+        self.assertIsNone(build_staggered_support(
+            active, [(4, 110, 5)], [111] * 8, current_bar=7, candles=candles, line_angle=0
+        ))
+
+
 class BodyGapSignalTests(unittest.TestCase):
     @staticmethod
     def candle(date, open_price, close_price):
@@ -308,6 +351,7 @@ class TrendlineApiTests(unittest.TestCase):
                     trendline_tolerance=0.015,
                     gap_up=True,
                     gap_down=True,
+                    staggered_lines=True,
                 ))
 
         self.assertEqual(run.call_args.kwargs["pivot_lookback"], 2)
@@ -316,6 +360,7 @@ class TrendlineApiTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["trendline_tolerance"], 0.015)
         self.assertTrue(run.call_args.kwargs["gap_up"])
         self.assertTrue(run.call_args.kwargs["gap_down"])
+        self.assertTrue(run.call_args.kwargs["staggered_lines"])
 
     def test_api_rejects_unsupported_tuning_parameters(self):
         with self.assertRaisesRegex(ValueError, "pivot_lookback must be one of"):

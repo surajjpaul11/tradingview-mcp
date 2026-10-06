@@ -741,14 +741,17 @@ function scheduleSessionZoneRender() {
 
 function ensureVolumeProfileLayer() {
     const container = document.getElementById('tv-chart');
-    if (!container) return null;
-    let canvas = container.querySelector(':scope > .volume-profile-layer');
+    const host = container?.closest('.chart-wrapper');
+    if (!container || !host) return null;
+    let canvas = host.querySelector(':scope > .volume-profile-layer');
     if (!canvas) {
         canvas = document.createElement('canvas');
         canvas.className = 'volume-profile-layer';
         canvas.setAttribute('aria-hidden', 'true');
-        container.appendChild(canvas);
+        host.appendChild(canvas);
     }
+    canvas.style.left = `${container.offsetLeft}px`;
+    canvas.style.top = `${container.offsetTop}px`;
     return canvas;
 }
 

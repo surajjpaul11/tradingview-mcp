@@ -471,11 +471,19 @@ try {
   await page.locator('#volume-profile-indicator-checkbox').check();
   await page.waitForFunction(() => {
     const chart = document.querySelector('#tv-chart');
-    const layer = chart?.querySelector('.volume-profile-layer');
+    const layer = document.querySelector('.chart-wrapper > .volume-profile-layer');
+    if (!layer || layer.hidden || layer.width <= 0 || layer.height <= 0) return false;
+    const pixels = layer.getContext('2d').getImageData(0, 0, layer.width, layer.height).data;
+    let paintedPixels = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) paintedPixels += 1;
+      if (paintedPixels >= 50) break;
+    }
     return chart?.dataset.volumeProfileVisible === 'true'
       && Number(chart.dataset.volumeProfileBinCount) === 30
       && Number(chart.dataset.volumeProfileCandleCount) > 0
-      && layer && !layer.hidden && layer.width > 0 && layer.height > 0;
+      && layer.parentElement?.classList.contains('chart-wrapper')
+      && paintedPixels >= 50;
   }, null, { timeout: 90_000 });
   await page.locator('#volume-profile-indicator-checkbox').uncheck();
   await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.volumeProfileVisible === 'false');

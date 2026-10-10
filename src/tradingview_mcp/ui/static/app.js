@@ -1922,9 +1922,27 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
+const SLOPED_TRENDLINE_COLORS = {
+    resistance: ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0'],
+    support: ['#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'],
+};
+
+function getSlopedTrendlinePresentation(trendline) {
+    const type = trendline?.type === 'resistance' ? 'resistance' : 'support';
+    const level = Math.max(1, Number.parseInt(trendline?.level, 10) || 1);
+    const palette = SLOPED_TRENDLINE_COLORS[type];
+    return {
+        level,
+        color: palette[Math.min(level - 1, palette.length - 1)],
+        width: Math.min(4, level + 1),
+        badge: level > 1 ? `L${level}` : '',
+        badgePosition: type === 'resistance' ? 'aboveBar' : 'belowBar',
+    };
+}
+
 async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, showTrendlineLabels = false, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
-    const summary = { returned: 0, drawn: 0 };
+    const summary = { returned: 0, drawn: 0, levelBadges: 0 };
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
@@ -1952,6 +1970,9 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
 
         data.trendlines.forEach(tl => {
             const showAxisLabel = Boolean(showTrendlineLabels && tl.status === 'active');
+            const slopedPresentation = strategy === 'sloped_lines'
+                ? getSlopedTrendlinePresentation(tl)
+                : null;
             const startTime = tl.start_time || toChartTime(tl.start_date);
             const endTime = tl.end_time || toChartTime(tl.end_date);
 
@@ -1963,7 +1984,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
             if (strategy === 'sloped_lines') {
                 // Descending resistance = green (breakout = buy)
                 // Ascending support = blue (breakdown = sell)
-                color = tl.color || (tl.type === 'resistance' ? '#10B981' : '#3B82F6');
+                color = slopedPresentation.color;
                 lineStyle = 0; // Solid line for sloped lines
             } else {
                 color = tl.color || (tl.type === 'support' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)');
@@ -1992,7 +2013,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
             }
 
-            const addTrendlineSeries = (dataPoints, style, width, title) => {
+            const addTrendlineSeries = (dataPoints, style, width, title, showLevelBadge = false) => {
                 if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return false;
                 const seriesOptions = {
                     color,
@@ -2011,6 +2032,16 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
                 if (!lineSeries) return false;
                 lineSeries.setData(dataPoints);
+                if (showLevelBadge && slopedPresentation?.badge && typeof lineSeries.setMarkers === 'function') {
+                    lineSeries.setMarkers([{
+                        time: dataPoints[0].time,
+                        position: slopedPresentation.badgePosition,
+                        color: slopedPresentation.color,
+                        shape: 'circle',
+                        text: slopedPresentation.badge,
+                    }]);
+                    summary.levelBadges += 1;
+                }
                 existingSeriesList.push(lineSeries);
                 return true;
             };
@@ -2034,8 +2065,19 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                         { time: confirmationTime, value: tl.confirmation_price },
                         { time: snappedEnd, value: tl.end_price },
                     ];
-                const forming = addTrendlineSeries(formingData, 2, 1, `${tl.label || ''} (forming)`);
-                const active = addTrendlineSeries(activeData, 0, 2, `${tl.label || ''} (active)`);
+                const forming = addTrendlineSeries(
+                    formingData,
+                    2,
+                    slopedPresentation ? Math.max(1, slopedPresentation.width - 1) : 1,
+                    `${tl.label || ''} (forming)`,
+                    true,
+                );
+                const active = addTrendlineSeries(
+                    activeData,
+                    0,
+                    slopedPresentation?.width || 2,
+                    `${tl.label || ''} (active)`,
+                );
                 if (forming || active) summary.drawn += 1;
             } else if (addTrendlineSeries(
                 projectedPoints.length ? projectedPoints : [
@@ -2043,12 +2085,22 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                     { time: snappedEnd, value: tl.end_price },
                 ],
                 lineStyle,
-                2,
+                slopedPresentation?.width || 2,
                 tl.label || '',
+                true,
             )) {
                 summary.drawn += 1;
             }
         });
+        if (chartContainer && chartInstance === chart) {
+            chartContainer.dataset.staggeredTrendlineCount = String(
+                data.trendlines.filter(line => Number(line.level || 1) > 1).length
+            );
+            chartContainer.dataset.maxTrendlineLevel = String(
+                Math.max(1, ...data.trendlines.map(line => Number(line.level || 1)))
+            );
+            chartContainer.dataset.trendlineLevelBadgeCount = String(summary.levelBadges);
+        }
     } catch (err) {
         console.warn('[TV] Trendline fetch error:', err);
     }
@@ -2074,7 +2126,7 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
-            <div class="channel-pill">Dashed = forming · Solid = active · Axis label = active line only</div>
+            <div class="channel-pill">Dashed = forming · Brighter/thicker + L badge = staggered</div>
             <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
             <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
             <div class="channel-pill"><span style="color: #14B8A6;">▲</span> Body gap-up buy</div>

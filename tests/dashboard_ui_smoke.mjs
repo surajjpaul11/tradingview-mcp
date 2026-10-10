@@ -309,6 +309,22 @@ try {
   await staggeredResponses;
   await waitForStrategyChart(page, 'sloped_lines');
   assert.equal(await page.locator('#sloped-staggered-lines-checkbox').isChecked(), true);
+  const staggeredPresentation = await page.evaluate(() => ({
+    count: Number(document.querySelector('#tv-chart')?.dataset.staggeredTrendlineCount ?? 0),
+    maxLevel: Number(document.querySelector('#tv-chart')?.dataset.maxTrendlineLevel ?? 1),
+    badges: Number(document.querySelector('#tv-chart')?.dataset.trendlineLevelBadgeCount ?? 0),
+    l1Resistance: getSlopedTrendlinePresentation({ type: 'resistance', level: 1 }),
+    l2Resistance: getSlopedTrendlinePresentation({ type: 'resistance', level: 2 }),
+    l2Support: getSlopedTrendlinePresentation({ type: 'support', level: 2 }),
+  }));
+  assert.notEqual(staggeredPresentation.l1Resistance.color, staggeredPresentation.l2Resistance.color);
+  assert.notEqual(staggeredPresentation.l2Resistance.color, staggeredPresentation.l2Support.color);
+  assert.ok(staggeredPresentation.l2Resistance.width > staggeredPresentation.l1Resistance.width);
+  assert.equal(staggeredPresentation.l2Resistance.badge, 'L2');
+  if (staggeredPresentation.count > 0) {
+    assert.ok(staggeredPresentation.maxLevel >= 2);
+    assert.ok(staggeredPresentation.badges > 0);
+  }
   await page.locator('#sloped-staggered-lines-checkbox').uncheck();
   await waitForStrategyChart(page, 'sloped_lines');
 

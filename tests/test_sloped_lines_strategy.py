@@ -18,6 +18,8 @@ from sloped_lines_strategy import (
     build_staggered_support,
     is_body_gap_down,
     is_body_gap_up,
+    recovery_reentry_signals,
+    recovery_reentry_triggered,
     run_sloped_lines,
 )
 from tradingview_mcp.ui import server
@@ -308,6 +310,82 @@ class BodyGapSignalTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "gap_down")
 
 
+class RecoveryReentryTests(unittest.TestCase):
+    def test_any_and_all_apply_only_to_enabled_signals(self):
+        enabled = {"rsi": True, "ema": True, "price": False, "volume": False}
+        matched = {"rsi": True, "ema": False, "price": True, "volume": True}
+
+        self.assertTrue(recovery_reentry_triggered(enabled, matched, "any"))
+        self.assertFalse(recovery_reentry_triggered(enabled, matched, "all"))
+        self.assertFalse(recovery_reentry_triggered({name: False for name in enabled}, matched, "any"))
+
+    def test_completed_candle_signal_enters_at_next_open(self):
+        candles = []
+        for i in range(20):
+            candles.append({
+                "time": 1_700_000_000 + i * 86_400,
+                "date": f"base-{i:02d}",
+                "open": 100.0,
+                "high": 100.5,
+                "low": 99.5,
+                "close": 100.0,
+                "volume": 1_000,
+            })
+
+        def add(date, open_price, close_price):
+            i = len(candles)
+            candles.append({
+                "time": 1_700_000_000 + i * 86_400,
+                "date": date,
+                "open": open_price,
+                "high": max(open_price, close_price) + 0.5,
+                "low": min(open_price, close_price) - 0.5,
+                "close": close_price,
+                "volume": 1_000,
+            })
+
+        add("entry-setup", 100, 101)
+        add("gap-entry", 102, 103)
+        add("exit-setup", 106, 104)
+        add("gap-exit", 101, 99)
+        add("recovery-signal", 104, 105)
+        add("recovery-fill", 106, 107)
+        add("end", 107, 108)
+
+        trades, _ = run_sloped_lines(
+            candles,
+            pivot_lookback=2,
+            line_angle=100,
+            stop_loss_mode="none",
+            gap_up=True,
+            gap_down=True,
+            reentry_mode="any",
+            reentry_ema=True,
+        )
+
+        recovery_trade = next(t for t in trades if t.get("entry_reason") == "recovery_reentry")
+        self.assertEqual(recovery_trade["signal_date"], "recovery-signal")
+        self.assertEqual(recovery_trade["entry_date"], "recovery-fill")
+        self.assertEqual(recovery_trade["entry_price"], 106)
+        self.assertEqual(recovery_trade["entry_signals"], ["close_above_ema20"])
+
+    def test_signal_values_cover_rsi_ema_price_and_volume(self):
+        candles = [
+            {"high": 100, "close": 99, "volume": 100}
+            for _ in range(20)
+        ] + [{"high": 112, "close": 111, "volume": 130}]
+        closes = [float(c["close"]) for c in candles]
+        rsi_values = [None] * 19 + [49.0, 51.0]
+        ema_values = [None] * 20 + [105.0]
+
+        self.assertEqual(recovery_reentry_signals(candles, closes, rsi_values, ema_values, 20), {
+            "rsi_cross_50": True,
+            "close_above_ema20": True,
+            "close_above_5_bar_high": True,
+            "volume_above_1_2x_average20": True,
+        })
+
+
 class TrendlineApiTests(unittest.TestCase):
     def fetch(self, candles):
         with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
@@ -367,6 +445,11 @@ class TrendlineApiTests(unittest.TestCase):
                     gap_up=True,
                     gap_down=True,
                     staggered_lines=True,
+                    reentry_mode="all",
+                    reentry_rsi=True,
+                    reentry_ema=True,
+                    reentry_price_breakout=True,
+                    reentry_volume=True,
                 ))
 
         self.assertEqual(run.call_args.kwargs["pivot_lookback"], 2)
@@ -376,6 +459,11 @@ class TrendlineApiTests(unittest.TestCase):
         self.assertTrue(run.call_args.kwargs["gap_up"])
         self.assertTrue(run.call_args.kwargs["gap_down"])
         self.assertTrue(run.call_args.kwargs["staggered_lines"])
+        self.assertEqual(run.call_args.kwargs["reentry_mode"], "all")
+        self.assertTrue(run.call_args.kwargs["reentry_rsi"])
+        self.assertTrue(run.call_args.kwargs["reentry_ema"])
+        self.assertTrue(run.call_args.kwargs["reentry_price_breakout"])
+        self.assertTrue(run.call_args.kwargs["reentry_volume"])
 
     def test_api_rejects_unsupported_tuning_parameters(self):
         with self.assertRaisesRegex(ValueError, "pivot_lookback must be one of"):

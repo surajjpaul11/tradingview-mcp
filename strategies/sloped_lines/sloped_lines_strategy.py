@@ -59,11 +59,81 @@ DEFAULT_ANCHOR_SOURCE = "confirmed_pivots"
 DEFAULT_VALIDATION_BOUNDARY = "body"
 ANCHOR_SOURCES = {"confirmed_pivots", "any_valid_candle"}
 VALIDATION_BOUNDARIES = {"body", "close", "wick"}
+REENTRY_MODES = {"any", "all"}
 
 
 def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
     """Distinguish pre-trendline protection exits from actual support-line breaks."""
     return "atr_stop_buffer" if stop_loss_mode == "atr_stop_buffer" else "entry_barrier_break"
+
+
+def _calc_reentry_ema(values: list[float], period: int = 20) -> list[Optional[float]]:
+    """EMA values used by the recovery re-entry signals."""
+    result: list[Optional[float]] = [None] * len(values)
+    if len(values) < period:
+        return result
+    result[period - 1] = sum(values[:period]) / period
+    weight = 2 / (period + 1)
+    for i in range(period, len(values)):
+        result[i] = values[i] * weight + result[i - 1] * (1 - weight)
+    return result
+
+
+def _calc_reentry_rsi(values: list[float], period: int = 14) -> list[Optional[float]]:
+    """Wilder RSI values used by the recovery re-entry signals."""
+    result: list[Optional[float]] = [None] * len(values)
+    if len(values) < period + 1:
+        return result
+    gains = []
+    losses = []
+    for i in range(1, period + 1):
+        change = values[i] - values[i - 1]
+        gains.append(max(change, 0.0))
+        losses.append(max(-change, 0.0))
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+    result[period] = 100.0 if avg_loss == 0 else 100 - (100 / (1 + avg_gain / avg_loss))
+    for i in range(period + 1, len(values)):
+        change = values[i] - values[i - 1]
+        avg_gain = (avg_gain * (period - 1) + max(change, 0.0)) / period
+        avg_loss = (avg_loss * (period - 1) + max(-change, 0.0)) / period
+        result[i] = 100.0 if avg_loss == 0 else 100 - (100 / (1 + avg_gain / avg_loss))
+    return result
+
+
+def recovery_reentry_signals(
+    candles: list[dict],
+    closes: list[float],
+    rsi_values: list[Optional[float]],
+    ema_values: list[Optional[float]],
+    bar: int,
+) -> dict[str, bool]:
+    """Return the four completed-candle recovery conditions for ``bar``."""
+    rsi_cross = (
+        bar > 0
+        and rsi_values[bar - 1] is not None
+        and rsi_values[bar] is not None
+        and rsi_values[bar - 1] < 50 <= rsi_values[bar]
+    )
+    ema_reclaim = ema_values[bar] is not None and closes[bar] > ema_values[bar]
+    price_breakout = bar >= 5 and closes[bar] > max(float(c["high"]) for c in candles[bar - 5:bar])
+    prior_volumes = [float(c.get("volume") or 0.0) for c in candles[max(0, bar - 20):bar]]
+    volume_average = sum(prior_volumes) / 20 if len(prior_volumes) == 20 else None
+    relative_volume = volume_average is not None and float(candles[bar].get("volume") or 0.0) >= 1.2 * volume_average
+    return {
+        "rsi_cross_50": rsi_cross,
+        "close_above_ema20": ema_reclaim,
+        "close_above_5_bar_high": price_breakout,
+        "volume_above_1_2x_average20": relative_volume,
+    }
+
+
+def recovery_reentry_triggered(enabled: dict[str, bool], matched: dict[str, bool], mode: str) -> bool:
+    """Apply Any/All semantics to the enabled recovery signals."""
+    selected = [matched[name] for name, is_enabled in enabled.items() if is_enabled]
+    if not selected:
+        return False
+    return all(selected) if mode == "all" else any(selected)
 
 
 # ==============================================================================
@@ -695,6 +765,11 @@ def run_sloped_lines(
     gap_up: bool = False,
     gap_down: bool = False,
     staggered_lines: bool = False,
+    reentry_mode: str = "any",
+    reentry_rsi: bool = False,
+    reentry_ema: bool = False,
+    reentry_price_breakout: bool = False,
+    reentry_volume: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -731,6 +806,11 @@ def run_sloped_lines(
                   its body is strictly below the previous red candle's body.
       - staggered_lines: For resistance, reuse the latest touch with the next confirmed
                          local maximum. For support, promote later confirmed higher-low pairs.
+      - reentry_mode: Combine enabled recovery signals using "any" or "all".
+      - reentry_rsi: RSI(14) crosses upward through 50 after an exit.
+      - reentry_ema: Close is above EMA(20) after an exit.
+      - reentry_price_breakout: Close is above the preceding five-bar high after an exit.
+      - reentry_volume: Volume is at least 1.2x the preceding 20-bar average after an exit.
 
     Returns:
       (trades, trendlines) — trades is a list of trade dicts,
@@ -742,11 +822,21 @@ def run_sloped_lines(
         raise ValueError(f"anchor_source must be one of {sorted(ANCHOR_SOURCES)}")
     if validation_boundary not in VALIDATION_BOUNDARIES:
         raise ValueError(f"validation_boundary must be one of {sorted(VALIDATION_BOUNDARIES)}")
+    if reentry_mode not in REENTRY_MODES:
+        raise ValueError(f"reentry_mode must be one of {sorted(REENTRY_MODES)}")
 
     highs  = [c["high"] if use_wick else max(c["open"], c["close"]) for c in candles]
     lows   = [c["low"] if use_wick else min(c["open"], c["close"]) for c in candles]
     closes = [c["close"] for c in candles]
     atr    = calc_atr(candles, 14)
+    reentry_rsi_values = _calc_reentry_rsi(closes, 14)
+    reentry_ema_values = _calc_reentry_ema(closes, 20)
+    enabled_reentry_signals = {
+        "rsi_cross_50": reentry_rsi,
+        "close_above_ema20": reentry_ema,
+        "close_above_5_bar_high": reentry_price_breakout,
+        "volume_above_1_2x_average20": reentry_volume,
+    }
 
     # --- Find all swings ---
     swing_highs, swing_lows = find_swings(highs, lows, pivot_lookback)
@@ -775,6 +865,8 @@ def run_sloped_lines(
     state: str = "waiting_for_buy"
     last_sell_point: tuple[int, float] | None = None
     trap_info: dict | None = None
+    reentry_armed = False
+    pending_reentry: dict | None = None
 
     for i in range(len(candles)):
         date  = candles[i]["date"]
@@ -791,6 +883,34 @@ def run_sloped_lines(
             confirmed_local_highs.append(local_highs[local_high_ptr])
             local_high_ptr += 1
 
+        # A completed candle can schedule a recovery, but the fill belongs to
+        # the next candle's open so the backtest never trades on a close it has
+        # not observed yet.
+        if pending_reentry is not None:
+            if state == "waiting_for_buy" and position is None:
+                exec_price = float(candles[i]["open"])
+                position = {
+                    "entry_date": date,
+                    "entry_price": exec_price,
+                    "entry_bar": i,
+                    "entry_low": exec_price,
+                    "side": "long",
+                    "entry_reason": "recovery_reentry",
+                    "entry_signals": pending_reentry["signals"],
+                    "signal_date": pending_reentry["signal_date"],
+                }
+                state = "holding"
+                active_trendline = None
+                search_after_bar = i
+                last_sell_point = None
+                trap_info = None
+                break_start_bar = None
+                confirm_count = 0
+                reentry_armed = False
+                pending_reentry = None
+                continue
+            pending_reentry = None
+
         # Optional completed-candle body-gap signals. These run before the
         # trendline and pre-line protection checks so the selected gap rule owns
         # the signal on the second completed candle.
@@ -803,6 +923,8 @@ def run_sloped_lines(
                     "exit_price": price,
                     "side": "short",
                     "entry_reason": position.get("entry_reason", "support_break"),
+                    "entry_signals": position.get("entry_signals", []),
+                    "signal_date": position.get("signal_date"),
                     "exit_reason": "gap_up",
                     "strategy": "sloped_lines",
                 })
@@ -831,11 +953,15 @@ def run_sloped_lines(
                 "exit_price": price,
                 "side": "long",
                 "entry_reason": position.get("entry_reason", "breakout"),
+                "entry_signals": position.get("entry_signals", []),
+                "signal_date": position.get("signal_date"),
                 "exit_reason": "gap_down",
                 "strategy": "sloped_lines",
             })
             position = None
             state = "waiting_for_buy"
+            reentry_armed = True
+            pending_reentry = None
             active_trendline = None
             search_after_bar = i
             last_sell_point = (i, highs[i])
@@ -932,6 +1058,8 @@ def run_sloped_lines(
                                         "exit_price":  exec_price,
                                         "side":        "short",
                                         "entry_reason": position.get("entry_reason", "support_break"),
+                                        "entry_signals": position.get("entry_signals", []),
+                                        "signal_date": position.get("signal_date"),
                                         "exit_reason": "resistance_break",
                                         "strategy":    "sloped_lines",
                                     })
@@ -980,6 +1108,8 @@ def run_sloped_lines(
                                         "exit_price":  exec_price,
                                         "side":        "short",
                                         "entry_reason": position.get("entry_reason", "support_break"),
+                                        "entry_signals": position.get("entry_signals", []),
+                                        "signal_date": position.get("signal_date"),
                                         "exit_reason": "resistance_break",
                                         "strategy":    "sloped_lines",
                                     })
@@ -1032,6 +1162,8 @@ def run_sloped_lines(
                             "exit_price":  exec_price,
                             "side":        "long",
                             "entry_reason": position.get("entry_reason", "breakout"),
+                            "entry_signals": position.get("entry_signals", []),
+                            "signal_date": position.get("signal_date"),
                             "exit_reason": "support_break",
                             "strategy":    "sloped_lines",
                         })
@@ -1051,6 +1183,8 @@ def run_sloped_lines(
                         state = "short"
                     else:
                         state = "waiting_for_buy"
+                        reentry_armed = True
+                        pending_reentry = None
 
                     active_trendline = None
                     search_after_bar = i
@@ -1156,12 +1290,16 @@ def run_sloped_lines(
                         "exit_price":  exec_price,
                         "side":        "long",
                         "entry_reason": position.get("entry_reason", "breakout"),
+                        "entry_signals": position.get("entry_signals", []),
+                        "signal_date": position.get("signal_date"),
                         "exit_reason": _entry_barrier_exit_reason(stop_loss_mode),
                         "strategy":    "sloped_lines",
                     })
                     trap_info = {"exit_bar": i, "entry_price": position["entry_price"]}
                     position = None
                     state = "waiting_for_buy"
+                    reentry_armed = True
+                    pending_reentry = None
                     search_after_bar = i
                     last_sell_point = (i, highs[i])
                     continue
@@ -1197,6 +1335,16 @@ def run_sloped_lines(
                     active_trendline = tl
                     break_count = 0
 
+        if reentry_armed and state == "waiting_for_buy" and position is None and i + 1 < len(candles):
+            matched = recovery_reentry_signals(
+                candles, closes, reentry_rsi_values, reentry_ema_values, i,
+            )
+            if recovery_reentry_triggered(enabled_reentry_signals, matched, reentry_mode):
+                pending_reentry = {
+                    "signal_date": date,
+                    "signals": [name for name, did_match in matched.items() if enabled_reentry_signals[name] and did_match],
+                }
+
     # --- Close any open position at end of data ---
     if position is not None:
         side = position["side"]
@@ -1210,6 +1358,8 @@ def run_sloped_lines(
             "exit_price":  last_close,
             "side":        side,
             "entry_reason": position.get("entry_reason", "breakout"),
+            "entry_signals": position.get("entry_signals", []),
+            "signal_date": position.get("signal_date"),
             "exit_reason": "end_of_data",
             "strategy":    "sloped_lines",
         })
@@ -1407,6 +1557,11 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    reentry_mode = kwargs.get("reentry_mode", "any")
+    reentry_rsi = bool(kwargs.get("reentry_rsi", False))
+    reentry_ema = bool(kwargs.get("reentry_ema", False))
+    reentry_price_breakout = bool(kwargs.get("reentry_price_breakout", False))
+    reentry_volume = bool(kwargs.get("reentry_volume", False))
     trades, _ = run_sloped_lines(
         candles,
         pivot_lookback=pivot_lookback,
@@ -1425,6 +1580,11 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        reentry_mode=reentry_mode,
+        reentry_rsi=reentry_rsi,
+        reentry_ema=reentry_ema,
+        reentry_price_breakout=reentry_price_breakout,
+        reentry_volume=reentry_volume,
     )
     return trades
 
@@ -1450,6 +1610,11 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    reentry_mode = kwargs.get("reentry_mode", "any")
+    reentry_rsi = bool(kwargs.get("reentry_rsi", False))
+    reentry_ema = bool(kwargs.get("reentry_ema", False))
+    reentry_price_breakout = bool(kwargs.get("reentry_price_breakout", False))
+    reentry_volume = bool(kwargs.get("reentry_volume", False))
 
     trades, raw_trendlines = run_sloped_lines(
         candles,
@@ -1469,6 +1634,11 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        reentry_mode=reentry_mode,
+        reentry_rsi=reentry_rsi,
+        reentry_ema=reentry_ema,
+        reentry_price_breakout=reentry_price_breakout,
+        reentry_volume=reentry_volume,
     )
 
     formatted_trendlines = []
@@ -1564,6 +1734,11 @@ def run_backtest(
     gap_up: bool = False,
     gap_down: bool = False,
     staggered_lines: bool = False,
+    reentry_mode: str = "any",
+    reentry_rsi: bool = False,
+    reentry_ema: bool = False,
+    reentry_price_breakout: bool = False,
+    reentry_volume: bool = False,
     candles: list[dict] = None,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
@@ -1586,6 +1761,8 @@ def run_backtest(
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
         gap_up=gap_up, gap_down=gap_down, staggered_lines=staggered_lines,
+        reentry_mode=reentry_mode, reentry_rsi=reentry_rsi, reentry_ema=reentry_ema,
+        reentry_price_breakout=reentry_price_breakout, reentry_volume=reentry_volume,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
     metrics = calc_metrics(trades, initial_capital, interval)
@@ -1630,6 +1807,11 @@ def run_backtest(
             "gap_up": gap_up,
             "gap_down": gap_down,
             "staggered_lines": staggered_lines,
+            "reentry_mode": reentry_mode,
+            "reentry_rsi": reentry_rsi,
+            "reentry_ema": reentry_ema,
+            "reentry_price_breakout": reentry_price_breakout,
+            "reentry_volume": reentry_volume,
         },
         "period": period,
         "interval": interval,

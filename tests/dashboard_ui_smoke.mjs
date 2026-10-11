@@ -291,6 +291,42 @@ try {
   await page.locator('#strategy-select').selectOption('sloped_lines');
   await waitForStrategyChart(page, 'sloped_lines');
 
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any');
+  for (const selector of [
+    '#sloped-reentry-rsi-checkbox',
+    '#sloped-reentry-ema-checkbox',
+    '#sloped-reentry-price-checkbox',
+    '#sloped-reentry-volume-checkbox',
+  ]) {
+    assert.equal(await page.locator(selector).isChecked(), false);
+  }
+
+  const reentryResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=all')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-mode-select').value = 'all';
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
+    const ema = document.querySelector('#sloped-reentry-ema-checkbox');
+    ema.checked = true;
+    ema.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await reentryResponse;
+  await waitForStrategyChart(page, 'sloped_lines');
+
+  await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-mode-select').value = 'any';
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = false;
+    const ema = document.querySelector('#sloped-reentry-ema-checkbox');
+    ema.checked = false;
+    ema.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await waitForStrategyChart(page, 'sloped_lines');
+
   const pivotResponses = Promise.all([
     page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
     page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),

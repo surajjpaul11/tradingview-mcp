@@ -278,6 +278,34 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="sloped-reentry-row" id="sloped-reentry-row" style="display: flex;">
+                    <div class="filter-group">
+                        <label for="sloped-reentry-mode-select">Recovery Re-entry</label>
+                        <div class="custom-select">
+                            <select id="sloped-reentry-mode-select" title="Choose whether any enabled recovery signal or all enabled recovery signals must match">
+                                <option value="any" selected>Any</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label class="checkbox-container" for="sloped-reentry-rsi-checkbox" title="RSI(14) crosses upward through 50">
+                        <input type="checkbox" id="sloped-reentry-rsi-checkbox">
+                        <span class="checkbox-text">RSI ↑ 50</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-ema-checkbox" title="Closing price is above EMA(20)">
+                        <input type="checkbox" id="sloped-reentry-ema-checkbox">
+                        <span class="checkbox-text">Close &gt; EMA20</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-price-checkbox" title="Closing price is above the preceding five-bar high">
+                        <input type="checkbox" id="sloped-reentry-price-checkbox">
+                        <span class="checkbox-text">Close &gt; 5-Bar High</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-volume-checkbox" title="Volume is at least 1.2 times the preceding 20-bar average">
+                        <input type="checkbox" id="sloped-reentry-volume-checkbox">
+                        <span class="checkbox-text">Volume ≥ 1.2× Avg20</span>
+                    </label>
+                </div>
             </div>
         </header>
 

@@ -323,6 +323,12 @@ const slopedStopLossGroup = document.getElementById('sloped-stop-loss-group');
 const slopedStopLossSelect = document.getElementById('sloped-stop-loss-select');
 const slopedAnchorBarsGroup = document.getElementById('sloped-anchor-bars-group');
 const slopedAnchorBarsSelect = document.getElementById('sloped-anchor-bars-select');
+const slopedReentryRow = document.getElementById('sloped-reentry-row');
+const slopedReentryModeSelect = document.getElementById('sloped-reentry-mode-select');
+const slopedReentryRsiCheckbox = document.getElementById('sloped-reentry-rsi-checkbox');
+const slopedReentryEmaCheckbox = document.getElementById('sloped-reentry-ema-checkbox');
+const slopedReentryPriceCheckbox = document.getElementById('sloped-reentry-price-checkbox');
+const slopedReentryVolumeCheckbox = document.getElementById('sloped-reentry-volume-checkbox');
 
 function getFullCandleEnabled() {
     if (!slopedFullCandleCheckbox) return false;
@@ -399,6 +405,30 @@ function getMinAnchorBars() {
     return isNaN(val) ? 2 : val;
 }
 
+function getReentryMode() {
+    return slopedReentryModeSelect?.value === 'all' ? 'all' : 'any';
+}
+
+function getReentryRsiEnabled() {
+    return Boolean(slopedReentryRsiCheckbox?.checked);
+}
+
+function getReentryEmaEnabled() {
+    return Boolean(slopedReentryEmaCheckbox?.checked);
+}
+
+function getReentryPriceEnabled() {
+    return Boolean(slopedReentryPriceCheckbox?.checked);
+}
+
+function getReentryVolumeEnabled() {
+    return Boolean(slopedReentryVolumeCheckbox?.checked);
+}
+
+function getReentryQueryParams() {
+    return `&reentry_mode=${encodeURIComponent(getReentryMode())}&reentry_rsi=${getReentryRsiEnabled()}&reentry_ema=${getReentryEmaEnabled()}&reentry_price_breakout=${getReentryPriceEnabled()}&reentry_volume=${getReentryVolumeEnabled()}`;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
@@ -424,6 +454,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAnchorBarsGroup) slopedAnchorBarsGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedReentryRow) slopedReentryRow.style.display = isSloped ? 'flex' : 'none';
 }
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
@@ -528,6 +559,21 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             }
             if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
                 slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
+            }
+            if (slopedReentryModeSelect) {
+                slopedReentryModeSelect.value = p.reentry_mode === 'all' ? 'all' : 'any';
+            }
+            if (slopedReentryRsiCheckbox) {
+                slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);
+            }
+            if (slopedReentryEmaCheckbox) {
+                slopedReentryEmaCheckbox.checked = Boolean(p.reentry_ema);
+            }
+            if (slopedReentryPriceCheckbox) {
+                slopedReentryPriceCheckbox.checked = Boolean(p.reentry_price_breakout);
+            }
+            if (slopedReentryVolumeCheckbox) {
+                slopedReentryVolumeCheckbox.checked = Boolean(p.reentry_volume);
             }
         }
 
@@ -1563,6 +1609,20 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        for (const control of [
+            slopedReentryModeSelect,
+            slopedReentryRsiCheckbox,
+            slopedReentryEmaCheckbox,
+            slopedReentryPriceCheckbox,
+            slopedReentryVolumeCheckbox,
+        ]) {
+            if (control) {
+                control.onchange = () => {
+                    updateDashboard();
+                    if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+                };
+            }
+        }
         syncChannelMultVisibility(strategySelect.value);
         filtersLoaded = true;
         ensureIntradayResolutionForExtendedWindow();
@@ -1725,6 +1785,9 @@ function getSlopedEntryMarkerStyle(reason, isLong) {
     }
     if (reason === 'gap_up') {
         return { markerClass: 'sloped-gap-up', prefix: 'BODY GAP UP ', color: '#14B8A6' };
+    }
+    if (reason === 'recovery_reentry') {
+        return { markerClass: 'sloped-reentry', prefix: 'RECOVERY REENTRY ', color: '#22D3EE' };
     }
     if (reason === 'exit_peak_reclaim') {
         return { markerClass: 'sloped-reentry', prefix: 'PEAK RECLAIM ', color: '#6EE7B7' };
@@ -1944,7 +2007,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0, levelBadges: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
         const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
         if (!res.ok) return summary;
@@ -2235,7 +2298,7 @@ async function updateDashboard() {
         const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2399,7 +2462,7 @@ async function updateAdvDashboard() {
     try {
         const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`

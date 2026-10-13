@@ -292,6 +292,10 @@ try {
   await waitForStrategyChart(page, 'sloped_lines');
 
   assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any');
+  assert.deepEqual(
+    await page.locator('#sloped-reentry-mode-select option').evaluateAll(options => options.map(option => option.value)),
+    ['any', 'any_two', 'any_three', 'all'],
+  );
   for (const selector of [
     '#sloped-reentry-rsi-checkbox',
     '#sloped-reentry-ema-checkbox',
@@ -303,13 +307,13 @@ try {
 
   const reentryResponse = page.waitForResponse(
     response => response.url().includes('/api/stats?')
-      && response.url().includes('reentry_mode=all')
+      && response.url().includes('reentry_mode=any_two')
       && response.url().includes('reentry_rsi=true')
       && response.url().includes('reentry_ema=true'),
     { timeout: 90_000 },
   );
   await page.evaluate(() => {
-    document.querySelector('#sloped-reentry-mode-select').value = 'all';
+    document.querySelector('#sloped-reentry-mode-select').value = 'any_two';
     document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
     const ema = document.querySelector('#sloped-reentry-ema-checkbox');
     ema.checked = true;

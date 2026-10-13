@@ -59,7 +59,7 @@ DEFAULT_ANCHOR_SOURCE = "confirmed_pivots"
 DEFAULT_VALIDATION_BOUNDARY = "body"
 ANCHOR_SOURCES = {"confirmed_pivots", "any_valid_candle"}
 VALIDATION_BOUNDARIES = {"body", "close", "wick"}
-REENTRY_MODES = {"any", "all"}
+REENTRY_MODES = {"any", "any_two", "any_three", "all"}
 
 
 def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
@@ -129,11 +129,18 @@ def recovery_reentry_signals(
 
 
 def recovery_reentry_triggered(enabled: dict[str, bool], matched: dict[str, bool], mode: str) -> bool:
-    """Apply Any/All semantics to the enabled recovery signals."""
+    """Apply the selected count rule to the enabled recovery signals."""
     selected = [matched[name] for name, is_enabled in enabled.items() if is_enabled]
     if not selected:
         return False
-    return all(selected) if mode == "all" else any(selected)
+    matched_count = sum(bool(value) for value in selected)
+    if mode == "all":
+        return matched_count == len(selected)
+    if mode == "any_two":
+        return matched_count >= 2
+    if mode == "any_three":
+        return matched_count >= 3
+    return matched_count >= 1
 
 
 # ==============================================================================
@@ -806,7 +813,7 @@ def run_sloped_lines(
                   its body is strictly below the previous red candle's body.
       - staggered_lines: For resistance, reuse the latest touch with the next confirmed
                          local maximum. For support, promote later confirmed higher-low pairs.
-      - reentry_mode: Combine enabled recovery signals using "any" or "all".
+      - reentry_mode: Require any one, any two, any three, or all enabled recovery signals.
       - reentry_rsi: RSI(14) crosses upward through 50 after an exit.
       - reentry_ema: Close is above EMA(20) after an exit.
       - reentry_price_breakout: Close is above the preceding five-bar high after an exit.

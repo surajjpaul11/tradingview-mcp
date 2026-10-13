@@ -283,8 +283,10 @@
                     <div class="filter-group">
                         <label for="sloped-reentry-mode-select">Recovery Re-entry</label>
                         <div class="custom-select">
-                            <select id="sloped-reentry-mode-select" title="Choose whether any enabled recovery signal or all enabled recovery signals must match">
+                            <select id="sloped-reentry-mode-select" title="Choose how many enabled recovery signals must match on the same completed candle">
                                 <option value="any" selected>Any</option>
+                                <option value="any_two">Any Two</option>
+                                <option value="any_three">Any Three</option>
                                 <option value="all">All</option>
                             </select>
                         </div>

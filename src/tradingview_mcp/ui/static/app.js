@@ -406,7 +406,8 @@ function getMinAnchorBars() {
 }
 
 function getReentryMode() {
-    return slopedReentryModeSelect?.value === 'all' ? 'all' : 'any';
+    const mode = slopedReentryModeSelect?.value;
+    return ['any', 'any_two', 'any_three', 'all'].includes(mode) ? mode : 'any';
 }
 
 function getReentryRsiEnabled() {
@@ -561,7 +562,10 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
                 slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
             }
             if (slopedReentryModeSelect) {
-                slopedReentryModeSelect.value = p.reentry_mode === 'all' ? 'all' : 'any';
+                const reentryMode = p.reentry_mode;
+                slopedReentryModeSelect.value = ['any', 'any_two', 'any_three', 'all'].includes(reentryMode)
+                    ? reentryMode
+                    : 'any';
             }
             if (slopedReentryRsiCheckbox) {
                 slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);

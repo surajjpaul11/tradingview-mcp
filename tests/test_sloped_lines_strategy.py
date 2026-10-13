@@ -311,13 +311,24 @@ class BodyGapSignalTests(unittest.TestCase):
 
 
 class RecoveryReentryTests(unittest.TestCase):
-    def test_any_and_all_apply_only_to_enabled_signals(self):
-        enabled = {"rsi": True, "ema": True, "price": False, "volume": False}
-        matched = {"rsi": True, "ema": False, "price": True, "volume": True}
+    def test_count_modes_apply_only_to_enabled_signals(self):
+        enabled = {"rsi": True, "ema": True, "price": True, "volume": False}
 
-        self.assertTrue(recovery_reentry_triggered(enabled, matched, "any"))
-        self.assertFalse(recovery_reentry_triggered(enabled, matched, "all"))
-        self.assertFalse(recovery_reentry_triggered({name: False for name in enabled}, matched, "any"))
+        one_match = {"rsi": True, "ema": False, "price": False, "volume": True}
+        self.assertTrue(recovery_reentry_triggered(enabled, one_match, "any"))
+        self.assertFalse(recovery_reentry_triggered(enabled, one_match, "any_two"))
+
+        two_matches = {"rsi": True, "ema": True, "price": False, "volume": False}
+        self.assertTrue(recovery_reentry_triggered(enabled, two_matches, "any_two"))
+        self.assertFalse(recovery_reentry_triggered(enabled, two_matches, "any_three"))
+
+        three_matches = {"rsi": True, "ema": True, "price": True, "volume": False}
+        self.assertTrue(recovery_reentry_triggered(enabled, three_matches, "any_three"))
+        self.assertTrue(recovery_reentry_triggered(enabled, three_matches, "all"))
+
+        only_two_enabled = {"rsi": True, "ema": True, "price": False, "volume": False}
+        self.assertFalse(recovery_reentry_triggered(only_two_enabled, three_matches, "any_three"))
+        self.assertFalse(recovery_reentry_triggered({name: False for name in enabled}, three_matches, "any"))
 
     def test_completed_candle_signal_enters_at_next_open(self):
         candles = []

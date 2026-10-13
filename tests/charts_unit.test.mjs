@@ -4,6 +4,16 @@ import { aggregateCandles, createLiveAggregator } from '../src/tradingview_mcp/u
 import { findFairValueGaps, buildVolumeProfile } from '../src/tradingview_mcp/ui/charts_src/indicators.js';
 import { parseHyperliquidCandle, parseYahooChart } from '../src/tradingview_mcp/ui/charts_src/feeds/parsers.js';
 import { formatCrosshairTime } from '../src/tradingview_mcp/ui/charts_src/chartConfig.js';
+import { buildSymbolGroups, filterSymbolGroups, findSymbol } from '../src/tradingview_mcp/ui/charts_src/symbols.js';
+
+test('merges and filters strategy dashboard symbols by data source',()=>{
+  const groups=buildSymbolGroups(['AAPL','WULF','BTC-USD','WULF']);
+  assert.equal(findSymbol('BTC',groups).source,'hyperliquid');
+  assert.equal(findSymbol('BTC-USD',groups).source,'yahoo');
+  assert.equal(groups.find((group)=>group.label.includes('Strategy Dashboard')).symbols.filter((symbol)=>symbol.id==='WULF').length,1);
+  const filtered=filterSymbolGroups(groups,'wul');
+  assert.deepEqual(filtered.flatMap((group)=>group.symbols.map((symbol)=>symbol.id)),['WULF']);
+});
 
 test('crosshair time includes the year',()=>{
   assert.match(formatCrosshairTime(Date.UTC(2026,6,31,16)/1000),/2026/);

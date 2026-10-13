@@ -24,7 +24,7 @@ const candles=[
   {time:180,date:'1970-01-01 00:03',open:13,high:14,low:13,close:13.5,volume:30},
 ];
 await page.route('**/api/chart/candles?**',(route)=>route.fulfill({json:{source:new URL(route.request().url()).searchParams.get('source'),candles,timeframe:'1m',period:'1d'}}));
-await page.route('**/api/filters',(route)=>route.fulfill({json:{symbols:['AAPL'],strategies:['sloped_lines','enhanced_channel']}}));
+await page.route('**/api/filters',(route)=>route.fulfill({json:{symbols:['AAPL','SNDK','WULF'],strategies:['sloped_lines','enhanced_channel']}}));
 await page.route('**/api/best-parameters?**',(route)=>route.fulfill({json:{found:true,data:{parameters:{pivot_lookback:5,anchor_source:'any_valid_candle',validation_boundary:'close',trendline_tolerance:.015},performance:{total_pnl_pct:47.61}}}}));
 await page.route('**/api/stats?**',(route)=>route.fulfill({json:{total_pnl_pct:12.5,buy_and_hold_pct:8.1,win_rate_pct:55,total_trades:2}}));
 await page.route('**/api/trades?**',(route)=>route.fulfill({json:{trades:[{created_at:'1970-01-01T00:01:00Z',closed_at:'1970-01-01T00:03:00Z',entry_price:10,exit_price:13,pnl_pct:30,entry_reason:'breakout',exit_reason:'support break'}]}}));
@@ -37,7 +37,10 @@ try{
   await page.getByTitle('Fair Value Gaps').click();await page.getByTitle('Volume Profile (visible range)').click();
   assert.equal(await page.getByTitle('Fair Value Gaps').getAttribute('aria-pressed'),'true');
   await page.locator('.pane-selector select').selectOption('2');await page.waitForFunction(()=>document.querySelectorAll('.chart-widget').length===2);
-  await page.locator('.chart-widget').nth(1).locator('select[aria-label="Symbol"]').selectOption('AAPL');
+  const symbolSearch=page.locator('.chart-widget').nth(1).getByRole('combobox',{name:'Symbol'});
+  await symbolSearch.fill('WULF');
+  await page.locator('.chart-widget').nth(1).getByRole('option',{name:/WULF/}).click();
+  assert.equal(await symbolSearch.inputValue(),'WULF');
   await page.locator('.chart-widget').first().getByRole('button',{name:'Strategy'}).click();
   await page.getByRole('checkbox',{name:'Show strategy'}).check();
   await page.getByRole('checkbox',{name:'Staggered Lines'}).check();

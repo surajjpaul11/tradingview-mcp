@@ -59,7 +59,7 @@ DEFAULT_ANCHOR_SOURCE = "confirmed_pivots"
 DEFAULT_VALIDATION_BOUNDARY = "body"
 ANCHOR_SOURCES = {"confirmed_pivots", "any_valid_candle"}
 VALIDATION_BOUNDARIES = {"body", "close", "wick"}
-REENTRY_MODES = {"any", "any_two", "any_three", "all"}
+REENTRY_MODES = {"none", "any", "any_two", "any_three", "all"}
 
 
 def _entry_barrier_exit_reason(stop_loss_mode: str) -> str:
@@ -130,6 +130,8 @@ def recovery_reentry_signals(
 
 def recovery_reentry_triggered(enabled: dict[str, bool], matched: dict[str, bool], mode: str) -> bool:
     """Apply the selected count rule to the enabled recovery signals."""
+    if mode == "none":
+        return False
     selected = [matched[name] for name, is_enabled in enabled.items() if is_enabled]
     if not selected:
         return False
@@ -772,7 +774,7 @@ def run_sloped_lines(
     gap_up: bool = False,
     gap_down: bool = False,
     staggered_lines: bool = False,
-    reentry_mode: str = "any",
+    reentry_mode: str = "none",
     reentry_rsi: bool = False,
     reentry_ema: bool = False,
     reentry_price_breakout: bool = False,
@@ -813,7 +815,7 @@ def run_sloped_lines(
                   its body is strictly below the previous red candle's body.
       - staggered_lines: For resistance, reuse the latest touch with the next confirmed
                          local maximum. For support, promote later confirmed higher-low pairs.
-      - reentry_mode: Require any one, any two, any three, or all enabled recovery signals.
+      - reentry_mode: Disable recovery entries, or require any one, any two, any three, or all enabled signals.
       - reentry_rsi: RSI(14) crosses upward through 50 after an exit.
       - reentry_ema: Close is above EMA(20) after an exit.
       - reentry_price_breakout: Close is above the preceding five-bar high after an exit.
@@ -1564,7 +1566,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
-    reentry_mode = kwargs.get("reentry_mode", "any")
+    reentry_mode = kwargs.get("reentry_mode", "none")
     reentry_rsi = bool(kwargs.get("reentry_rsi", False))
     reentry_ema = bool(kwargs.get("reentry_ema", False))
     reentry_price_breakout = bool(kwargs.get("reentry_price_breakout", False))
@@ -1617,7 +1619,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
-    reentry_mode = kwargs.get("reentry_mode", "any")
+    reentry_mode = kwargs.get("reentry_mode", "none")
     reentry_rsi = bool(kwargs.get("reentry_rsi", False))
     reentry_ema = bool(kwargs.get("reentry_ema", False))
     reentry_price_breakout = bool(kwargs.get("reentry_price_breakout", False))
@@ -1741,7 +1743,7 @@ def run_backtest(
     gap_up: bool = False,
     gap_down: bool = False,
     staggered_lines: bool = False,
-    reentry_mode: str = "any",
+    reentry_mode: str = "none",
     reentry_rsi: bool = False,
     reentry_ema: bool = False,
     reentry_price_breakout: bool = False,

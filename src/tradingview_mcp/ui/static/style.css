@@ -229,6 +229,22 @@ h1 {
     color: #fca5a5;
 }
 
+.sloped-reentry-warning {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    border-radius: 8px;
+    background: rgba(120, 53, 15, 0.28);
+    color: #fde68a;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.sloped-reentry-warning[hidden] {
+    display: none;
+}
+
 .best-params-badge .star-icon {
     color: #facc15;
 }

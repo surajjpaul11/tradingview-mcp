@@ -323,6 +323,7 @@ class RecoveryReentryTests(unittest.TestCase):
         self.assertFalse(recovery_reentry_triggered(enabled, two_matches, "any_three"))
 
         three_matches = {"rsi": True, "ema": True, "price": True, "volume": False}
+        self.assertFalse(recovery_reentry_triggered(enabled, three_matches, "none"))
         self.assertTrue(recovery_reentry_triggered(enabled, three_matches, "any_three"))
         self.assertTrue(recovery_reentry_triggered(enabled, three_matches, "all"))
 

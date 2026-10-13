@@ -329,6 +329,7 @@ const slopedReentryRsiCheckbox = document.getElementById('sloped-reentry-rsi-che
 const slopedReentryEmaCheckbox = document.getElementById('sloped-reentry-ema-checkbox');
 const slopedReentryPriceCheckbox = document.getElementById('sloped-reentry-price-checkbox');
 const slopedReentryVolumeCheckbox = document.getElementById('sloped-reentry-volume-checkbox');
+const slopedReentryWarning = document.getElementById('sloped-reentry-warning');
 
 function getFullCandleEnabled() {
     if (!slopedFullCandleCheckbox) return false;
@@ -407,7 +408,7 @@ function getMinAnchorBars() {
 
 function getReentryMode() {
     const mode = slopedReentryModeSelect?.value;
-    return ['any', 'any_two', 'any_three', 'all'].includes(mode) ? mode : 'any';
+    return ['none', 'any', 'any_two', 'any_three', 'all'].includes(mode) ? mode : 'none';
 }
 
 function getReentryRsiEnabled() {
@@ -424,6 +425,36 @@ function getReentryPriceEnabled() {
 
 function getReentryVolumeEnabled() {
     return Boolean(slopedReentryVolumeCheckbox?.checked);
+}
+
+function getEnabledReentrySignalCount() {
+    return [
+        slopedReentryRsiCheckbox,
+        slopedReentryEmaCheckbox,
+        slopedReentryPriceCheckbox,
+        slopedReentryVolumeCheckbox,
+    ].filter(control => control?.checked).length;
+}
+
+function validateReentrySelection() {
+    const mode = getReentryMode();
+    const requiredCount = mode === 'any_two' ? 3 : mode === 'any_three' ? 3 : 0;
+    const enabledCount = getEnabledReentrySignalCount();
+    if (requiredCount > 0 && enabledCount < requiredCount) {
+        if (slopedReentryWarning) {
+            slopedReentryWarning.textContent = mode === 'any_two'
+                ? 'Please select at least three checkboxes for Any Two. Recovery Re-entry was reset to None.'
+                : 'Any Three requires at least three enabled signals. Recovery Re-entry was reset to None.';
+            slopedReentryWarning.hidden = false;
+        }
+        if (slopedReentryModeSelect) slopedReentryModeSelect.value = 'none';
+        return false;
+    }
+    if (slopedReentryWarning) {
+        slopedReentryWarning.textContent = '';
+        slopedReentryWarning.hidden = true;
+    }
+    return true;
 }
 
 function getReentryQueryParams() {
@@ -563,9 +594,9 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             }
             if (slopedReentryModeSelect) {
                 const reentryMode = p.reentry_mode;
-                slopedReentryModeSelect.value = ['any', 'any_two', 'any_three', 'all'].includes(reentryMode)
+                slopedReentryModeSelect.value = ['none', 'any', 'any_two', 'any_three', 'all'].includes(reentryMode)
                     ? reentryMode
-                    : 'any';
+                    : 'none';
             }
             if (slopedReentryRsiCheckbox) {
                 slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);
@@ -579,6 +610,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             if (slopedReentryVolumeCheckbox) {
                 slopedReentryVolumeCheckbox.checked = Boolean(p.reentry_volume);
             }
+            validateReentrySelection();
         }
 
         // Enhanced Channel strategy controls
@@ -1613,8 +1645,24 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        if (slopedReentryModeSelect) {
+            slopedReentryModeSelect.onchange = () => {
+                if (getReentryMode() === 'any_three') {
+                    for (const checkbox of [
+                        slopedReentryRsiCheckbox,
+                        slopedReentryEmaCheckbox,
+                        slopedReentryPriceCheckbox,
+                        slopedReentryVolumeCheckbox,
+                    ]) {
+                        if (checkbox) checkbox.checked = true;
+                    }
+                }
+                validateReentrySelection();
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
         for (const control of [
-            slopedReentryModeSelect,
             slopedReentryRsiCheckbox,
             slopedReentryEmaCheckbox,
             slopedReentryPriceCheckbox,
@@ -1622,6 +1670,7 @@ async function loadFilters() {
         ]) {
             if (control) {
                 control.onchange = () => {
+                    validateReentrySelection();
                     updateDashboard();
                     if (activeTab === 'advanced' && advChart) updateAdvDashboard();
                 };

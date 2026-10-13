@@ -291,10 +291,10 @@ try {
   await page.locator('#strategy-select').selectOption('sloped_lines');
   await waitForStrategyChart(page, 'sloped_lines');
 
-  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any');
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
   assert.deepEqual(
     await page.locator('#sloped-reentry-mode-select option').evaluateAll(options => options.map(option => option.value)),
-    ['any', 'any_two', 'any_three', 'all'],
+    ['none', 'any', 'any_two', 'any_three', 'all'],
   );
   for (const selector of [
     '#sloped-reentry-rsi-checkbox',
@@ -305,16 +305,37 @@ try {
     assert.equal(await page.locator(selector).isChecked(), false);
   }
 
-  const reentryResponse = page.waitForResponse(
+  const insufficientTwoResponse = page.waitForResponse(
     response => response.url().includes('/api/stats?')
-      && response.url().includes('reentry_mode=any_two')
+      && response.url().includes('reentry_mode=none')
       && response.url().includes('reentry_rsi=true')
       && response.url().includes('reentry_ema=true'),
     { timeout: 90_000 },
   );
   await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
+    document.querySelector('#sloped-reentry-ema-checkbox').checked = true;
+    const mode = document.querySelector('#sloped-reentry-mode-select');
+    mode.value = 'any_two';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await insufficientTwoResponse;
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
+  await page.locator('#sloped-reentry-warning').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#sloped-reentry-warning').textContent(), /Please select at least three checkboxes for Any Two/);
+
+  const reentryResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=any_two')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true')
+      && response.url().includes('reentry_price_breakout=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
     document.querySelector('#sloped-reentry-mode-select').value = 'any_two';
     document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
+    document.querySelector('#sloped-reentry-price-checkbox').checked = true;
     const ema = document.querySelector('#sloped-reentry-ema-checkbox');
     ema.checked = true;
     ema.dispatchEvent(new Event('change', { bubbles: true }));
@@ -322,9 +343,37 @@ try {
   await reentryResponse;
   await waitForStrategyChart(page, 'sloped_lines');
 
+  const anyThreeResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=any_three')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true')
+      && response.url().includes('reentry_price_breakout=true')
+      && response.url().includes('reentry_volume=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    const mode = document.querySelector('#sloped-reentry-mode-select');
+    mode.value = 'any_three';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await anyThreeResponse;
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any_three');
+  for (const selector of [
+    '#sloped-reentry-rsi-checkbox',
+    '#sloped-reentry-ema-checkbox',
+    '#sloped-reentry-price-checkbox',
+    '#sloped-reentry-volume-checkbox',
+  ]) {
+    assert.equal(await page.locator(selector).isChecked(), true);
+  }
+  assert.equal(await page.locator('#sloped-reentry-warning').isHidden(), true);
+
   await page.evaluate(() => {
     document.querySelector('#sloped-reentry-mode-select').value = 'any';
     document.querySelector('#sloped-reentry-rsi-checkbox').checked = false;
+    document.querySelector('#sloped-reentry-price-checkbox').checked = false;
+    document.querySelector('#sloped-reentry-volume-checkbox').checked = false;
     const ema = document.querySelector('#sloped-reentry-ema-checkbox');
     ema.checked = false;
     ema.dispatchEvent(new Event('change', { bubbles: true }));

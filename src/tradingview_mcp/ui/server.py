@@ -389,7 +389,7 @@ _SLOPED_PIVOT_LOOKBACK_OPTIONS = {2, 3, 4, 5, 6, 7, 8, 10}
 _SLOPED_ANCHOR_SOURCE_OPTIONS = {"confirmed_pivots", "any_valid_candle"}
 _SLOPED_VALIDATION_BOUNDARY_OPTIONS = {"body", "close", "wick"}
 _SLOPED_TOLERANCE_OPTIONS = {0.0, 0.005, 0.01, 0.015, 0.02}
-_SLOPED_REENTRY_MODE_OPTIONS = {"any", "any_two", "any_three", "all"}
+_SLOPED_REENTRY_MODE_OPTIONS = {"none", "any", "any_two", "any_three", "all"}
 
 
 def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm_candles=None, pivot_lookback=None, inverse_color_trigger=None, line_angle=None, stop_loss_mode=None, min_anchor_bars=None, anchor_source=None, validation_boundary=None, trendline_tolerance=None, gap_up=None, gap_down=None, staggered_lines=None, reentry_mode=None, reentry_rsi=None, reentry_ema=None, reentry_price_breakout=None, reentry_volume=None):
@@ -411,7 +411,7 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
     )
     if selected_tolerance not in _SLOPED_TOLERANCE_OPTIONS:
         raise ValueError(f"trendline_tolerance must be one of {sorted(_SLOPED_TOLERANCE_OPTIONS)}")
-    selected_reentry_mode = reentry_mode or bp.get("reentry_mode", "any")
+    selected_reentry_mode = reentry_mode or bp.get("reentry_mode", "none")
     if selected_reentry_mode not in _SLOPED_REENTRY_MODE_OPTIONS:
         raise ValueError(f"reentry_mode must be one of {sorted(_SLOPED_REENTRY_MODE_OPTIONS)}")
     return {

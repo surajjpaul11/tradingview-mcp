@@ -18,5 +18,6 @@ export const DEFAULT_PANES = DEFAULT_PANE_SYMBOLS.map((symbolId) => ({
   range: '1D',
   tradingWindow: 'regular market',
   indicators: { fvg: false, volumeProfile: false },
+  drawings: [],
   strategy: structuredClone(DEFAULT_STRATEGY),
 }));

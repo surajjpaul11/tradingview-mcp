@@ -36,6 +36,20 @@ try{
   assert.equal(await page.locator('.chart-widget').count(),1);assert.ok(await page.locator('canvas').count()>0);
   await page.getByTitle('Fair Value Gaps').click();await page.getByTitle('Volume Profile (visible range)').click();
   assert.equal(await page.getByTitle('Fair Value Gaps').getAttribute('aria-pressed'),'true');
+  const firstChartBody=page.locator('.chart-widget').first().locator('.chart-widget__body');
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Line'}).click();
+  await page.waitForFunction(()=>document.querySelector('.chart-widget__body')?.dataset.drawingTool==='trendline');
+  await firstChartBody.click({position:{x:180,y:260}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/2'));await page.waitForTimeout(550);await firstChartBody.click({position:{x:620,y:150}});
+  await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Channel'}).click();
+  await page.waitForFunction(()=>document.querySelector('.chart-widget__body')?.dataset.drawingTool==='parallel_channel');
+  await page.waitForTimeout(550);
+  await firstChartBody.click({position:{x:220,y:300}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/3'));await page.waitForTimeout(550);
+  await firstChartBody.click({position:{x:650,y:210}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('2/3'));await page.waitForTimeout(550);
+  await firstChartBody.click({position:{x:400,y:120}});
+  await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===2);
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Undo last drawing'}).click();
+  await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
   await page.locator('.pane-selector select').selectOption('2');await page.waitForFunction(()=>document.querySelectorAll('.chart-widget').length===2);
   const symbolSearch=page.locator('.chart-widget').nth(1).getByRole('combobox',{name:'Symbol'});
   await symbolSearch.fill('WULF');
@@ -55,6 +69,7 @@ try{
   await page.locator('.chart-widget').nth(1).locator('.chart-widget__body').click({position:{x:20,y:20}});
   assert.equal(await page.locator('.chart-widget').first().locator('.strategy-toggle').evaluate((element)=>element.classList.contains('enabled')),false);
   await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.chart-widget').length===2);
+  await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({passed:true,panes:2,liveCandles:4,strategyMarkers:2,overlays:1}));
+  console.log(JSON.stringify({passed:true,panes:2,liveCandles:4,strategyMarkers:2,overlays:1,drawings:1}));
 }finally{await browser.close();dashboard.child.kill('SIGTERM');}

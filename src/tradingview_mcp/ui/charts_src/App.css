@@ -163,6 +163,48 @@
   gap: 4px;
 }
 
+/* ---------- Drawing tools ---------- */
+
+.drawing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.drawing-toolbar button {
+  min-width: 24px;
+  padding: 2px 5px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.drawing-toolbar button:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.drawing-toolbar button[aria-pressed='true'] {
+  color: #fff;
+  background: rgba(245, 158, 11, 0.34);
+  border-color: #f59e0b;
+}
+
+.drawing-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chart-widget__body[data-drawing-tool='trendline'],
+.chart-widget__body[data-drawing-tool='parallel_channel'] {
+  cursor: crosshair;
+}
+
 .toggle {
   padding: 2px 6px;
   color: var(--color-text-muted);
@@ -381,7 +423,7 @@
 .app__workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--grid-gap); }
 .app__workspace.drawer-open { grid-template-columns: minmax(0, 1fr) 320px; }
 .chart-widget.active { border-color: rgba(41, 98, 255, 0.8); box-shadow: inset 0 0 0 1px rgba(41, 98, 255, 0.25); }
-.chart-widget__header { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+.chart-widget__header { grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; }
 .strategy-toggle { padding: 2px 6px; color: var(--color-text-muted); background: transparent; border: 1px solid var(--color-border); border-radius: 4px; font: inherit; font-size: 11px; cursor: pointer; }
 .strategy-toggle.enabled { color: #fff; border-color: var(--color-accent); background: rgba(41, 98, 255, 0.35); }
 .chart-widget__footer { grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 27px; }

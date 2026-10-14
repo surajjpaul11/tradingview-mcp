@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CandlestickSeries, LineSeries, createChart, createSeriesMarkers } from 'lightweight-charts';
 import { CANDLESTICK_OPTIONS, CHART_OPTIONS } from '../chartConfig.js';
+import { createDrawing, DRAWING_TOOLS, drawingSegments } from '../drawings.js';
 import { useCandleFeed } from '../hooks/useCandleFeed.js';
 import { useSeriesPrimitive } from '../hooks/useSeriesPrimitive.js';
 import { FairValueGapPrimitive } from '../primitives/FairValueGapPrimitive.js';
@@ -24,14 +25,34 @@ function linePoints(line,candles){
   const start=Number(line.start_time)||unix(line.start_date); const end=Number(line.end_time)||unix(line.end_date);
   return start&&end?[{time:nearest(start,candles),value:Number(line.start_price)},{time:nearest(end,candles),value:Number(line.end_price)}]:[];
 }
-export default function LightweightChart({symbol,pane,strategyData,onStatusChange}){
-  const containerRef=useRef(null); const chartRef=useRef(null); const seriesRef=useRef(null); const markerRef=useRef(null); const overlayRef=useRef([]);
-  const [candles,setCandles]=useState([]); const [selected,setSelected]=useState(null);
-  const onCandles=useCallback((value)=>setCandles([...value]),[]);
+export default function LightweightChart({symbol,pane,strategyData,drawingTool,onDrawingProgress,onDrawingComplete,onStatusChange}){
+  const containerRef=useRef(null); const chartRef=useRef(null); const seriesRef=useRef(null); const markerRef=useRef(null); const overlayRef=useRef([]); const drawingSeriesRef=useRef([]);
+  const drawingToolRef=useRef(drawingTool); const drawingStateRef=useRef({tool:drawingTool,points:[]}); const drawingCompleteRef=useRef(onDrawingComplete); const drawingProgressRef=useRef(onDrawingProgress);
+  const candlesRef=useRef([]); const [candles,setCandles]=useState([]); const [selected,setSelected]=useState(null);
+  useLayoutEffect(()=>{drawingToolRef.current=drawingTool;drawingCompleteRef.current=onDrawingComplete;drawingProgressRef.current=onDrawingProgress;if(drawingStateRef.current.tool!==drawingTool)drawingStateRef.current={tool:drawingTool,points:[]};},[drawingTool,onDrawingComplete,onDrawingProgress]);
+  const onCandles=useCallback((value)=>{candlesRef.current=[...value];setCandles([...value]);},[]);
   useEffect(()=>{
     const chart=createChart(containerRef.current,CHART_OPTIONS); const series=chart.addSeries(CandlestickSeries,CANDLESTICK_OPTIONS);
     chartRef.current=chart;seriesRef.current=series;markerRef.current=createSeriesMarkers(series,[]);
-    const click=(param)=>{if(!param.time)return;setSelected((current)=>current?.time===param.time?null:{time:param.time});}; chart.subscribeClick(click);
+    const click=(param)=>{
+      if(!param.point)return;
+      const tool=drawingToolRef.current;
+      if(tool!=='cursor'){
+        const price=series.coordinateToPrice(param.point.y);if(price===null)return;
+        const loaded=candlesRef.current;const width=Math.max(chart.timeScale().width(),1);const fallbackIndex=Math.max(0,Math.min(loaded.length-1,Math.round((param.point.x/width)*(loaded.length-1))));
+        const time=param.time??loaded[fallbackIndex]?.time;if(time===undefined)return;
+        const state=drawingStateRef.current.tool===tool?drawingStateRef.current:{tool,points:[]};
+        const points=[...state.points,{time,price:Number(price)}]; const required=DRAWING_TOOLS[tool]?.points||0;
+        drawingStateRef.current={tool,points};drawingProgressRef.current?.(points.length);
+        if(required&&points.length===required){
+          const id=globalThis.crypto?.randomUUID?.()||`${tool}-${Date.now()}`;const drawing=createDrawing(tool,points,id);
+          drawingStateRef.current={tool,points:[]};drawingProgressRef.current?.(0);if(drawing)drawingCompleteRef.current?.(drawing);
+        }
+        return;
+      }
+      if(!param.time)return;
+      setSelected((current)=>current?.time===param.time?null:{time:param.time});
+    }; chart.subscribeClick(click);
     return()=>{chart.unsubscribeClick(click);chart.remove();chartRef.current=null;seriesRef.current=null;markerRef.current=null;};
   },[]);
   useCandleFeed({chartRef,seriesRef},{symbol,resolutionId:pane.resolution,rangeId:pane.range,tradingWindow:pane.tradingWindow||'regular market'},onStatusChange,onCandles);
@@ -49,6 +70,15 @@ export default function LightweightChart({symbol,pane,strategyData,onStatusChang
       series.setData(points);overlayRef.current.push(series);
     });
   },[strategyData.trendlines,strategyData.channels,candles,pane.strategy.parameters.trendline_labels]);
+  useEffect(()=>{
+    const chart=chartRef.current;if(!chart)return;drawingSeriesRef.current.forEach((series)=>{try{chart.removeSeries(series);}catch{}});drawingSeriesRef.current=[];
+    (pane.drawings||[]).flatMap(drawingSegments).forEach((segment)=>{
+      const color=segment.role==='line'?'#f59e0b':segment.role==='midline'?'rgba(34, 211, 238, 0.65)':'#22d3ee';
+      const series=chart.addSeries(LineSeries,{color,lineWidth:2,lineStyle:segment.role==='midline'?2:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+      const data=segment.points.map((point)=>({time:point.time,value:point.price})).sort((a,b)=>a.time-b.time);
+      series.setData(data);drawingSeriesRef.current.push(series);
+    });
+  },[pane.drawings]);
   const detail=selected?markerBundle.details.get(selected.time):null;
-  return <><div ref={containerRef} className="lightweight-chart" data-source={symbol.source} data-symbol={symbol.id} data-candle-count={candles.length} data-marker-count={markerBundle.markers.length} data-overlay-count={(strategyData.trendlines?.length||0)+(strategyData.channels?.length||0)}/>{detail&&<button type="button" className="signal-detail" onClick={()=>setSelected(null)}><b>{detail.kind}</b> {detail.price?`$${Number(detail.price).toFixed(2)}`:''} {detail.reason||''} {detail.pnl!==undefined?`· ${Number(detail.pnl).toFixed(1)}%`:''}</button>}</>;
+  return <><div ref={containerRef} className="lightweight-chart" data-source={symbol.source} data-symbol={symbol.id} data-candle-count={candles.length} data-marker-count={markerBundle.markers.length} data-overlay-count={(strategyData.trendlines?.length||0)+(strategyData.channels?.length||0)} data-drawing-count={pane.drawings?.length||0}/>{detail&&<button type="button" className="signal-detail" onClick={()=>setSelected(null)}><b>{detail.kind}</b> {detail.price?`$${Number(detail.price).toFixed(2)}`:''} {detail.reason||''} {detail.pnl!==undefined?`· ${Number(detail.pnl).toFixed(1)}%`:''}</button>}</>;
 }

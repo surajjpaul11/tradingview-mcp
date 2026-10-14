@@ -8,7 +8,7 @@ import './App.css';
 
 const STORAGE_KEY='hyperliquid-charts-workspace-v1';
 function loadWorkspace(){
-  try{const value=JSON.parse(localStorage.getItem(STORAGE_KEY));if(value?.panes?.length===8)return {...value,panes:value.panes.map((pane)=>({...pane,tradingWindow:pane.tradingWindow||'regular market'}))};}catch{}
+  try{const value=JSON.parse(localStorage.getItem(STORAGE_KEY));if(value?.panes?.length===8)return {...value,panes:value.panes.map((pane)=>({...pane,tradingWindow:pane.tradingWindow||'regular market',drawings:Array.isArray(pane.drawings)?pane.drawings:[]}))};}catch{}
   return {paneCount:DEFAULT_PANE_COUNT,panes:DEFAULT_PANES};
 }
 function App(){

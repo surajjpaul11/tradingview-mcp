@@ -5,6 +5,17 @@ import { findFairValueGaps, buildVolumeProfile } from '../src/tradingview_mcp/ui
 import { parseHyperliquidCandle, parseYahooChart } from '../src/tradingview_mcp/ui/charts_src/feeds/parsers.js';
 import { formatCrosshairTime } from '../src/tradingview_mcp/ui/charts_src/chartConfig.js';
 import { buildSymbolGroups, filterSymbolGroups, findSymbol } from '../src/tradingview_mcp/ui/charts_src/symbols.js';
+import { createDrawing, drawingSegments } from '../src/tradingview_mcp/ui/charts_src/drawings.js';
+
+test('builds straight lines and parallel channel boundaries',()=>{
+  const straight=createDrawing('trendline',[{time:1,price:10},{time:3,price:14}],'line-1');
+  assert.equal(drawingSegments(straight).length,1);
+  const channel=createDrawing('parallel_channel',[{time:1,price:10},{time:3,price:14},{time:2,price:16}],'channel-1');
+  const segments=drawingSegments(channel);
+  assert.equal(segments.length,3);
+  assert.deepEqual(segments[1].points.map((point)=>point.price),[14,18]);
+  assert.equal(segments[2].role,'midline');
+});
 
 test('merges and filters strategy dashboard symbols by data source',()=>{
   const groups=buildSymbolGroups(['AAPL','WULF','BTC-USD','WULF']);

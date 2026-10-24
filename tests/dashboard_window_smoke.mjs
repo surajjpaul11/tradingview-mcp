@@ -61,6 +61,21 @@ try {
     assert.equal(request.query.get('line_breakout_buy'), 'false');
     assert.equal(request.query.get('entry_barrier_sell'), 'false');
   }
+  const peakFull = page.getByRole('checkbox', { name: 'Peak Reclaim Full Candle', exact: true });
+  const generalFull = page.getByRole('checkbox', { name: 'Full Candle', exact: true });
+  assert.equal(await peakFull.isChecked(), false);
+  const peakResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/stats' && url.searchParams.get('peak_reclaim_full_candle') === 'true'
+      && url.searchParams.get('full_candle') === 'false';
+  });
+  await peakFull.check();
+  await peakResponse;
+  assert.equal(await generalFull.isChecked(), false);
+  await generalFull.check();
+  assert.equal(await peakFull.isChecked(), true);
+  await generalFull.uncheck();
+  assert.equal(await peakFull.isChecked(), true);
   const fixedResponse = page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('compounding=false'));
   await compounding.uncheck();
   await fixedResponse;
@@ -72,6 +87,7 @@ try {
     && response.url().includes('line_breakout_buy=true') && response.url().includes('entry_barrier_sell=true'));
   await page.locator('#best-params-badge').click();
   await toggledResponse;
+  assert.equal(await peakFull.isChecked(), false);
   assert.equal(await compounding.isChecked(), true);
   assert.equal(await capital.inputValue(), '10000');
   assert.equal(await breakout.isChecked(), true);

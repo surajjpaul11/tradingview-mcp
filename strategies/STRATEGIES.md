@@ -366,6 +366,7 @@ Repeat.
 | `pivot_lookback` | 5 | Bars left/right for swing point detection |
 | `trendline_tolerance` | 0.015 | 1.5% tolerance for line validation |
 | `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
+| `peak_reclaim_full_candle` | false | Require Peak Reclaim buys to close strictly above the sell reference peak and fill at that close; independent of Full Candle |
 | `compounding` | true | Reinvest available equity; off uses a fixed starting-capital budget capped by cash |
 | `initial_capital` | 10000 | Starting account balance in dollars; fractional shares supported |
 | `line_breakout_buy` | false | Enable descending-resistance breakout buys; other entry signals remain independent |

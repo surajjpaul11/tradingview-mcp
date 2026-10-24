@@ -781,6 +781,7 @@ def run_sloped_lines(
     reentry_volume: bool = False,
     line_breakout_buy: bool = False,
     entry_barrier_sell: bool = False,
+    peak_reclaim_full_candle: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -796,7 +797,8 @@ def run_sloped_lines(
     Parameters:
       - line_breakout_buy: Enable resistance breakout long entries (default False).
       - entry_barrier_sell: Enable pre-support-line entry-low exits, including ATR buffered exits (default False).
-      - full_candle: If True, requires the candle to CLOSE across the trendline (close breakout).
+      - peak_reclaim_full_candle: Independently require Peak Reclaim buys to close strictly above the sell peak, filling at that close (default False).
+      - full_candle: Excludes Peak Reclaim. If True, requires the candle to CLOSE across the trendline (close breakout).
                      If False, touching/piercing with high/low triggers the breakout (wick/touch break).
       - use_wick: If True, uses candle wicks (high/low) for line contact points.
                   If False (default), uses ONLY candle bodies (max/min of open/close).
@@ -988,12 +990,12 @@ def run_sloped_lines(
             # 1. Exit Peak Reclaim: price breaks above the peak of the recent sell candle
             if stop_loss_mode == "exit_peak_reclaim" and last_sell_point is not None and i > last_sell_point[0]:
                 sell_peak = last_sell_point[1]
-                is_reclaim = (price > sell_peak) if full_candle else (highs[i] > sell_peak)
+                is_reclaim = (price > sell_peak) if peak_reclaim_full_candle else (highs[i] > sell_peak)
                 if is_reclaim:
                     if inverse_color_trigger and not is_green_candle(candles[i]):
                         pass
                     else:
-                        exec_price = price if full_candle else max(sell_peak, candles[i]["open"])
+                        exec_price = price if peak_reclaim_full_candle else max(sell_peak, candles[i]["open"])
                         position = {
                             "entry_date":  date,
                             "entry_price": exec_price,
@@ -1612,6 +1614,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     confirm_bars = kwargs.get("confirm_bars", CONFIRM_BARS)
     enable_short = kwargs.get("enable_short", ENABLE_SHORT)
     full_candle = kwargs.get("full_candle", DEFAULT_FULL_CANDLE)
+    peak_reclaim_full_candle = bool(kwargs.get("peak_reclaim_full_candle", False))
     use_wick = kwargs.get("use_wick", USE_WICK)
     confirm_candles = kwargs.get("confirm_candles", 0)
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
@@ -1637,6 +1640,7 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         confirm_bars=confirm_bars,
         enable_short=enable_short,
         full_candle=full_candle,
+        peak_reclaim_full_candle=peak_reclaim_full_candle,
         use_wick=use_wick,
         confirm_candles=confirm_candles,
         inverse_color_trigger=inverse_color_trigger,
@@ -1669,6 +1673,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     confirm_bars = kwargs.get("confirm_bars", CONFIRM_BARS)
     enable_short = kwargs.get("enable_short", ENABLE_SHORT)
     full_candle = kwargs.get("full_candle", DEFAULT_FULL_CANDLE)
+    peak_reclaim_full_candle = bool(kwargs.get("peak_reclaim_full_candle", False))
     use_wick = kwargs.get("use_wick", USE_WICK)
     confirm_candles = kwargs.get("confirm_candles", 0)
     inverse_color_trigger = kwargs.get("inverse_color_trigger", False)
@@ -1695,6 +1700,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         confirm_bars=confirm_bars,
         enable_short=enable_short,
         full_candle=full_candle,
+        peak_reclaim_full_candle=peak_reclaim_full_candle,
         use_wick=use_wick,
         confirm_candles=confirm_candles,
         inverse_color_trigger=inverse_color_trigger,
@@ -1817,6 +1823,7 @@ def run_backtest(
     line_breakout_buy: bool = False,
     entry_barrier_sell: bool = False,
     compounding: bool = True,
+    peak_reclaim_full_candle: bool = False,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
     if not math.isfinite(initial_capital) or initial_capital <= 0:
@@ -1837,6 +1844,7 @@ def run_backtest(
     raw_trades, trendlines = run_sloped_lines(
         candles, pivot_lookback, trendline_tolerance, confirm_bars, enable_short, full_candle, use_wick,
         confirm_candles=confirm_candles, inverse_color_trigger=inverse_color_trigger,
+        peak_reclaim_full_candle=peak_reclaim_full_candle,
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
         gap_up=gap_up, gap_down=gap_down, staggered_lines=staggered_lines,
@@ -1880,6 +1888,7 @@ def run_backtest(
             "confirm_bars": confirm_bars,
             "enable_short": enable_short,
             "full_candle": full_candle,
+            "peak_reclaim_full_candle": peak_reclaim_full_candle,
             "use_wick": use_wick,
             "confirm_candles": confirm_candles,
             "inverse_color_trigger": inverse_color_trigger,
@@ -1943,6 +1952,7 @@ def main():
     parser.add_argument("--full-candle", action="store_true", default=DEFAULT_FULL_CANDLE, help="Require candle to close across trendline for breakout (default: False)")
     parser.add_argument("--touch-break", action="store_false", dest="full_candle", help="Allow intrabar touch/wick to break trendline (default)")
     parser.add_argument("--use-wick", action="store_true", default=False, help="Use candle wicks instead of body for trendline contact points (default: False)")
+    parser.add_argument("--peak-reclaim-full-candle", action="store_true", help="Require a close above the sell peak for Peak Reclaim buys; independent of --full-candle")
     parser.add_argument("--no-compounding", action="store_true", help="Use a fixed starting-capital budget per trade, capped by available cash")
     parser.add_argument("--line-breakout-buy", action="store_true", help="Enable line breakout buys (default: off)")
     parser.add_argument("--entry-barrier-sell", action="store_true", help="Enable entry barrier sells (default: off)")
@@ -1965,6 +1975,7 @@ def main():
         pivot_lookback=args.pivot_lookback, trendline_tolerance=args.trendline_tolerance,
         confirm_bars=args.confirm_bars, enable_short=args.enable_short,
         full_candle=args.full_candle,
+        peak_reclaim_full_candle=args.peak_reclaim_full_candle,
         use_wick=args.use_wick,
         confirm_candles=args.confirm_candles,
         inverse_color_trigger=args.inverse_color_trigger,

@@ -26,7 +26,8 @@
             "line_breakout_buy": true,
             "entry_barrier_sell": true,
             "compounding": true,
-            "initial_capital": 10000
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 4761.26,
@@ -59,7 +60,8 @@
             "line_breakout_buy": true,
             "entry_barrier_sell": true,
             "compounding": true,
-            "initial_capital": 10000
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 5576.99,
@@ -87,7 +89,8 @@
             "line_breakout_buy": true,
             "entry_barrier_sell": true,
             "compounding": true,
-            "initial_capital": 10000
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 38474.51,
@@ -115,7 +118,8 @@
             "line_breakout_buy": true,
             "entry_barrier_sell": true,
             "compounding": true,
-            "initial_capital": 10000
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 1707.35,

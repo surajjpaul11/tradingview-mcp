@@ -13,6 +13,11 @@ test('signal switches default off and reach strategy requests independently',()=
   const pane={strategy:structuredClone(DEFAULT_STRATEGY),resolution:'1d',range:'1Y'};
   const symbol={source:'yahoo',id:'AAPL'};
   let query=strategyQuery(symbol,pane);
+  assert.equal(query.get('peak_reclaim_full_candle'),'false');
+  pane.strategy.parameters.peak_reclaim_full_candle=true;
+  query=strategyQuery(symbol,pane);
+  assert.equal(query.get('peak_reclaim_full_candle'),'true');
+  assert.equal(query.get('full_candle'),'false');
   assert.equal(query.get('compounding'),'true');
   assert.equal(query.get('initial_capital'),'10000');
   pane.strategy.parameters.compounding=false;

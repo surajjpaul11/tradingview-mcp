@@ -41,7 +41,7 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       range:RANGES.find((item)=>item.period===result.data.period)?.id||pane.range,
       tradingWindow:window?.trading_window||pane.tradingWindow,
       backtestWindow:window,
-      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,compounding:true,initial_capital:10000,...result.data.parameters}},
+      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,peak_reclaim_full_candle:false,compounding:true,initial_capital:10000,...result.data.parameters}},
     });
     setMessage(`Loaded saved best${result.data.performance?.total_pnl_pct!==undefined?` (${result.data.performance.total_pnl_pct}%)`:''}.`);
   };
@@ -65,7 +65,8 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       }}>{options.map((value)=><option key={value} value={value}>{key==='trendline_tolerance'?`${Number(value)*100}%`:label(value)}</option>)}</select></label>)}
       <label title="Enable buys when descending resistance breaks"><span>Line Breakout Buy</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.line_breakout_buy)} onChange={(e)=>patchParam('line_breakout_buy',e.target.checked)}/></label>
       <label title="Enable entry-low protection before support forms, including ATR Stop Buffer"><span>Entry Barrier Sell</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.entry_barrier_sell)} onChange={(e)=>patchParam('entry_barrier_sell',e.target.checked)}/></label>
-      <label><span>Full candle</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.full_candle)} onChange={(e)=>patchParam('full_candle',e.target.checked)}/></label>
+      <label title="Use closing prices for line breaks, trap re-entry and entry protection; excludes Peak Reclaim"><span>Full candle</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.full_candle)} onChange={(e)=>patchParam('full_candle',e.target.checked)}/></label>
+      <label title="Peak Reclaim only: require a close strictly above the sell peak and buy at that close"><span>Peak Reclaim Full Candle</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.peak_reclaim_full_candle)} onChange={(e)=>patchParam('peak_reclaim_full_candle',e.target.checked)}/></label>
       <label><span>Wick anchors</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.use_wick)} onChange={(e)=>patchParam('use_wick',e.target.checked)}/></label>
       <label><span>Gap Up</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_up)} onChange={(e)=>patchParam('gap_up',e.target.checked)}/></label>
       <label><span>Gap Down</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_down)} onChange={(e)=>patchParam('gap_down',e.target.checked)}/></label>

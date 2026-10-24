@@ -365,6 +365,8 @@ const slopedLineBreakoutBuyGroup = document.getElementById('sloped-line-breakout
 const slopedLineBreakoutBuyCheckbox = document.getElementById('sloped-line-breakout-buy-checkbox');
 const slopedEntryBarrierSellGroup = document.getElementById('sloped-entry-barrier-sell-group');
 const slopedEntryBarrierSellCheckbox = document.getElementById('sloped-entry-barrier-sell-checkbox');
+const slopedPeakReclaimFullCandleGroup = document.getElementById('sloped-peak-reclaim-full-candle-group');
+const slopedPeakReclaimFullCandleCheckbox = document.getElementById('sloped-peak-reclaim-full-candle-checkbox');
 const slopedFullCandleGroup = document.getElementById('sloped-full-candle-group');
 const slopedFullCandleCheckbox = document.getElementById('sloped-full-candle-checkbox');
 const slopedWickGroup = document.getElementById('sloped-wick-group');
@@ -534,7 +536,7 @@ function getSlopedAccountingQueryParams() {
 }
 
 function getSlopedSignalQueryParams() {
-    return `&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}`;
+    return `&peak_reclaim_full_candle=${Boolean(slopedPeakReclaimFullCandleCheckbox?.checked)}&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}`;
 }
 
 function getReentryQueryParams() {
@@ -551,6 +553,7 @@ function syncChannelMultVisibility(strategy) {
     if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLowerReclaimGroup) channelLowerReclaimGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
+    if (slopedPeakReclaimFullCandleGroup) slopedPeakReclaimFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAccountingGroup) slopedAccountingGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedLineBreakoutBuyGroup) slopedLineBreakoutBuyGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedEntryBarrierSellGroup) slopedEntryBarrierSellGroup.style.display = isSloped ? 'flex' : 'none';
@@ -626,6 +629,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
                 if (slopedCompoundingCheckbox) slopedCompoundingCheckbox.checked = p.compounding !== false;
                 if (slopedInitialCapitalInput) slopedInitialCapitalInput.value = String(p.initial_capital ?? 10000);
             }
+            if (slopedPeakReclaimFullCandleCheckbox) slopedPeakReclaimFullCandleCheckbox.checked = Boolean(p.peak_reclaim_full_candle);
             if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
                 slopedFullCandleCheckbox.checked = p.full_candle;
             }
@@ -2766,7 +2770,7 @@ async function updateAdvDashboard() {
     } catch (err) {
         console.error('[TV] Chart initialization failed:', err);
     }
-    [slopedLineBreakoutBuyCheckbox, slopedEntryBarrierSellCheckbox, slopedCompoundingCheckbox, slopedInitialCapitalInput].forEach(control => {
+    [slopedLineBreakoutBuyCheckbox, slopedEntryBarrierSellCheckbox, slopedPeakReclaimFullCandleCheckbox, slopedCompoundingCheckbox, slopedInitialCapitalInput].forEach(control => {
         control?.addEventListener('change', () => {
             if (control === slopedInitialCapitalInput && !control.reportValidity()) return;
             updateDashboard();

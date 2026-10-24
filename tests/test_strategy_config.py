@@ -12,6 +12,7 @@ class TestStrategyConfig(unittest.TestCase):
         aapl_cfg = get_best_parameters("sloped_lines", "AAPL")
         self.assertIsNotNone(aapl_cfg)
         params = aapl_cfg["parameters"]
+        self.assertFalse(params["peak_reclaim_full_candle"])
         self.assertTrue(params["compounding"])
         self.assertEqual(params["initial_capital"], 10000)
         self.assertTrue(params["line_breakout_buy"])
@@ -40,6 +41,7 @@ class TestStrategyConfig(unittest.TestCase):
         nvda_cfg = get_best_parameters("sloped_lines", "NVDA")
         self.assertIsNotNone(nvda_cfg)
         params = nvda_cfg["parameters"]
+        self.assertFalse(params["peak_reclaim_full_candle"])
         self.assertTrue(params["compounding"])
         self.assertEqual(params["initial_capital"], 10000)
         self.assertTrue(params["line_breakout_buy"])

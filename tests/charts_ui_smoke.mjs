@@ -59,6 +59,14 @@ try{
   await page.getByRole('checkbox',{name:'Show strategy'}).check();
   assert.equal(await page.getByRole('checkbox',{name:'Line Breakout Buy',exact:true}).isChecked(),false);
   assert.equal(await page.getByRole('checkbox',{name:'Entry Barrier Sell',exact:true}).isChecked(),false);
+  const peakFull=page.getByRole('checkbox',{name:'Peak Reclaim Full Candle',exact:true});
+  const generalFull=page.getByRole('checkbox',{name:'Full candle',exact:true});
+  assert.equal(await peakFull.isChecked(),false);
+  await peakFull.check();
+  assert.equal(await generalFull.isChecked(),false);
+  await generalFull.check();
+  assert.equal(await peakFull.isChecked(),true);
+  await generalFull.uncheck();
   await page.getByRole('checkbox',{name:'Line Breakout Buy',exact:true}).check();
   await page.getByRole('checkbox',{name:'Entry Barrier Sell',exact:true}).check();
   await page.getByRole('checkbox',{name:'Staggered Lines'}).check();
@@ -79,6 +87,7 @@ try{
   assert.equal(await page.getByRole('checkbox',{name:'Entry Barrier Sell',exact:true}).isChecked(),true);
   assert.equal(await page.getByRole('checkbox',{name:'Compounding',exact:true}).isChecked(),true);
   assert.equal(await page.getByLabel('Starting Capital ($)',{exact:true}).inputValue(),'10000');
+  assert.equal(await peakFull.isChecked(),false);
   assert.ok(await page.getByText('Saved window: 2025-09-26 → 2026-09-25').isVisible());
   await page.locator('.chart-widget').nth(1).locator('.chart-widget__body').click({position:{x:20,y:20}});
   assert.equal(await page.locator('.chart-widget').first().locator('.strategy-toggle').evaluate((element)=>element.classList.contains('enabled')),false);

@@ -593,7 +593,7 @@ function resetBestParamsButton() {
     bestParamsBadge.title = 'Load saved best parameters for this ticker and strategy';
 }
 
-async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false, restoreSignalSwitches = false } = {}) {
+async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false, restoreSavedSettings = false } = {}) {
     const requestGeneration = ++bestParametersRequestGeneration;
     if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = symbol ? 'flex' : 'none';
     if (!strategy || !symbol || strategy === 'all') {
@@ -621,146 +621,146 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             return false;
         }
 
-        const p = result.data.parameters;
+        // Loading badge metadata must not change the active setup. Only an
+        // explicit Saved Best click restores strategy controls and captured dates.
+        if (restoreSavedSettings) {
+            const p = result.data.parameters;
 
-        // Sloped Lines strategy controls
-        if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
-            if (restoreSignalSwitches) {
+            // Sloped Lines strategy controls
+            if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
                 if (slopedCompoundingCheckbox) slopedCompoundingCheckbox.checked = p.compounding !== false;
                 if (slopedInitialCapitalInput) slopedInitialCapitalInput.value = String(p.initial_capital ?? 10000);
-            }
-            if (slopedPeakReclaimFullCandleCheckbox) slopedPeakReclaimFullCandleCheckbox.checked = Boolean(p.peak_reclaim_full_candle);
-            if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
-                slopedFullCandleCheckbox.checked = p.full_candle;
-            }
-            if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
-                slopedWickCheckbox.checked = p.use_wick;
-            }
-            if (restoreSignalSwitches && slopedLineBreakoutBuyCheckbox && p.line_breakout_buy !== undefined) slopedLineBreakoutBuyCheckbox.checked = Boolean(p.line_breakout_buy);
-            if (restoreSignalSwitches && slopedEntryBarrierSellCheckbox && p.entry_barrier_sell !== undefined) slopedEntryBarrierSellCheckbox.checked = Boolean(p.entry_barrier_sell);
-            if (slopedGapUpCheckbox) {
-                slopedGapUpCheckbox.checked = Boolean(p.gap_up);
-            }
-            if (slopedGapDownCheckbox) {
-                slopedGapDownCheckbox.checked = Boolean(p.gap_down);
-            }
-            if (slopedStaggeredLinesCheckbox) {
-                slopedStaggeredLinesCheckbox.checked = Boolean(p.staggered_lines);
-            }
-            if (slopedTrendlineLabelsCheckbox) {
-                slopedTrendlineLabelsCheckbox.checked = Boolean(p.trendline_labels);
-            }
-            if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
-                slopedConfirmCandlesSelect.value = String(p.confirm_candles);
-            }
-            if (p.pivot_lookback !== undefined && slopedPivotLookbackSelect) {
-                slopedPivotLookbackSelect.value = String(p.pivot_lookback);
-            } else if (slopedPivotLookbackSelect) {
-                slopedPivotLookbackSelect.value = '5';
-            }
-            if (slopedAnchorSourceSelect) {
-                slopedAnchorSourceSelect.value = p.anchor_source || 'confirmed_pivots';
-            }
-            if (slopedValidationBoundarySelect) {
-                slopedValidationBoundarySelect.value = p.validation_boundary || 'body';
-            }
-            if (slopedToleranceSelect) {
-                slopedToleranceSelect.value = String(p.trendline_tolerance ?? 0);
-            }
-            if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
-                slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
-            }
-            if (p.line_angle !== undefined && slopedLineAngleSelect) {
-                const angleTarget = parseFloat(p.line_angle);
-                for (const opt of slopedLineAngleSelect.options) {
-                    if (parseFloat(opt.value) === angleTarget) {
-                        slopedLineAngleSelect.value = opt.value;
-                        break;
+                if (slopedPeakReclaimFullCandleCheckbox) slopedPeakReclaimFullCandleCheckbox.checked = Boolean(p.peak_reclaim_full_candle);
+                if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
+                    slopedFullCandleCheckbox.checked = p.full_candle;
+                }
+                if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
+                    slopedWickCheckbox.checked = p.use_wick;
+                }
+                if (slopedLineBreakoutBuyCheckbox && p.line_breakout_buy !== undefined) slopedLineBreakoutBuyCheckbox.checked = Boolean(p.line_breakout_buy);
+                if (slopedEntryBarrierSellCheckbox && p.entry_barrier_sell !== undefined) slopedEntryBarrierSellCheckbox.checked = Boolean(p.entry_barrier_sell);
+                if (slopedGapUpCheckbox) {
+                    slopedGapUpCheckbox.checked = Boolean(p.gap_up);
+                }
+                if (slopedGapDownCheckbox) {
+                    slopedGapDownCheckbox.checked = Boolean(p.gap_down);
+                }
+                if (slopedStaggeredLinesCheckbox) {
+                    slopedStaggeredLinesCheckbox.checked = Boolean(p.staggered_lines);
+                }
+                if (slopedTrendlineLabelsCheckbox) {
+                    slopedTrendlineLabelsCheckbox.checked = Boolean(p.trendline_labels);
+                }
+                if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
+                    slopedConfirmCandlesSelect.value = String(p.confirm_candles);
+                }
+                if (p.pivot_lookback !== undefined && slopedPivotLookbackSelect) {
+                    slopedPivotLookbackSelect.value = String(p.pivot_lookback);
+                } else if (slopedPivotLookbackSelect) {
+                    slopedPivotLookbackSelect.value = '5';
+                }
+                if (slopedAnchorSourceSelect) {
+                    slopedAnchorSourceSelect.value = p.anchor_source || 'confirmed_pivots';
+                }
+                if (slopedValidationBoundarySelect) {
+                    slopedValidationBoundarySelect.value = p.validation_boundary || 'body';
+                }
+                if (slopedToleranceSelect) {
+                    slopedToleranceSelect.value = String(p.trendline_tolerance ?? 0);
+                }
+                if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
+                    slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
+                }
+                if (p.line_angle !== undefined && slopedLineAngleSelect) {
+                    const angleTarget = parseFloat(p.line_angle);
+                    for (const opt of slopedLineAngleSelect.options) {
+                        if (parseFloat(opt.value) === angleTarget) {
+                            slopedLineAngleSelect.value = opt.value;
+                            break;
+                        }
                     }
                 }
+                if (p.stop_loss_mode && slopedStopLossSelect) {
+                    slopedStopLossSelect.value = p.stop_loss_mode;
+                }
+                if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
+                    slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
+                }
+                if (slopedReentryModeSelect) {
+                    const reentryMode = p.reentry_mode;
+                    slopedReentryModeSelect.value = ['none', 'any', 'any_two', 'any_three', 'all'].includes(reentryMode)
+                        ? reentryMode
+                        : 'none';
+                }
+                if (slopedReentryRsiCheckbox) {
+                    slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);
+                }
+                if (slopedReentryEmaCheckbox) {
+                    slopedReentryEmaCheckbox.checked = Boolean(p.reentry_ema);
+                }
+                if (slopedReentryPriceCheckbox) {
+                    slopedReentryPriceCheckbox.checked = Boolean(p.reentry_price_breakout);
+                }
+                if (slopedReentryVolumeCheckbox) {
+                    slopedReentryVolumeCheckbox.checked = Boolean(p.reentry_volume);
+                }
+                validateReentrySelection();
             }
-            if (p.stop_loss_mode && slopedStopLossSelect) {
-                slopedStopLossSelect.value = p.stop_loss_mode;
-            }
-            if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
-                slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
-            }
-            if (slopedReentryModeSelect) {
-                const reentryMode = p.reentry_mode;
-                slopedReentryModeSelect.value = ['none', 'any', 'any_two', 'any_three', 'all'].includes(reentryMode)
-                    ? reentryMode
-                    : 'none';
-            }
-            if (slopedReentryRsiCheckbox) {
-                slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);
-            }
-            if (slopedReentryEmaCheckbox) {
-                slopedReentryEmaCheckbox.checked = Boolean(p.reentry_ema);
-            }
-            if (slopedReentryPriceCheckbox) {
-                slopedReentryPriceCheckbox.checked = Boolean(p.reentry_price_breakout);
-            }
-            if (slopedReentryVolumeCheckbox) {
-                slopedReentryVolumeCheckbox.checked = Boolean(p.reentry_volume);
-            }
-            validateReentrySelection();
-        }
 
-        // Enhanced Channel strategy controls
-        if (strategy === 'enhanced_channel') {
-            if (p.channel_multiplier !== undefined && channelMultSelect) {
-                channelMultSelect.value = String(p.channel_multiplier);
-            } else if (p.channel_mult !== undefined && channelMultSelect) {
-                channelMultSelect.value = String(p.channel_mult);
+            // Enhanced Channel strategy controls
+            if (strategy === 'enhanced_channel') {
+                if (p.channel_multiplier !== undefined && channelMultSelect) {
+                    channelMultSelect.value = String(p.channel_multiplier);
+                } else if (p.channel_mult !== undefined && channelMultSelect) {
+                    channelMultSelect.value = String(p.channel_mult);
+                }
+                if (p.lookback !== undefined && channelLookbackSelect) {
+                    channelLookbackSelect.value = String(p.lookback);
+                }
+                if (typeof p.use_stop_loss === 'boolean' && channelStoplossCheckbox) {
+                    channelStoplossCheckbox.checked = p.use_stop_loss;
+                }
+                if (typeof p.midline_cross === 'boolean' && channelMidlineCheckbox) {
+                    channelMidlineCheckbox.checked = p.midline_cross;
+                }
+                if (typeof p.lower_reclaim === 'boolean' && channelLowerReclaimCheckbox) {
+                    channelLowerReclaimCheckbox.checked = p.lower_reclaim;
+                }
+                if (p.channel_curl_mode && channelCurlSelect) {
+                    channelCurlSelect.value = p.channel_curl_mode;
+                }
             }
-            if (p.lookback !== undefined && channelLookbackSelect) {
-                channelLookbackSelect.value = String(p.lookback);
-            }
-            if (typeof p.use_stop_loss === 'boolean' && channelStoplossCheckbox) {
-                channelStoplossCheckbox.checked = p.use_stop_loss;
-            }
-            if (typeof p.midline_cross === 'boolean' && channelMidlineCheckbox) {
-                channelMidlineCheckbox.checked = p.midline_cross;
-            }
-            if (typeof p.lower_reclaim === 'boolean' && channelLowerReclaimCheckbox) {
-                channelLowerReclaimCheckbox.checked = p.lower_reclaim;
-            }
-            if (p.channel_curl_mode && channelCurlSelect) {
-                channelCurlSelect.value = p.channel_curl_mode;
-            }
-        }
 
-        // Timeframe & Resolution if specified in config
-        if (result.data.timeframe && result.data.timeframe !== activeResolution) {
-            activeResolution = result.data.timeframe;
-            document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.res === activeResolution);
-            });
-        }
-        const resolutionLabels = {
-            '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
-            '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
-        };
-        const resolutionHint = document.getElementById('active-res-hint');
-        if (resolutionHint && result.data.timeframe) {
-            resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
-        }
-        if (result.data.period && result.data.period !== activeTimeframe) {
-            activeTimeframe = result.data.period;
-            document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
-            });
-        }
-        const timeframeLabels = {
-            '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
-            '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
-        };
-        const timeframeHint = document.getElementById('active-range-hint');
-        if (timeframeHint && result.data.period) {
-            timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
-        }
+            // Timeframe & Resolution if specified in config
+            if (result.data.timeframe && result.data.timeframe !== activeResolution) {
+                activeResolution = result.data.timeframe;
+                document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.res === activeResolution);
+                });
+            }
+            const resolutionLabels = {
+                '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
+                '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
+            };
+            const resolutionHint = document.getElementById('active-res-hint');
+            if (resolutionHint && result.data.timeframe) {
+                resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
+            }
+            if (result.data.period && result.data.period !== activeTimeframe) {
+                activeTimeframe = result.data.period;
+                document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
+                });
+            }
+            const timeframeLabels = {
+                '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
+                '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
+            };
+            const timeframeHint = document.getElementById('active-range-hint');
+            if (timeframeHint && result.data.period) {
+                timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
+            }
 
-        if (restoreSignalSwitches) {
             const window = result.data.backtest_window;
             setCapturedBacktestWindow(window?.start_date && window?.end_date
                 ? { ...window, symbol, strategy } : null);
@@ -779,7 +779,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             const baselineContext = [result.data.timeframe, result.data.period].filter(Boolean).join(' / ').toUpperCase();
             const updatedText = result.data.last_updated ? ` · captured ${result.data.last_updated}` : '';
             bestParamsBadge.innerHTML = `<span class="star-icon">★</span> Saved Best${pnlText} baseline`;
-            bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
+            bestParamsBadge.title = `Click to apply this preset. Changing tickers retains your active settings. Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
         if (showFeedback) {
@@ -1640,7 +1640,7 @@ async function loadFilters() {
                 try {
                     await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value, {
                         showFeedback: true,
-                        restoreSignalSwitches: true,
+                        restoreSavedSettings: true,
                         refresh: true,
                     });
                 } finally {
@@ -1649,7 +1649,9 @@ async function loadFilters() {
             };
         }
         tickerSelect.onchange = async () => {
-            setCapturedBacktestWindow();
+            if (capturedBacktestWindow) {
+                setCapturedBacktestWindow({ ...capturedBacktestWindow, symbol: tickerSelect.value });
+            }
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();

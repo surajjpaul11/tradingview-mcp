@@ -207,8 +207,13 @@ try {
         && chart.dataset.symbol === expectedSymbol
         && chart.dataset.resolution === '1d'
         && chart.dataset.timeframe === '1y'
-        && badge?.title.includes(`for ${expectedSymbol} `);
+        && badge?.title.includes(expectedSymbol);
     }, symbol, { timeout: 90_000 });
+    const savedResponse = page.waitForResponse(response => response.url().includes('/api/stats?')
+      && new URL(response.url()).searchParams.get('symbol') === symbol);
+    await page.locator('#best-params-badge').click();
+    await savedResponse;
+    await waitForAnyChart(page);
     return page.evaluate(() => ({
       badge: document.querySelector('#best-params-badge')?.textContent.trim(),
       confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
@@ -234,9 +239,9 @@ try {
     badge: '★ Saved Best (+17.07%) baseline',
     confirmation: '1',
     pivotLookback: '5',
-    anchorSource: 'confirmed_pivots',
-    validationBoundary: 'body',
-    tolerance: '0',
+    anchorSource: 'any_valid_candle',
+    validationBoundary: 'close',
+    tolerance: '0.015',
     gapUp: false,
     gapDown: false,
     staggeredLines: false,
@@ -247,7 +252,7 @@ try {
     resolution: '1d',
     timeframe: '1y',
     resolutionHint: 'Daily (1D)',
-    timeframeHint: '1-Year (1Y)',
+    timeframeHint: '2025-09-23 → 2026-09-22',
   });
   assert.deepEqual(await readSavedBestState('AAPL'), {
     badge: '★ Saved Best (+49.01%) baseline',
@@ -266,7 +271,7 @@ try {
     resolution: '1d',
     timeframe: '1y',
     resolutionHint: 'Daily (1D)',
-    timeframeHint: '1-Year (1Y)',
+    timeframeHint: '2025-09-26 → 2026-09-25',
   });
 
   const manualToleranceResponse = page.waitForResponse(

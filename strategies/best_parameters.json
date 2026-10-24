@@ -124,7 +124,19 @@
             "entry_barrier_sell": true,
             "compounding": true,
             "initial_capital": 10000,
-            "peak_reclaim_full_candle": false
+            "peak_reclaim_full_candle": false,
+            "pivot_lookback": 5,
+            "anchor_source": "any_valid_candle",
+            "validation_boundary": "close",
+            "trendline_tolerance": 0.015,
+            "gap_up": false,
+            "gap_down": false,
+            "staggered_lines": false,
+            "reentry_mode": "none",
+            "reentry_rsi": false,
+            "reentry_ema": false,
+            "reentry_price_breakout": false,
+            "reentry_volume": false
           },
           "performance": {
             "total_pnl": 1707.35,
@@ -135,8 +147,21 @@
             "total_trades": 11,
             "initial_capital": 10000.0
           },
-          "notes": "Optimal parameter set yielding +17.07% return with high win rate (72.7% across 11 trades) vs +17.89% buy & hold.",
-          "last_updated": "2026-09-23"
+          "notes": "Historical saved return: +17.07% across 11 trades, with 72.7% win rate. Restored original any-valid-candle anchors, close validation, 1.5% tolerance and the 2025-09-23 through 2026-09-22 daily regular-market window. On current Yahoo historical candles, both the original strategy implementation and current engine reproduce +17.06% across 11 trades (72.7% win rate; buy and hold +17.87%). The exact original candle snapshot was not retained; the historical 17.07% record is preserved.",
+          "last_updated": "2026-09-23",
+          "backtest_window": {
+            "start_date": "2025-09-23",
+            "end_date": "2026-09-22",
+            "trading_window": "regular market"
+          },
+          "last_verified": {
+            "date": "2026-10-24",
+            "total_pnl_pct": 17.06,
+            "total_trades": 11,
+            "win_rate_pct": 72.7,
+            "buy_and_hold_pct": 17.87,
+            "original_engine_return_pct": 17.06
+          }
         }
       }
     }

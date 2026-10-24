@@ -81,6 +81,15 @@ class TestStrategyConfig(unittest.TestCase):
     def test_get_best_parameters_spy(self):
         spy_cfg = get_best_parameters("sloped_lines", "SPY")
         self.assertIsNotNone(spy_cfg)
+        params = spy_cfg["parameters"]
+        self.assertEqual(params["anchor_source"], "any_valid_candle")
+        self.assertEqual(params["validation_boundary"], "close")
+        self.assertEqual(params["trendline_tolerance"], 0.015)
+        self.assertEqual(params["pivot_lookback"], 5)
+        self.assertEqual(params["reentry_mode"], "none")
+        self.assertFalse(params["reentry_price_breakout"])
+        self.assertEqual(spy_cfg["backtest_window"]["start_date"], "2025-09-23")
+        self.assertEqual(spy_cfg["backtest_window"]["end_date"], "2026-09-22")
         perf = spy_cfg["performance"]
         self.assertEqual(perf["total_pnl_pct"], 17.07)
         self.assertEqual(perf["buy_and_hold_pct"], 17.89)

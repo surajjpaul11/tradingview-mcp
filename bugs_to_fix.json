@@ -65,6 +65,33 @@
         "commit": "feeb2c0",
         "date": "2026-09-26"
       }
+    },
+    {
+      "id": "BUG-003",
+      "title": "SPY Saved Best omits historical date window and line validation settings",
+      "fixed": false,
+      "found": "2026-10-24",
+      "branch": "strategy-tweaks",
+      "symptom": "Saved Best displays the historical 17.07% label while the current SPY run returns 7.73% across only two trades.",
+      "reproduce": [
+        "Select SPY, Sloped Lines, 1Y and 1D.",
+        "Click Saved Best and compare the P&L with the saved historical return."
+      ],
+      "cause": "The legacy preset has no captured dates, anchor_source or trendline_tolerance. Current defaults use confirmed pivots and zero tolerance, whereas the original engine used candidate candles and 1.5% tolerance with close validation. The original return was recorded on an older one-year window."
+    },
+    {
+      "id": "BUG-004",
+      "title": "Changing ticker automatically overwrites active strategy controls with saved parameters",
+      "fixed": false,
+      "found": "2026-10-24",
+      "branch": "strategy-tweaks",
+      "symptom": "Switching AAPL to SPY clears an enabled Close > 5-Bar High recovery checkbox without clicking Saved Best.",
+      "reproduce": [
+        "Enable Recovery Re-entry Any and Close > 5-Bar High on AAPL.",
+        "Select SPY without clicking Saved Best.",
+        "Observe recovery settings reset to the SPY preset."
+      ],
+      "cause": "Ticker changes call applyBestParametersIfAvailable, which applies saved controls, resolution and range while fetching the preset badge."
     }
   ]
 }

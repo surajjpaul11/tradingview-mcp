@@ -16,7 +16,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
 const strategyRequests = [];
 const savedWindow = { start_date: '2025-09-26', end_date: '2026-09-25', trading_window: 'regular market' };
-const savedSignals = { reentry_mode: 'any', reentry_price_breakout: true, reentry_rsi: false, reentry_ema: false, reentry_volume: false, line_breakout_buy: true, entry_barrier_sell: true };
+const savedSignals = { confirm_candles: 0, full_candle: false, reentry_mode: 'any', reentry_price_breakout: true, reentry_rsi: false, reentry_ema: false, reentry_volume: false, line_breakout_buy: true, entry_barrier_sell: true };
 page.setDefaultTimeout(10000);
 page.on('pageerror', error => errors.push(error.message));
 await page.route('**/*', async route => {
@@ -24,8 +24,10 @@ await page.route('**/*', async route => {
   if (url.hostname !== 'dashboard.test') return route.abort();
   if (url.pathname.startsWith('/api/')) {
     strategyRequests.push({ path: url.pathname, query: url.searchParams });
-    const payload = url.pathname === '/api/filters' ? { symbols: ['AAPL'], strategies: ['sloped_lines'] }
-      : url.pathname === '/api/best-parameters' ? { found: true, data: { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } }
+    const payload = url.pathname === '/api/filters' ? { symbols: ['AAPL', 'SPY', 'TEST'], strategies: ['sloped_lines'] }
+      : url.pathname === '/api/best-parameters' ? (url.searchParams.get('symbol') === 'TEST' ? { found: false } : { found: true, data: url.searchParams.get('symbol') === 'SPY'
+        ? { timeframe: '1h', period: '3mo', backtest_window: { ...savedWindow, start_date: '2025-09-23', end_date: '2026-09-22' }, parameters: { ...savedSignals, full_candle: true, confirm_candles: 3, reentry_mode: 'none', reentry_price_breakout: false }, performance: { total_pnl_pct: 17.07 } }
+        : { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } })
       : url.pathname === '/api/candles' ? { candles }
       : url.pathname === '/api/trades' ? { trades: [] }
       : url.pathname === '/api/trendlines' ? { trendlines: [] }
@@ -108,6 +110,42 @@ try {
     assert.ok(strategyRequests.some(request => request.path === path
       && request.query.get('start_date') === savedWindow.start_date && request.query.get('end_date') === savedWindow.end_date));
   }
+  const settingsSnapshot = () => page.evaluate(() => ({
+    controls: [...document.querySelectorAll('input[id^="sloped-"], select[id^="sloped-"]')].map(control =>
+      [control.id, control.type === 'checkbox' ? control.checked : control.value]),
+    resolution: activeResolution, range: activeTimeframe, dates: getCapturedWindowQuery(),
+    session: getActiveTradingWindow(),
+  }));
+  const activeSettings = await settingsSnapshot();
+  for (const symbol of ['SPY', 'TEST', 'AAPL']) {
+    const switched = page.waitForResponse(response => response.url().includes('/api/stats?')
+      && new URL(response.url()).searchParams.get('symbol') === symbol);
+    await page.locator('#ticker-select').selectOption(symbol);
+    await switched;
+    assert.deepEqual(await settingsSnapshot(), activeSettings, `${symbol}: switching must retain every active control and date window`);
+  }
+  // Explicit Saved Best remains the operation that replaces the active setup.
+  await page.locator('#ticker-select').selectOption('SPY');
+  await page.waitForFunction(() => document.querySelector('#best-params-badge').textContent.includes('17.07'));
+  const spySaved = page.waitForResponse(response => response.url().includes('/api/stats?')
+    && response.url().includes('symbol=SPY') && response.url().includes('start_date=2025-09-23'));
+  await page.locator('#best-params-badge').click();
+  await spySaved;
+  assert.equal(await page.locator('#sloped-reentry-price-checkbox').isChecked(), false);
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
+  assert.equal(await generalFull.isChecked(), true);
+  assert.equal(await page.locator('#sloped-confirm-candles-select').inputValue(), '3');
+  const spySettings = await settingsSnapshot();
+  const backToAapl = page.waitForResponse(response => response.url().includes('/api/stats?')
+    && response.url().includes('symbol=AAPL'));
+  await page.locator('#ticker-select').selectOption('AAPL');
+  await backToAapl;
+  assert.deepEqual(await settingsSnapshot(), spySettings);
+  const aaplSaved = page.waitForResponse(response => response.url().includes('/api/stats?')
+    && response.url().includes('symbol=AAPL') && response.url().includes('start_date=2025-09-26'));
+  await page.locator('#best-params-badge').click();
+  await aaplSaved;
+  assert.equal(await page.locator('#sloped-reentry-price-checkbox').isChecked(), true);
   const rollingResponse = page.waitForResponse(response => response.url().includes('/api/stats?') && !response.url().includes('start_date='));
   await page.getByRole('button', { name: 'Use rolling range', exact: true }).click();
   await rollingResponse;

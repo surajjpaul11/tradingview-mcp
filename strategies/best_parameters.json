@@ -27,19 +27,24 @@
             "entry_barrier_sell": true,
             "compounding": true,
             "initial_capital": 10000,
-            "peak_reclaim_full_candle": false
+            "peak_reclaim_full_candle": false,
+            "reentry_mode": "any",
+            "reentry_price_breakout": true,
+            "reentry_rsi": false,
+            "reentry_ema": false,
+            "reentry_volume": false
           },
           "performance": {
-            "total_pnl": 4761.26,
-            "total_pnl_pct": 47.61,
+            "total_pnl": 4900.7,
+            "total_pnl_pct": 49.01,
             "buy_and_hold_pct": 34.01,
-            "beats_bnh_pct": 13.6,
+            "beats_bnh_pct": 15.0,
             "win_rate_pct": 42.1,
             "total_trades": 38,
-            "initial_capital": 10000.0
+            "initial_capital": 10000
           },
-          "notes": "Saved baseline parameter set yielding +47.61% on the fixed AAPL one-year dataset, using any valid candle anchors, close validation, and 1.5% line tolerance.",
-          "last_updated": "2026-09-27",
+          "notes": "Saved AAPL preset with Recovery Re-entry set to Any and only Close > 5-Bar High enabled. Reproduced +49.01% on 2025-09-26 through 2026-09-25 daily regular-market candles with compounding and $10,000 starting capital, improving the prior 47.61% preset. Other recovery signals and Peak Reclaim Full Candle remain off.",
+          "last_updated": "2026-10-24",
           "backtest_window": {
             "start_date": "2025-09-26",
             "end_date": "2026-09-25",

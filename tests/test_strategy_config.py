@@ -30,10 +30,15 @@ class TestStrategyConfig(unittest.TestCase):
         self.assertEqual(params["trendline_tolerance"], 0.015)
 
         perf = aapl_cfg["performance"]
-        self.assertEqual(perf["total_pnl"], 4761.26)
-        self.assertEqual(perf["total_pnl_pct"], 47.61)
+        self.assertEqual(params["reentry_mode"], "any")
+        self.assertTrue(params["reentry_price_breakout"])
+        self.assertFalse(params["reentry_rsi"])
+        self.assertFalse(params["reentry_ema"])
+        self.assertFalse(params["reentry_volume"])
+        self.assertEqual(perf["total_pnl"], 4900.70)
+        self.assertEqual(perf["total_pnl_pct"], 49.01)
         self.assertEqual(perf["buy_and_hold_pct"], 34.01)
-        self.assertEqual(perf["beats_bnh_pct"], 13.60)
+        self.assertEqual(perf["beats_bnh_pct"], 15.00)
         self.assertEqual(perf["win_rate_pct"], 42.1)
         self.assertEqual(perf["total_trades"], 38)
 

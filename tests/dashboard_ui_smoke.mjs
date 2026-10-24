@@ -250,7 +250,7 @@ try {
     timeframeHint: '1-Year (1Y)',
   });
   assert.deepEqual(await readSavedBestState('AAPL'), {
-    badge: '★ Saved Best (+47.61%) baseline',
+    badge: '★ Saved Best (+49.01%) baseline',
     confirmation: '0',
     pivotLookback: '5',
     anchorSource: 'any_valid_candle',

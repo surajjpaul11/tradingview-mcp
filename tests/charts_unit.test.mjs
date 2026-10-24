@@ -31,6 +31,11 @@ test('signal switches default off and reach strategy requests independently',()=
   query=strategyQuery(symbol,pane);
   assert.equal(query.get('line_breakout_buy'),'true');
   assert.equal(query.get('entry_barrier_sell'),'false');
+  pane.strategy.parameters.reentry_mode='any';
+  pane.strategy.parameters.reentry_price_breakout=true;
+  query=strategyQuery(symbol,pane);
+  assert.equal(query.get('reentry_mode'),'any');
+  assert.equal(query.get('reentry_price_breakout'),'true');
   pane.backtestWindow={start_date:'2025-09-26',end_date:'2026-09-25'};
   query=strategyQuery(symbol,pane);
   assert.equal(query.get('start_date'),'2025-09-26');

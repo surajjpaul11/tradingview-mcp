@@ -16,7 +16,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
 const strategyRequests = [];
 const savedWindow = { start_date: '2025-09-26', end_date: '2026-09-25', trading_window: 'regular market' };
-const savedSignals = { line_breakout_buy: true, entry_barrier_sell: true };
+const savedSignals = { reentry_mode: 'any', reentry_price_breakout: true, reentry_rsi: false, reentry_ema: false, reentry_volume: false, line_breakout_buy: true, entry_barrier_sell: true };
 page.setDefaultTimeout(10000);
 page.on('pageerror', error => errors.push(error.message));
 await page.route('**/*', async route => {
@@ -25,7 +25,7 @@ await page.route('**/*', async route => {
   if (url.pathname.startsWith('/api/')) {
     strategyRequests.push({ path: url.pathname, query: url.searchParams });
     const payload = url.pathname === '/api/filters' ? { symbols: ['AAPL'], strategies: ['sloped_lines'] }
-      : url.pathname === '/api/best-parameters' ? { found: true, data: { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 47.61 } } }
+      : url.pathname === '/api/best-parameters' ? { found: true, data: { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } }
       : url.pathname === '/api/candles' ? { candles }
       : url.pathname === '/api/trades' ? { trades: [] }
       : url.pathname === '/api/trendlines' ? { trendlines: [] }
@@ -90,11 +90,17 @@ try {
   assert.equal(await peakFull.isChecked(), false);
   assert.equal(await compounding.isChecked(), true);
   assert.equal(await capital.inputValue(), '10000');
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any');
+  assert.equal(await page.locator('#sloped-reentry-price-checkbox').isChecked(), true);
+  assert.equal(await page.locator('#sloped-reentry-rsi-checkbox').isChecked(), false);
+  assert.equal(await page.locator('#sloped-reentry-ema-checkbox').isChecked(), false);
+  assert.equal(await page.locator('#sloped-reentry-volume-checkbox').isChecked(), false);
   assert.equal(await breakout.isChecked(), true);
   assert.equal(await barrier.isChecked(), true);
   for (const path of ['/api/trades', '/api/stats', '/api/trendlines']) {
     assert.ok(strategyRequests.some(request => request.path === path
-      && request.query.get('line_breakout_buy') === 'true' && request.query.get('entry_barrier_sell') === 'true'));
+      && request.query.get('line_breakout_buy') === 'true' && request.query.get('entry_barrier_sell') === 'true'
+      && request.query.get('reentry_mode') === 'any' && request.query.get('reentry_price_breakout') === 'true'));
   }
   assert.equal(await page.locator('#saved-window-controls').isVisible(), true);
   assert.match(await page.locator('#saved-window-label').innerText(), /2025-09-26.*2026-09-25/);

@@ -22,7 +22,11 @@
             "pivot_lookback": 5,
             "anchor_source": "any_valid_candle",
             "validation_boundary": "close",
-            "trendline_tolerance": 0.015
+            "trendline_tolerance": 0.015,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000
           },
           "performance": {
             "total_pnl": 4761.26,
@@ -34,7 +38,12 @@
             "initial_capital": 10000.0
           },
           "notes": "Saved baseline parameter set yielding +47.61% on the fixed AAPL one-year dataset, using any valid candle anchors, close validation, and 1.5% line tolerance.",
-          "last_updated": "2026-09-27"
+          "last_updated": "2026-09-27",
+          "backtest_window": {
+            "start_date": "2025-09-26",
+            "end_date": "2026-09-25",
+            "trading_window": "regular market"
+          }
         },
         "NVDA": {
           "timeframe": "1d",
@@ -46,7 +55,11 @@
             "inverse_color_trigger": true,
             "line_angle": 3.0,
             "stop_loss_mode": "barrier_trap_reentry",
-            "min_anchor_bars": 3
+            "min_anchor_bars": 3,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000
           },
           "performance": {
             "total_pnl": 5576.99,
@@ -70,7 +83,11 @@
             "inverse_color_trigger": false,
             "line_angle": 0.0,
             "stop_loss_mode": "barrier_trap_reentry",
-            "min_anchor_bars": 4
+            "min_anchor_bars": 4,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000
           },
           "performance": {
             "total_pnl": 38474.51,
@@ -94,7 +111,11 @@
             "inverse_color_trigger": false,
             "line_angle": 0.0,
             "stop_loss_mode": "atr_stop_buffer",
-            "min_anchor_bars": 2
+            "min_anchor_bars": 2,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000
           },
           "performance": {
             "total_pnl": 1707.35,

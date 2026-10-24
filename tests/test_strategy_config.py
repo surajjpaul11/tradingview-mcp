@@ -12,6 +12,10 @@ class TestStrategyConfig(unittest.TestCase):
         aapl_cfg = get_best_parameters("sloped_lines", "AAPL")
         self.assertIsNotNone(aapl_cfg)
         params = aapl_cfg["parameters"]
+        self.assertTrue(params["compounding"])
+        self.assertEqual(params["initial_capital"], 10000)
+        self.assertTrue(params["line_breakout_buy"])
+        self.assertTrue(params["entry_barrier_sell"])
         self.assertEqual(params["full_candle"], False)
         self.assertEqual(params["use_wick"], False)
         self.assertEqual(params["confirm_candles"], 0)
@@ -36,6 +40,10 @@ class TestStrategyConfig(unittest.TestCase):
         nvda_cfg = get_best_parameters("sloped_lines", "NVDA")
         self.assertIsNotNone(nvda_cfg)
         params = nvda_cfg["parameters"]
+        self.assertTrue(params["compounding"])
+        self.assertEqual(params["initial_capital"], 10000)
+        self.assertTrue(params["line_breakout_buy"])
+        self.assertTrue(params["entry_barrier_sell"])
         self.assertEqual(params["full_candle"], False)
         self.assertEqual(params["use_wick"], False)
         self.assertEqual(params["confirm_candles"], 0)

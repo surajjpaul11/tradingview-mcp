@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=22">
+    <link rel="stylesheet" href="/static/style.css?v=25">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -253,6 +253,29 @@
                     </div>
                 </div>
 
+                <div class="filter-group" id="sloped-line-breakout-buy-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-line-breakout-buy-checkbox" title="Enable buys when descending resistance breaks">
+                        <input type="checkbox" id="sloped-line-breakout-buy-checkbox">
+                        <span class="checkbox-text">Line Breakout Buy</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-entry-barrier-sell-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-entry-barrier-sell-checkbox" title="Enable protective exits below the entry low before support forms; includes ATR Stop Buffer">
+                        <input type="checkbox" id="sloped-entry-barrier-sell-checkbox">
+                        <span class="checkbox-text">Entry Barrier Sell</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-accounting-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-compounding-checkbox" title="Reinvest the available balance, including gains and losses. Off: use the starting-capital budget, capped by available cash.">
+                        <input type="checkbox" id="sloped-compounding-checkbox" checked>
+                        <span class="checkbox-text">Compounding</span>
+                    </label>
+                    <label for="sloped-initial-capital">Starting Capital ($)</label>
+                    <input type="number" id="sloped-initial-capital" value="10000" min="0.01" step="0.01" required style="max-width: 140px;">
+                </div>
+
                 <div class="filter-group" id="sloped-stop-loss-group" style="display: flex;">
                     <label for="sloped-stop-loss-select">Stop Loss</label>
                     <div class="custom-select">
@@ -343,7 +366,26 @@
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
                 <div class="tab-panel active" id="panel-regular">
-                    <div class="chart-workspace">
+                    <section id="chart-window" class="chart-window" data-display-mode="normal" aria-label="Dashboard chart">
+                        <header class="chart-window-header glass-panel">
+                            <span>Chart</span>
+                            <div class="chart-window-controls" role="group" aria-label="Chart window controls">
+                                <button id="chart-minimize" type="button" title="Minimize chart" aria-label="Minimize chart" aria-controls="chart-workspace" aria-expanded="true">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 14h12"/></svg>
+                                </button>
+                                <button id="chart-restore" type="button" title="Restore chart size" aria-label="Restore chart size" disabled>
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 7V4h9v9h-3M4 7h9v9H4z"/></svg>
+                                </button>
+                                <button id="chart-fullscreen" type="button" title="Fullscreen chart" aria-label="Fullscreen chart">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4H4v4m8-4h4v4M4 12v4h4m8-4v4h-4"/></svg>
+                                </button>
+                            </div>
+                        </header>
+                    <div id="saved-window-controls" class="saved-window-controls glass-panel" hidden>
+                        <span id="saved-window-label"></span>
+                        <button id="saved-window-clear" type="button">Use rolling range</button>
+                    </div>
+                    <div class="chart-workspace" id="chart-workspace">
                         <div class="chart-main-column">
                     <div class="chart-wrapper glass-panel">
                         <div id="channel-legend" class="channel-legend" style="display: none;"></div>
@@ -446,6 +488,7 @@
                         </div>
                     </aside>
                     </div>
+                    </section>
                 </div>
 
             </div>
@@ -459,6 +502,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=64"></script>
+    <script src="/static/app.js?v=68"></script>
 </body>
 </html>

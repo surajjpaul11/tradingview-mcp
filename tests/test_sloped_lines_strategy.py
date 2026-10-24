@@ -45,6 +45,49 @@ def descending_waves_then_breakout(bars=160, breakout_bar=120):
     return candles
 
 
+class SignalToggleTests(unittest.TestCase):
+    def test_breakout_buys_are_off_by_default_and_can_be_enabled(self):
+        candles = descending_waves_then_breakout()
+        for confirmations in (0, 1, 2):
+            with self.subTest(confirmations=confirmations):
+                disabled, _ = run_sloped_lines(candles, confirm_candles=confirmations)
+                enabled, _ = run_sloped_lines(candles, confirm_candles=confirmations, line_breakout_buy=True)
+                self.assertFalse(any(t.get("entry_reason") == "breakout" for t in disabled))
+                self.assertTrue(any(t.get("entry_reason") == "breakout" for t in enabled))
+
+    def test_barrier_toggle_preserves_other_entries_and_peak_reclaim(self):
+        prices = [(100, 101), (103, 105), (104, 100), (106, 108), (108, 109)]
+        candles = [dict(time=1700000000 + i * 86400, date=str(i), open=o, close=c,
+                        high=max(o, c) + 1, low=min(o, c) - 1, volume=1000)
+                   for i, (o, c) in enumerate(prices)]
+        disabled, _ = run_sloped_lines(candles, gap_up=True, line_angle=100)
+        enabled, _ = run_sloped_lines(candles, gap_up=True, line_angle=100, entry_barrier_sell=True)
+        self.assertEqual(disabled[0]["entry_reason"], "gap_up")
+        self.assertEqual(disabled[0]["exit_reason"], "end_of_data")
+        self.assertEqual(enabled[0]["exit_reason"], "entry_barrier_break")
+        self.assertEqual(enabled[1]["entry_reason"], "exit_peak_reclaim")
+
+    def test_all_dashboard_endpoints_forward_explicit_signal_switches(self):
+        candles = descending_waves_then_breakout()
+        for endpoint in (server.api_trades, server.api_stats, server.api_trendlines):
+            with self.subTest(endpoint=endpoint.__name__):
+                with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
+                    disabled = asyncio.run(endpoint(symbol="TEST", strategy="sloped_lines"))
+                    enabled = asyncio.run(endpoint(symbol="TEST", strategy="sloped_lines",
+                                                   line_breakout_buy=True, entry_barrier_sell=True))
+                self.assertNotIn("error", disabled)
+                self.assertNotIn("error", enabled)
+                if endpoint == server.api_trades:
+                    self.assertEqual(disabled["trades"], [])
+                    self.assertTrue(enabled["trades"])
+                elif endpoint == server.api_stats:
+                    self.assertEqual(disabled["total_trades"], 0)
+                    self.assertGreater(enabled["total_trades"], 0)
+                else:
+                    self.assertTrue(any(line.get("break_date") for line in enabled["trendlines"]))
+                    self.assertFalse(any(line.get("break_date") for line in disabled["trendlines"]))
+
+
 class StrictTrendlineValidationTests(unittest.TestCase):
     def test_pre_line_protection_exit_is_not_labeled_as_a_slope_break(self):
         self.assertEqual(_entry_barrier_exit_reason("exit_peak_reclaim"), "entry_barrier_break")
@@ -401,7 +444,7 @@ class RecoveryReentryTests(unittest.TestCase):
 class TrendlineApiTests(unittest.TestCase):
     def fetch(self, candles):
         with patch.object(server, "fetch_market_candles", return_value=(candles, "1d", "1y")):
-            return asyncio.run(server.api_trendlines(symbol="TEST", strategy="sloped_lines"))
+            return asyncio.run(server.api_trendlines(symbol="TEST", strategy="sloped_lines", line_breakout_buy=True, entry_barrier_sell=True))
 
     def test_api_returns_drawable_resistance_line(self):
         candles = descending_waves_then_breakout()

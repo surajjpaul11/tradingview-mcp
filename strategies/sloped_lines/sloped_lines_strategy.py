@@ -779,6 +779,8 @@ def run_sloped_lines(
     reentry_ema: bool = False,
     reentry_price_breakout: bool = False,
     reentry_volume: bool = False,
+    line_breakout_buy: bool = False,
+    entry_barrier_sell: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -792,6 +794,8 @@ def run_sloped_lines(
                              upward break → cover + buy
 
     Parameters:
+      - line_breakout_buy: Enable resistance breakout long entries (default False).
+      - entry_barrier_sell: Enable pre-support-line entry-low exits, including ATR buffered exits (default False).
       - full_candle: If True, requires the candle to CLOSE across the trendline (close breakout).
                      If False, touching/piercing with high/low triggers the breakout (wick/touch break).
       - use_wick: If True, uses candle wicks (high/low) for line contact points.
@@ -1043,7 +1047,7 @@ def run_sloped_lines(
             if state == "waiting_for_buy" or state == "short":
                 # Watching descending resistance — break ABOVE = buy signal
                 is_break = (price >= projected) if full_candle else (highs[i] >= projected)
-                if tl["type"] == "resistance":
+                if tl["type"] == "resistance" and (line_breakout_buy or state == "short"):
                     if break_start_bar is None:
                         if is_break:
                             if inverse_color_trigger and not is_green_candle(candles[i]):
@@ -1073,6 +1077,15 @@ def run_sloped_lines(
                                         "strategy":    "sloped_lines",
                                     })
                                     position = None
+
+                                if not line_breakout_buy:
+                                    state = "waiting_for_buy"
+                                    active_trendline = None
+                                    search_after_bar = i
+                                    last_sell_point = None
+                                    break_start_bar = None
+                                    confirm_count = 0
+                                    continue
 
                                 # Open long
                                 position = {
@@ -1123,6 +1136,15 @@ def run_sloped_lines(
                                         "strategy":    "sloped_lines",
                                     })
                                     position = None
+
+                                if not line_breakout_buy:
+                                    state = "waiting_for_buy"
+                                    active_trendline = None
+                                    search_after_bar = i
+                                    last_sell_point = None
+                                    break_start_bar = None
+                                    confirm_count = 0
+                                    continue
 
                                 # Open long
                                 position = {
@@ -1271,7 +1293,7 @@ def run_sloped_lines(
                 entry_low = position["entry_low"]
                 stop_barrier = entry_low - (atr[i] if stop_loss_mode == "atr_stop_buffer" else 0.0)
                 entry_break = (price < stop_barrier) if full_candle else (lows[i] < stop_barrier)
-                if entry_break and i > position["entry_bar"]:
+                if entry_barrier_sell and entry_break and i > position["entry_bar"]:
                     exec_price = price if full_candle else min(stop_barrier, candles[i]["open"])
                     # Record support trendline so the breakdown line is visible on chart
                     a2_bar = max(i, position["entry_bar"] + 1)
@@ -1403,6 +1425,41 @@ def apply_costs(trades: list[dict], commission_pct: float, slippage_pct: float) 
     return result
 
 
+def size_trades(trades: list[dict], initial_capital: float, compounding: bool = True) -> list[dict]:
+    """Size sequential positions using the existing rounded net-return cost model.
+
+    Round-trip commission/slippage estimates are settled at exit, as in apply_costs.
+    Quantities represent fractional exposure at the recorded signal entry price.
+    """
+    if not math.isfinite(initial_capital) or initial_capital <= 0:
+        raise ValueError("initial_capital must be finite and greater than zero")
+    capital = float(initial_capital)
+    sized = []
+    for trade in trades:
+        if capital <= 0:
+            break
+        allocation = capital if compounding else min(initial_capital, capital)
+        entry_price = trade["entry_price"]
+        if entry_price <= 0:
+            raise ValueError("entry_price must be greater than zero")
+        pnl = max(-capital, allocation * trade["return_pct"] / 100)
+        after = capital + pnl
+        sized.append({
+            **trade,
+            "quantity": allocation / entry_price,
+            "position_value": allocation,
+            "balance_before": capital,
+            "cash_at_entry": capital - allocation,
+            "gross_pnl_usd": allocation * trade["gross_return_pct"] / 100,
+            "costs_usd": allocation * -trade["cost_pct"] / 100,
+            "pnl_usd": pnl,
+            "balance_after": after,
+            "account_return_pct": pnl / capital * 100,
+        })
+        capital = after
+    return sized
+
+
 def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1h") -> dict:
     """Calculate backtest metrics."""
     if not trades:
@@ -1425,8 +1482,8 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1h
     max_dd  = 0.0
     returns = []
     for t in trades:
-        r = t["return_pct"] / 100
-        capital *= (1 + r)
+        r = t.get("account_return_pct", t["return_pct"]) / 100
+        capital = t["balance_after"] if "balance_after" in t else capital * (1 + r)
         returns.append(r)
         peak   = max(peak, capital)
         max_dd = max(max_dd, (peak - capital) / peak * 100)
@@ -1434,8 +1491,8 @@ def calc_metrics(trades: list[dict], initial_capital: float, interval: str = "1h
     total_ret = (capital - initial_capital) / initial_capital * 100
     avg_gain  = sum(t["return_pct"] for t in winners) / len(winners) if winners else 0
     avg_loss  = sum(t["return_pct"] for t in losers)  / len(losers)  if losers  else 0
-    gp        = sum(t["return_pct"] for t in winners)
-    gl        = abs(sum(t["return_pct"] for t in losers))
+    gp        = sum(t.get("pnl_usd", t["return_pct"]) for t in winners)
+    gl        = abs(sum(t.get("pnl_usd", t["return_pct"]) for t in losers))
     pf        = round(gp / gl, 2) if gl > 0 else float("inf")
 
     sharpe = 0.0
@@ -1566,6 +1623,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    line_breakout_buy = bool(kwargs.get("line_breakout_buy", False))
+    entry_barrier_sell = bool(kwargs.get("entry_barrier_sell", False))
     reentry_mode = kwargs.get("reentry_mode", "none")
     reentry_rsi = bool(kwargs.get("reentry_rsi", False))
     reentry_ema = bool(kwargs.get("reentry_ema", False))
@@ -1589,6 +1648,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        line_breakout_buy=line_breakout_buy,
+        entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode,
         reentry_rsi=reentry_rsi,
         reentry_ema=reentry_ema,
@@ -1619,6 +1680,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    line_breakout_buy = bool(kwargs.get("line_breakout_buy", False))
+    entry_barrier_sell = bool(kwargs.get("entry_barrier_sell", False))
     reentry_mode = kwargs.get("reentry_mode", "none")
     reentry_rsi = bool(kwargs.get("reentry_rsi", False))
     reentry_ema = bool(kwargs.get("reentry_ema", False))
@@ -1643,6 +1706,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        line_breakout_buy=line_breakout_buy,
+        entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode,
         reentry_rsi=reentry_rsi,
         reentry_ema=reentry_ema,
@@ -1749,8 +1814,13 @@ def run_backtest(
     reentry_price_breakout: bool = False,
     reentry_volume: bool = False,
     candles: list[dict] = None,
+    line_breakout_buy: bool = False,
+    entry_barrier_sell: bool = False,
+    compounding: bool = True,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
+    if not math.isfinite(initial_capital) or initial_capital <= 0:
+        raise ValueError("initial_capital must be finite and greater than zero")
     if candles is None:
         candles = fetch_ohlcv(symbol, period, interval)
     if not candles:
@@ -1770,10 +1840,12 @@ def run_backtest(
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
         gap_up=gap_up, gap_down=gap_down, staggered_lines=staggered_lines,
+        line_breakout_buy=line_breakout_buy, entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode, reentry_rsi=reentry_rsi, reentry_ema=reentry_ema,
         reentry_price_breakout=reentry_price_breakout, reentry_volume=reentry_volume,
     )
     trades = apply_costs(raw_trades, commission_pct, slippage_pct)
+    trades = size_trades(trades, initial_capital, compounding)
     metrics = calc_metrics(trades, initial_capital, interval)
 
     bnh = round((candles[-1]["close"] - candles[0]["close"]) / candles[0]["close"] * 100, 2)
@@ -1816,6 +1888,8 @@ def run_backtest(
             "gap_up": gap_up,
             "gap_down": gap_down,
             "staggered_lines": staggered_lines,
+            "line_breakout_buy": line_breakout_buy,
+            "entry_barrier_sell": entry_barrier_sell,
             "reentry_mode": reentry_mode,
             "reentry_rsi": reentry_rsi,
             "reentry_ema": reentry_ema,
@@ -1828,6 +1902,7 @@ def run_backtest(
         "date_from": candles[0]["date"],
         "date_to": candles[-1]["date"],
         "initial_capital": initial_capital,
+        "compounding": compounding,
         "commission_pct": commission_pct,
         "slippage_pct": slippage_pct,
         **metrics,
@@ -1868,6 +1943,9 @@ def main():
     parser.add_argument("--full-candle", action="store_true", default=DEFAULT_FULL_CANDLE, help="Require candle to close across trendline for breakout (default: False)")
     parser.add_argument("--touch-break", action="store_false", dest="full_candle", help="Allow intrabar touch/wick to break trendline (default)")
     parser.add_argument("--use-wick", action="store_true", default=False, help="Use candle wicks instead of body for trendline contact points (default: False)")
+    parser.add_argument("--no-compounding", action="store_true", help="Use a fixed starting-capital budget per trade, capped by available cash")
+    parser.add_argument("--line-breakout-buy", action="store_true", help="Enable line breakout buys (default: off)")
+    parser.add_argument("--entry-barrier-sell", action="store_true", help="Enable entry barrier sells (default: off)")
     parser.add_argument("--gap-up", action="store_true", default=False, help="Buy on two completed green candles with non-overlapping bodies")
     parser.add_argument("--gap-down", action="store_true", default=False, help="Sell on two completed red candles with non-overlapping bodies")
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart with trendlines")
@@ -1882,6 +1960,7 @@ def main():
     result = run_backtest(
         symbol=args.symbol, period=args.period, interval=args.interval,
         initial_capital=args.initial_capital,
+        compounding=not args.no_compounding,
         commission_pct=args.commission, slippage_pct=args.slippage,
         pivot_lookback=args.pivot_lookback, trendline_tolerance=args.trendline_tolerance,
         confirm_bars=args.confirm_bars, enable_short=args.enable_short,
@@ -1893,6 +1972,8 @@ def main():
         stop_loss_mode=args.stop_loss_mode,
         anchor_source=args.anchor_source,
         validation_boundary=args.validation_boundary,
+        line_breakout_buy=args.line_breakout_buy,
+        entry_barrier_sell=args.entry_barrier_sell,
         gap_up=args.gap_up,
         gap_down=args.gap_down,
     )

@@ -366,6 +366,10 @@ Repeat.
 | `pivot_lookback` | 5 | Bars left/right for swing point detection |
 | `trendline_tolerance` | 0.015 | 1.5% tolerance for line validation |
 | `confirm_bars` | 1 | Consecutive bars beyond trendline to confirm break |
+| `compounding` | true | Reinvest available equity; off uses a fixed starting-capital budget capped by cash |
+| `initial_capital` | 10000 | Starting account balance in dollars; fractional shares supported |
+| `line_breakout_buy` | false | Enable descending-resistance breakout buys; other entry signals remain independent |
+| `entry_barrier_sell` | false | Enable entry-low protection before support forms, including ATR buffered protection |
 | `confirm_candles` | 0 | Additional supporting confirmation candles required |
 | `line_angle` | 3.0 | Minimum slope angle percentage between anchors |
 | `min_anchor_bars` | 2 | Minimum bar distance between anchors (0-5) |
@@ -660,3 +664,5 @@ Each entry maps `strategy` -> `ticker` -> parameters and performance metrics (in
 
 - **Python**: Use `tradingview_mcp.core.services.strategy_config.get_best_parameters(strategy, symbol)`
 - **REST API**: Query `GET /api/best-parameters?strategy=sloped_lines&symbol=NVDA`
+
+Sloped Lines position accounting uses the existing rounded per-trade net returns. Estimated round-trip commissions and slippage are settled at exit. Trade quantities, dollar P&L, and balances follow the same ledger used by the account summary.

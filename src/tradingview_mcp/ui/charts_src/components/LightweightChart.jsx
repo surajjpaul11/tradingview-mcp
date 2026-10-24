@@ -12,8 +12,8 @@ const nearest=(time,candles)=>candles.reduce((best,item)=>Math.abs(item.time-tim
 function markerData(trades,candles){
   const details=new Map(); const markers=[];
   trades.forEach((trade)=>{
-    const entry=unix(trade.created_at); if(entry&&candles.length){const time=nearest(entry,candles);markers.push({time,position:'belowBar',color:'#22c55e',shape:'arrowUp',text:''});details.set(time,{kind:'BUY',price:trade.entry_price,reason:trade.entry_reason});}
-    const exit=unix(trade.closed_at); if(exit&&candles.length){const time=nearest(exit,candles);markers.push({time,position:'aboveBar',color:'#ef4444',shape:'arrowDown',text:''});details.set(time,{kind:'SELL',price:trade.exit_price,reason:trade.exit_reason,pnl:trade.pnl_pct});}
+    const entry=unix(trade.created_at); if(entry&&candles.length){const time=nearest(entry,candles);markers.push({time,position:'belowBar',color:'#22c55e',shape:'arrowUp',text:''});details.set(time,{kind:'BUY',price:trade.entry_price,reason:trade.entry_reason,quantity:trade.quantity,balance:trade.balance_before});}
+    const exit=unix(trade.closed_at); if(exit&&candles.length){const time=nearest(exit,candles);markers.push({time,position:'aboveBar',color:'#ef4444',shape:'arrowDown',text:''});details.set(time,{kind:'SELL',price:trade.exit_price,reason:trade.exit_reason,pnl:trade.pnl_pct,quantity:trade.quantity,balance:trade.balance_after,pnlUsd:trade.pnl_usd});}
   });
   return {markers:markers.sort((a,b)=>a.time-b.time),details};
 }
@@ -55,7 +55,7 @@ export default function LightweightChart({symbol,pane,strategyData,drawingTool,o
     }; chart.subscribeClick(click);
     return()=>{chart.unsubscribeClick(click);chart.remove();chartRef.current=null;seriesRef.current=null;markerRef.current=null;};
   },[]);
-  useCandleFeed({chartRef,seriesRef},{symbol,resolutionId:pane.resolution,rangeId:pane.range,tradingWindow:pane.tradingWindow||'regular market'},onStatusChange,onCandles);
+  useCandleFeed({chartRef,seriesRef},{symbol,resolutionId:pane.resolution,rangeId:pane.range,tradingWindow:pane.tradingWindow||'regular market',backtestWindow:pane.backtestWindow},onStatusChange,onCandles);
   useSeriesPrimitive(seriesRef,pane.indicators.fvg,FairValueGapPrimitive);
   useSeriesPrimitive(seriesRef,pane.indicators.volumeProfile,VolumeProfilePrimitive);
   const markerBundle=useMemo(()=>markerData(strategyData.trades||[],candles),[strategyData.trades,candles]);
@@ -80,5 +80,5 @@ export default function LightweightChart({symbol,pane,strategyData,drawingTool,o
     });
   },[pane.drawings]);
   const detail=selected?markerBundle.details.get(selected.time):null;
-  return <><div ref={containerRef} className="lightweight-chart" data-source={symbol.source} data-symbol={symbol.id} data-candle-count={candles.length} data-marker-count={markerBundle.markers.length} data-overlay-count={(strategyData.trendlines?.length||0)+(strategyData.channels?.length||0)} data-drawing-count={pane.drawings?.length||0}/>{detail&&<button type="button" className="signal-detail" onClick={()=>setSelected(null)}><b>{detail.kind}</b> {detail.price?`$${Number(detail.price).toFixed(2)}`:''} {detail.reason||''} {detail.pnl!==undefined?`· ${Number(detail.pnl).toFixed(1)}%`:''}</button>}</>;
+  return <><div ref={containerRef} className="lightweight-chart" data-source={symbol.source} data-symbol={symbol.id} data-candle-count={candles.length} data-marker-count={markerBundle.markers.length} data-overlay-count={(strategyData.trendlines?.length||0)+(strategyData.channels?.length||0)} data-drawing-count={pane.drawings?.length||0}/>{detail&&<button type="button" className="signal-detail" onClick={()=>setSelected(null)}><b>{detail.kind}</b> {detail.price?`$${Number(detail.price).toFixed(2)}`:''} {detail.reason||''} {detail.quantity!=null?`· ${Number(detail.quantity).toFixed(6)} shares`:''} {detail.balance!=null?`· balance $${Number(detail.balance).toFixed(2)}`:''} {detail.pnlUsd!=null?`· P&L $${Number(detail.pnlUsd).toFixed(2)}`:''} {detail.pnl!==undefined?`· ${Number(detail.pnl).toFixed(1)}%`:''}</button>}</>;
 }

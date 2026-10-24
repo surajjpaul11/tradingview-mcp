@@ -3,7 +3,7 @@ import { findRange } from '../timeframes.js';
 
 const EMPTY={stats:null,trades:[],trendlines:[],channels:[],loading:false,error:'',query:''};
 const PARAM_KEYS={
-  full_candle:'full_candle',use_wick:'use_wick',gap_up:'gap_up',gap_down:'gap_down',staggered_lines:'staggered_lines',confirm_candles:'confirm_candles',pivot_lookback:'pivot_lookback',
+  compounding:'compounding',initial_capital:'initial_capital',line_breakout_buy:'line_breakout_buy',entry_barrier_sell:'entry_barrier_sell',full_candle:'full_candle',use_wick:'use_wick',gap_up:'gap_up',gap_down:'gap_down',staggered_lines:'staggered_lines',confirm_candles:'confirm_candles',pivot_lookback:'pivot_lookback',
   anchor_source:'anchor_source',validation_boundary:'validation_boundary',trendline_tolerance:'trendline_tolerance',
   inverse_color_trigger:'inverse_color_trigger',line_angle:'line_angle',stop_loss_mode:'stop_loss_mode',min_anchor_bars:'min_anchor_bars',
   channel_mult:'channel_mult',lookback:'lookback',
@@ -13,6 +13,10 @@ export function strategyQuery(symbol,pane){
     source:symbol.source,symbol:symbol.id,strategy:pane.strategy.name,timeframe:pane.resolution,
     period:findRange(pane.range).period,trading_window:pane.tradingWindow||'regular market',
   });
+  if(pane.backtestWindow){
+    query.set('start_date',pane.backtestWindow.start_date);
+    query.set('end_date',pane.backtestWindow.end_date);
+  }
   Object.entries(pane.strategy.parameters||{}).forEach(([key,value])=>{
     if(PARAM_KEYS[key] && value!==undefined && value!==null) query.set(PARAM_KEYS[key],String(value));
   });

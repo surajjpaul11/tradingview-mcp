@@ -1,6 +1,7 @@
 import sqlite3
 import asyncio
 import json
+import math
 import os
 import sys
 import threading
@@ -8,7 +9,7 @@ import time
 import uuid
 import urllib.request
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import date as calendar_date, datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -30,7 +31,7 @@ from tradingview_mcp.core.services.market_hours import (
 
 app = FastAPI(title="TradingView MCP Trade Visualizer")
 
-_yahoo_candle_cache: dict[tuple[str, str, str, str], tuple[float, tuple[list[dict], str, str]]] = {}
+_yahoo_candle_cache: dict[tuple, tuple[float, tuple[list[dict], str, str]]] = {}
 _yahoo_cache_lock = threading.Lock()
 _market_config_lock = threading.Lock()
 
@@ -217,7 +218,20 @@ async def api_set_trading_window(trading_window: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y", trading_window: str = None) -> tuple[list[dict], str, str]:
+def validate_backtest_window(start_date=None, end_date=None):
+    """Captured windows use inclusive market dates, with both bounds required."""
+    if start_date is None and end_date is None:
+        return
+    try:
+        start = calendar_date.fromisoformat(start_date)
+        end = calendar_date.fromisoformat(end_date)
+        if start > end:
+            raise ValueError("start_date must be on or before end_date")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Provide both start_date and end_date as YYYY-MM-DD, in chronological order") from exc
+
+
+def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1y", trading_window: str = None, start_date: str = None, end_date: str = None) -> tuple[list[dict], str, str]:
     """
     Fetch OHLCV candles via yfinance with automatic range clamping & resampling:
       - 30m: max 60d
@@ -227,6 +241,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     Returns (candles, actual_timeframe, actual_period)
     """
     import math
+    validate_backtest_window(start_date, end_date)
     tf = timeframe.lower().strip()
     if tf in ("daily", "1day"):
         tf = "1d"
@@ -248,7 +263,7 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     market_config = load_market_config()
     selected_window = normalize_trading_window(trading_window, market_config)
     cache_seconds = int(market_config.get("yahoo_cache_seconds", 60))
-    cache_key = (yf_symbol.upper(), tf, actual_period, selected_window)
+    cache_key = (yf_symbol.upper(), tf, actual_period, selected_window, start_date, end_date)
     now = time.monotonic()
     with _yahoo_cache_lock:
         cached = _yahoo_candle_cache.get(cache_key)
@@ -259,7 +274,12 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
     try:
         ticker = yf.Ticker(yf_symbol)
         include_extended_hours = selected_window != "regular market"
-        df = ticker.history(period=actual_period, interval=fetch_tf, prepost=include_extended_hours)
+        if start_date:
+            # Yahoo end is exclusive; UI captured dates are inclusive.
+            exclusive_end = (calendar_date.fromisoformat(end_date) + timedelta(days=1)).isoformat()
+            df = ticker.history(start=start_date, end=exclusive_end, interval=fetch_tf, prepost=include_extended_hours)
+        else:
+            df = ticker.history(period=actual_period, interval=fetch_tf, prepost=include_extended_hours)
         if df is not None and not df.empty:
             if tf in ("4h", "12h"):
                 df = df.resample(tf).agg({
@@ -268,6 +288,8 @@ def fetch_market_candles(yf_symbol: str, timeframe: str = "1d", period: str = "1
 
             fmt = "%Y-%m-%d %H:%M" if tf in ("30m", "1h", "4h", "12h") else "%Y-%m-%d"
             for date, row in df.iterrows():
+                if start_date and not (start_date <= date.strftime("%Y-%m-%d") <= end_date):
+                    continue
                 if tf in ("30m", "1h", "4h", "12h"):
                     candle_time = date.to_pydatetime() if hasattr(date, "to_pydatetime") else date
                     if not timestamp_in_trading_window(candle_time, selected_window, market_config):
@@ -385,6 +407,15 @@ def fetch_source_candles(source: str, symbol: str, timeframe: str, period: str, 
     return fetch_market_candles(symbol, timeframe, period, trading_window)
 
 
+def fetch_backtest_candles(source, symbol, timeframe, period, trading_window=None, start_date=None, end_date=None):
+    validate_backtest_window(start_date, end_date)
+    if not start_date:
+        return fetch_source_candles(source, symbol, timeframe, period, trading_window)
+    if (source or "yahoo").lower() != "yahoo":
+        raise HTTPException(status_code=422, detail="Captured date windows currently require Yahoo data")
+    return fetch_market_candles(symbol, timeframe, period, trading_window, start_date, end_date)
+
+
 _SLOPED_PIVOT_LOOKBACK_OPTIONS = {2, 3, 4, 5, 6, 7, 8, 10}
 _SLOPED_ANCHOR_SOURCE_OPTIONS = {"confirmed_pivots", "any_valid_candle"}
 _SLOPED_VALIDATION_BOUNDARY_OPTIONS = {"body", "close", "wick"}
@@ -392,7 +423,7 @@ _SLOPED_TOLERANCE_OPTIONS = {0.0, 0.005, 0.01, 0.015, 0.02}
 _SLOPED_REENTRY_MODE_OPTIONS = {"none", "any", "any_two", "any_three", "all"}
 
 
-def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm_candles=None, pivot_lookback=None, inverse_color_trigger=None, line_angle=None, stop_loss_mode=None, min_anchor_bars=None, anchor_source=None, validation_boundary=None, trendline_tolerance=None, gap_up=None, gap_down=None, staggered_lines=None, reentry_mode=None, reentry_rsi=None, reentry_ema=None, reentry_price_breakout=None, reentry_volume=None):
+def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm_candles=None, pivot_lookback=None, inverse_color_trigger=None, line_angle=None, stop_loss_mode=None, min_anchor_bars=None, anchor_source=None, validation_boundary=None, trendline_tolerance=None, gap_up=None, gap_down=None, staggered_lines=None, reentry_mode=None, reentry_rsi=None, reentry_ema=None, reentry_price_breakout=None, reentry_volume=None, line_breakout_buy=None, entry_barrier_sell=None, compounding=None, initial_capital=None):
     from tradingview_mcp.core.services.strategy_config import get_best_parameters
     cfg = get_best_parameters("sloped_lines", symbol)
     bp = (cfg or {}).get("parameters", {})
@@ -414,7 +445,12 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
     selected_reentry_mode = reentry_mode or bp.get("reentry_mode", "none")
     if selected_reentry_mode not in _SLOPED_REENTRY_MODE_OPTIONS:
         raise ValueError(f"reentry_mode must be one of {sorted(_SLOPED_REENTRY_MODE_OPTIONS)}")
+    selected_capital = float(initial_capital if initial_capital is not None else bp.get("initial_capital", 10000.0))
+    if not math.isfinite(selected_capital) or selected_capital <= 0:
+        raise HTTPException(status_code=422, detail="initial_capital must be finite and greater than zero")
     return {
+        "compounding": compounding if compounding is not None else bp.get("compounding", True),
+        "initial_capital": selected_capital,
         "full_candle": full_candle if full_candle is not None else bp.get("full_candle", False),
         "use_wick": use_wick if use_wick is not None else bp.get("use_wick", False),
         "confirm_candles": confirm_candles if confirm_candles is not None else bp.get("confirm_candles", 0),
@@ -428,6 +464,8 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
         "min_anchor_bars": min_anchor_bars if min_anchor_bars is not None else bp.get("min_anchor_bars", 2),
         "gap_up": gap_up if gap_up is not None else bp.get("gap_up", False),
         "gap_down": gap_down if gap_down is not None else bp.get("gap_down", False),
+        "line_breakout_buy": line_breakout_buy if line_breakout_buy is not None else bp.get("line_breakout_buy", False),
+        "entry_barrier_sell": entry_barrier_sell if entry_barrier_sell is not None else bp.get("entry_barrier_sell", False),
         "staggered_lines": staggered_lines if staggered_lines is not None else bp.get("staggered_lines", False),
         "reentry_mode": selected_reentry_mode,
         "reentry_rsi": reentry_rsi if reentry_rsi is not None else bp.get("reentry_rsi", False),
@@ -438,8 +476,11 @@ def _resolve_sloped_params(symbol: str, full_candle=None, use_wick=None, confirm
 
 
 @app.get("/api/trades")
-async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None):
+async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None, line_breakout_buy: bool = None, entry_barrier_sell: bool = None, start_date: str = None, end_date: str = None, compounding: bool = None, initial_capital: float = None):
     """Fetch the trade markers to overlay on the chart, auto-generating on demand if needed."""
+    if initial_capital is not None and (not math.isfinite(initial_capital) or initial_capital <= 0):
+        raise HTTPException(status_code=422, detail="initial_capital must be finite and greater than zero")
+    validate_backtest_window(start_date, end_date)
     if strategy == "all" or not strategy:
         strategy = None
 
@@ -455,9 +496,9 @@ async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, t
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window, start_date, end_date)
 
-            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume)
+            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume, line_breakout_buy, entry_barrier_sell, compounding, initial_capital)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, candles=candles, **p)
             trades = []
             for t in res.get("trade_log", []):
@@ -470,7 +511,6 @@ async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, t
                 ret_pct = float(t.get("return_pct", 0.0))
                 side_raw = (t.get("side") or "long").lower()
                 side = "buy" if side_raw in ("long", "buy") else "sell"
-                pnl_u = round((exit_p - entry_p) * (1000.0 / entry_p), 2) if (exit_p and entry_p > 0) else 0.0
                 trades.append({
                     "trade_id": str(uuid.uuid4()),
                     "symbol": clean_sym,
@@ -483,7 +523,12 @@ async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, t
                     "entry_reason": t.get("entry_reason", "breakout"),
                     "entry_signals": t.get("entry_signals", []),
                     "signal_date": t.get("signal_date"),
-                    "pnl_usd": pnl_u,
+                    "quantity": t.get("quantity"),
+                    "position_value": t.get("position_value"),
+                    "balance_before": t.get("balance_before"),
+                    "balance_after": t.get("balance_after"),
+                    "costs_usd": t.get("costs_usd"),
+                    "pnl_usd": t.get("pnl_usd", 0.0),
                     "pnl_pct": ret_pct,
                     "created_at": created_at,
                     "closed_at": closed_at,
@@ -524,7 +569,7 @@ async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, t
                 if clean_sym in ("PORTFOLIO", "TOTAL"):
                     clean_sym = "SPY"
                 yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-                candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
+                candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window, start_date, end_date)
                 res = run_ec_backtest(
                     symbol=clean_sym,
                     period=actual_period,
@@ -582,8 +627,11 @@ async def api_trades(symbol: str, source: str = "yahoo", strategy: str = None, t
     return {"trades": trades}
 
 @app.get("/api/stats")
-async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None):
+async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: str = None, timeframe: str = "1d", period: str = "1y", trading_window: str = None, channel_mult: float = None, lookback: int = None, use_stop_loss: bool = True, midline_reentry: bool = False, midline_cross: bool = False, lower_reclaim: bool = True, channel_inflection: bool = True, channel_curl_mode: str = "both", full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None, line_breakout_buy: bool = None, entry_barrier_sell: bool = None, start_date: str = None, end_date: str = None, compounding: bool = None, initial_capital: float = None):
     """Fetch summary stats (Win Rate, PnL) based on current filters."""
+    if initial_capital is not None and (not math.isfinite(initial_capital) or initial_capital <= 0):
+        raise HTTPException(status_code=422, detail="initial_capital must be finite and greater than zero")
+    validate_backtest_window(start_date, end_date)
     if strategy == "all" or not strategy:
         strategy = None
 
@@ -599,16 +647,19 @@ async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window, start_date, end_date)
 
-            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume)
+            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume, line_breakout_buy, entry_barrier_sell, compounding, initial_capital)
             res = run_sl_backtest(symbol=clean_sym, period=actual_period, interval=actual_tf, candles=candles, **p)
             tot_trades = res.get("total_trades", 0)
-            tot_pnl_usd = round(res.get("final_capital", 10000.0) - 10000.0, 2)
+            tot_pnl_usd = round(res.get("final_capital", p["initial_capital"]) - p["initial_capital"], 2)
             wr = res.get("win_rate_pct", 0.0)
             return {
                 "total_trades": tot_trades,
                 "total_pnl_usd": tot_pnl_usd,
+                "initial_capital": res.get("initial_capital", p["initial_capital"]),
+                "final_capital": res.get("final_capital", p["initial_capital"]),
+                "compounding": p["compounding"],
                 "total_pnl_pct": res.get("total_return_pct", 0.0),
                 "buy_and_hold_pct": res.get("buy_and_hold_return_pct", 0.0),
                 "win_rate_pct": wr,
@@ -651,7 +702,7 @@ async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: 
             if clean_sym in ("PORTFOLIO", "TOTAL"):
                 clean_sym = "SPY"
             yf_sym = clean_sym.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
-            candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window)
+            candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_sym, timeframe, period, trading_window, start_date, end_date)
 
             res = run_ec_backtest(
                 symbol=clean_sym,
@@ -698,8 +749,9 @@ async def api_stats(symbol: str = "PORTFOLIO", source: str = "yahoo", strategy: 
     return stats
 
 @app.get("/api/candles")
-async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: str = "1y", trading_window: str = None):
+async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: str = "1y", trading_window: str = None, start_date: str = None, end_date: str = None):
     """Fetch raw candle data for TradingView chart using yfinance."""
+    validate_backtest_window(start_date, end_date)
     clean_sym = symbol.strip().upper()
     if clean_sym in ("PORTFOLIO", "TOTAL"):
         clean_sym = "SPY"
@@ -713,19 +765,20 @@ async def api_candles(symbol: str = "PORTFOLIO", timeframe: str = "1d", period: 
         .replace("_", "-")
     )
     
-    candles, actual_tf, actual_period = fetch_market_candles(yf_symbol, timeframe, period, trading_window)
+    candles, actual_tf, actual_period = fetch_backtest_candles("yahoo", yf_symbol, timeframe, period, trading_window, start_date, end_date)
     return {"candles": candles, "timeframe": actual_tf, "period": actual_period,
             "trading_window": normalize_trading_window(trading_window, load_market_config())}
 
 @app.get("/api/chart/candles")
-async def api_chart_candles(source: str = "yahoo", symbol: str = "SPY", timeframe: str = "1d", period: str = "1y", trading_window: str = None):
+async def api_chart_candles(source: str = "yahoo", symbol: str = "SPY", timeframe: str = "1d", period: str = "1y", trading_window: str = None, start_date: str = None, end_date: str = None):
     """Return normalized OHLCV candles for the React chart workspace."""
+    validate_backtest_window(start_date, end_date)
     clean_symbol = symbol.strip().upper()
     if source.lower() == "yahoo":
         clean_symbol = clean_symbol.replace("/USDT", "-USD").replace("/USD", "-USD").replace("_USDT", "-USD").replace("_USD", "-USD").replace("/", "-").replace("_", "-")
     try:
         candles, actual_tf, actual_period = await asyncio.to_thread(
-            fetch_source_candles, source, clean_symbol, timeframe, period, trading_window
+            fetch_backtest_candles, source, clean_symbol, timeframe, period, trading_window, start_date, end_date
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -739,11 +792,14 @@ async def api_chart_candles(source: str = "yahoo", symbol: str = "SPY", timefram
 
 
 @app.get("/api/trendlines")
-async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", trading_window: str = None, full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None):
+async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "enhanced_lines", timeframe: str = "1d", period: str = "1y", trading_window: str = None, full_candle: bool = None, use_wick: bool = None, confirm_candles: int = None, pivot_lookback: int = None, inverse_color_trigger: bool = None, line_angle: float = None, stop_loss_mode: str = None, min_anchor_bars: int = None, anchor_source: str = None, validation_boundary: str = None, trendline_tolerance: float = None, gap_up: bool = None, gap_down: bool = None, staggered_lines: bool = None, reentry_mode: str = None, reentry_rsi: bool = None, reentry_ema: bool = None, reentry_price_breakout: bool = None, reentry_volume: bool = None, line_breakout_buy: bool = None, entry_barrier_sell: bool = None, start_date: str = None, end_date: str = None, compounding: bool = None, initial_capital: float = None):
     """
     Run trendline strategy (sloped_lines or enhanced_lines) on OHLCV data
     and return trendline segments for chart overlay.
     """
+    if initial_capital is not None and (not math.isfinite(initial_capital) or initial_capital <= 0):
+        raise HTTPException(status_code=422, detail="initial_capital must be finite and greater than zero")
+    validate_backtest_window(start_date, end_date)
     import sys
     from pathlib import Path as PurePath
 
@@ -763,7 +819,7 @@ async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "en
     base_dir = Path(__file__).resolve().parents[3]
 
     try:
-        candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window)
+        candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window, start_date, end_date)
         if not candles:
             return {"trendlines": [], "error": "No candle data available"}
 
@@ -772,7 +828,7 @@ async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "en
             if str(strategy_dir) not in sys.path:
                 sys.path.insert(0, str(strategy_dir))
             from sloped_lines_strategy import run_sloped_lines_with_trendlines
-            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume)
+            p = _resolve_sloped_params(clean_sym, full_candle, use_wick, confirm_candles, pivot_lookback, inverse_color_trigger, line_angle, stop_loss_mode, min_anchor_bars, anchor_source, validation_boundary, trendline_tolerance, gap_up, gap_down, staggered_lines, reentry_mode, reentry_rsi, reentry_ema, reentry_price_breakout, reentry_volume, line_breakout_buy, entry_barrier_sell, compounding, initial_capital)
             result = run_sloped_lines_with_trendlines(candles, **p)
             return {"trendlines": result.get("trendlines", []), "timeframe": actual_tf, "period": actual_period}
 
@@ -792,12 +848,13 @@ async def api_trendlines(symbol: str, source: str = "yahoo", strategy: str = "en
         return {"trendlines": [], "error": str(e)}
 
 @app.get("/api/channels")
-async def api_channels(symbol: str, source: str = "yahoo", timeframe: str = "1d", period: str = "5y", trading_window: str = None, channel_mult: float = 1.7, lookback: int = 50):
+async def api_channels(symbol: str, source: str = "yahoo", timeframe: str = "1d", period: str = "5y", trading_window: str = None, channel_mult: float = 1.7, lookback: int = 50, start_date: str = None, end_date: str = None):
     """
     Run the enhanced_channel strategy on OHLCV data and return channel overlays
     (Tactical Upper, Tactical Lower, Tactical Mid, Intermediate Mid, Macro Mid)
     for chart overlay.
     """
+    validate_backtest_window(start_date, end_date)
     clean_sym = symbol.strip().upper()
     if clean_sym in ("PORTFOLIO", "TOTAL"):
         clean_sym = "SPY"
@@ -818,7 +875,7 @@ async def api_channels(symbol: str, source: str = "yahoo", timeframe: str = "1d"
             sys.path.insert(0, str(strategy_dir))
 
         from enhanced_channel_strategy import run_enhanced_channel
-        candles, actual_tf, actual_period = fetch_source_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window)
+        candles, actual_tf, actual_period = fetch_backtest_candles(source, clean_sym if source == "hyperliquid" else yf_symbol, timeframe, period, trading_window, start_date, end_date)
         if not candles:
             return {"overlays": [], "error": "No candle data available"}
 

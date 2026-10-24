@@ -191,6 +191,12 @@ page.on('pageerror', error => pageErrors.push(error.message));
 try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
   await waitForAnyChart(page);
+  assert.equal(await page.locator('#sloped-line-breakout-buy-checkbox').isChecked(), false);
+  assert.equal(await page.locator('#sloped-entry-barrier-sell-checkbox').isChecked(), false);
+  // Existing baseline checks explicitly opt into the original trading rules.
+  await page.locator('#sloped-line-breakout-buy-checkbox').check();
+  await page.locator('#sloped-entry-barrier-sell-checkbox').check();
+  await waitForAnyChart(page);
 
   async function readSavedBestState(symbol) {
     await page.locator('#ticker-select').selectOption(symbol);

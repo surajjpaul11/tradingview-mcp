@@ -6,6 +6,31 @@ import { parseHyperliquidCandle, parseYahooChart } from '../src/tradingview_mcp/
 import { formatCrosshairTime } from '../src/tradingview_mcp/ui/charts_src/chartConfig.js';
 import { buildSymbolGroups, filterSymbolGroups, findSymbol } from '../src/tradingview_mcp/ui/charts_src/symbols.js';
 import { createDrawing, drawingSegments } from '../src/tradingview_mcp/ui/charts_src/drawings.js';
+import { DEFAULT_STRATEGY } from '../src/tradingview_mcp/ui/charts_src/layouts.js';
+import { strategyQuery } from '../src/tradingview_mcp/ui/charts_src/hooks/useStrategyData.js';
+
+test('signal switches default off and reach strategy requests independently',()=>{
+  const pane={strategy:structuredClone(DEFAULT_STRATEGY),resolution:'1d',range:'1Y'};
+  const symbol={source:'yahoo',id:'AAPL'};
+  let query=strategyQuery(symbol,pane);
+  assert.equal(query.get('compounding'),'true');
+  assert.equal(query.get('initial_capital'),'10000');
+  pane.strategy.parameters.compounding=false;
+  pane.strategy.parameters.initial_capital=500;
+  query=strategyQuery(symbol,pane);
+  assert.equal(query.get('compounding'),'false');
+  assert.equal(query.get('initial_capital'),'500');
+  assert.equal(query.get('line_breakout_buy'),'false');
+  assert.equal(query.get('entry_barrier_sell'),'false');
+  pane.strategy.parameters.line_breakout_buy=true;
+  query=strategyQuery(symbol,pane);
+  assert.equal(query.get('line_breakout_buy'),'true');
+  assert.equal(query.get('entry_barrier_sell'),'false');
+  pane.backtestWindow={start_date:'2025-09-26',end_date:'2026-09-25'};
+  query=strategyQuery(symbol,pane);
+  assert.equal(query.get('start_date'),'2025-09-26');
+  assert.equal(query.get('end_date'),'2026-09-25');
+});
 
 test('builds straight lines and parallel channel boundaries',()=>{
   const straight=createDrawing('trendline',[{time:1,price:10},{time:3,price:14}],'line-1');

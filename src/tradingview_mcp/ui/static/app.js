@@ -192,6 +192,71 @@ function refreshMainChartLayout() {
     if (width > 50 && height > 50) chart.applyOptions({ width, height });
 }
 
+function initChartWindowControls() {
+    const host = document.getElementById('chart-window');
+    const minimize = document.getElementById('chart-minimize');
+    const restore = document.getElementById('chart-restore');
+    const fullscreen = document.getElementById('chart-fullscreen');
+    if (!host || !minimize || !restore || !fullscreen) return;
+
+    let fullscreenRequestPending = false;
+    function setMode(mode) {
+        host.dataset.displayMode = mode;
+        document.body.classList.toggle('chart-fullscreen-active', mode === 'fullscreen');
+        minimize.disabled = mode === 'minimized';
+        minimize.setAttribute('aria-expanded', String(mode !== 'minimized'));
+        restore.disabled = mode === 'normal';
+        fullscreen.disabled = mode === 'fullscreen';
+        // A collapsed chart keeps its header available for keyboard restoration.
+        if (mode === 'minimized') restore.focus();
+        else if (mode === 'normal') fullscreen.focus();
+        else minimize.focus();
+    }
+
+    async function leaveFullscreen(mode) {
+        setMode(mode);
+        if (document.fullscreenElement === host) {
+            try { await document.exitFullscreen(); } catch { /* CSS layout is already restored. */ }
+        }
+    }
+
+    minimize.addEventListener('click', () => { void leaveFullscreen('minimized'); });
+    restore.addEventListener('click', () => { void leaveFullscreen('normal'); });
+    fullscreen.addEventListener('click', async () => {
+        setMode('fullscreen');
+        if (!host.requestFullscreen) return; // Viewport fullscreen fallback.
+        fullscreenRequestPending = true;
+        try {
+            await host.requestFullscreen();
+            // Handle restore/minimize clicked while the native request was pending.
+            if (host.dataset.displayMode !== 'fullscreen' && document.fullscreenElement === host) {
+                await document.exitFullscreen();
+            }
+        } catch { /* Keep the viewport fullscreen fallback when native fullscreen is blocked. */ }
+        finally { fullscreenRequestPending = false; }
+    });
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement && !fullscreenRequestPending && host.dataset.displayMode === 'fullscreen') {
+            setMode('normal');
+        }
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && host.dataset.displayMode === 'fullscreen') {
+            void leaveFullscreen('normal');
+        }
+        if (event.key === 'Tab' && host.dataset.displayMode === 'fullscreen') {
+            const controls = [...host.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href]')]
+                .filter(control => control.getClientRects().length > 0);
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (first && (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            }
+        }
+    });
+}
+
 function getActiveTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
@@ -293,6 +358,13 @@ function getChannelCurlEnabled() {
     return mode !== 'none';
 }
 
+const slopedAccountingGroup = document.getElementById('sloped-accounting-group');
+const slopedCompoundingCheckbox = document.getElementById('sloped-compounding-checkbox');
+const slopedInitialCapitalInput = document.getElementById('sloped-initial-capital');
+const slopedLineBreakoutBuyGroup = document.getElementById('sloped-line-breakout-buy-group');
+const slopedLineBreakoutBuyCheckbox = document.getElementById('sloped-line-breakout-buy-checkbox');
+const slopedEntryBarrierSellGroup = document.getElementById('sloped-entry-barrier-sell-group');
+const slopedEntryBarrierSellCheckbox = document.getElementById('sloped-entry-barrier-sell-checkbox');
 const slopedFullCandleGroup = document.getElementById('sloped-full-candle-group');
 const slopedFullCandleCheckbox = document.getElementById('sloped-full-candle-checkbox');
 const slopedWickGroup = document.getElementById('sloped-wick-group');
@@ -457,6 +529,14 @@ function validateReentrySelection() {
     return true;
 }
 
+function getSlopedAccountingQueryParams() {
+    return `&compounding=${slopedCompoundingCheckbox?.checked !== false}&initial_capital=${Number(slopedInitialCapitalInput?.value ?? 10000)}`;
+}
+
+function getSlopedSignalQueryParams() {
+    return `&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}`;
+}
+
 function getReentryQueryParams() {
     return `&reentry_mode=${encodeURIComponent(getReentryMode())}&reentry_rsi=${getReentryRsiEnabled()}&reentry_ema=${getReentryEmaEnabled()}&reentry_price_breakout=${getReentryPriceEnabled()}&reentry_volume=${getReentryVolumeEnabled()}`;
 }
@@ -471,6 +551,9 @@ function syncChannelMultVisibility(strategy) {
     if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLowerReclaimGroup) channelLowerReclaimGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
+    if (slopedAccountingGroup) slopedAccountingGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedLineBreakoutBuyGroup) slopedLineBreakoutBuyGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedEntryBarrierSellGroup) slopedEntryBarrierSellGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedFullCandleGroup) slopedFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedGapUpGroup) slopedGapUpGroup.style.display = isSloped ? 'flex' : 'none';
@@ -507,7 +590,7 @@ function resetBestParamsButton() {
     bestParamsBadge.title = 'Load saved best parameters for this ticker and strategy';
 }
 
-async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false } = {}) {
+async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false, restoreSignalSwitches = false } = {}) {
     const requestGeneration = ++bestParametersRequestGeneration;
     if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = symbol ? 'flex' : 'none';
     if (!strategy || !symbol || strategy === 'all') {
@@ -539,12 +622,18 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
 
         // Sloped Lines strategy controls
         if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
+            if (restoreSignalSwitches) {
+                if (slopedCompoundingCheckbox) slopedCompoundingCheckbox.checked = p.compounding !== false;
+                if (slopedInitialCapitalInput) slopedInitialCapitalInput.value = String(p.initial_capital ?? 10000);
+            }
             if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
                 slopedFullCandleCheckbox.checked = p.full_candle;
             }
             if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
                 slopedWickCheckbox.checked = p.use_wick;
             }
+            if (restoreSignalSwitches && slopedLineBreakoutBuyCheckbox && p.line_breakout_buy !== undefined) slopedLineBreakoutBuyCheckbox.checked = Boolean(p.line_breakout_buy);
+            if (restoreSignalSwitches && slopedEntryBarrierSellCheckbox && p.entry_barrier_sell !== undefined) slopedEntryBarrierSellCheckbox.checked = Boolean(p.entry_barrier_sell);
             if (slopedGapUpCheckbox) {
                 slopedGapUpCheckbox.checked = Boolean(p.gap_up);
             }
@@ -667,6 +756,13 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
         }
 
+        if (restoreSignalSwitches) {
+            const window = result.data.backtest_window;
+            setCapturedBacktestWindow(window?.start_date && window?.end_date
+                ? { ...window, symbol, strategy } : null);
+            if (window?.trading_window && tradingWindowSelect) tradingWindowSelect.value = window.trading_window;
+        }
+
         // Display Best Params badge
         if (bestParamsBadgeGroup && bestParamsBadge) {
             const perf = result.data.performance || {};
@@ -682,7 +778,12 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
-        if (showFeedback) showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.`);
+        if (showFeedback) {
+            const dates = capturedBacktestWindow
+                ? ` Window: ${capturedBacktestWindow.start_date} through ${capturedBacktestWindow.end_date}.`
+                : ' No captured dates are recorded for this preset; using the rolling range.';
+            showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.${dates}`);
+        }
         if (refresh) {
             await updateDashboard();
             if (activeTab === 'advanced' && advChart) await updateAdvDashboard();
@@ -700,6 +801,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
 let chart = null;
 let candlestickSeries = null;
 let activeResolution = '1d'; // Default: 1D candles
+let capturedBacktestWindow = null;
 let activeTimeframe = '1y';  // Default: 1-Year range
 let trendlineSeries = []; // LineSeries for trendline overlays
 let volumeChart = null;
@@ -1049,7 +1151,9 @@ function initChart() {
             const width = container.clientWidth || (entries[0] && entries[0].contentRect.width) || 800;
             const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
             if (width > 50 && height > 50) {
+                const visibleRange = chart.timeScale().getVisibleLogicalRange();
                 chart.applyOptions({ width, height });
+                if (visibleRange) chart.timeScale().setVisibleLogicalRange(visibleRange);
                 scheduleSessionZoneRender();
                 scheduleVolumeProfileRender();
             }
@@ -1100,7 +1204,9 @@ function createIndicatorChart(container, height) {
     new ResizeObserver(entries => {
         const width = container.clientWidth || entries[0]?.contentRect?.width || 800;
         if (width > 50) {
+            const visibleRange = indicatorChart.timeScale().getVisibleLogicalRange();
             indicatorChart.applyOptions({ width, height });
+            if (visibleRange) indicatorChart.timeScale().setVisibleLogicalRange(visibleRange);
             scheduleSessionZoneRender();
         }
     }).observe(container);
@@ -1377,7 +1483,25 @@ function setResolution(res) {
     updateDashboard();
 }
 
+function getCapturedWindowQuery() {
+    const window = capturedBacktestWindow;
+    if (!window || window.symbol !== tickerSelect.value || window.strategy !== strategySelect.value) return '';
+    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}`;
+}
+
+function setCapturedBacktestWindow(window = null) {
+    capturedBacktestWindow = window;
+    const controls = document.getElementById('saved-window-controls');
+    const label = document.getElementById('saved-window-label');
+    if (controls) controls.hidden = !window;
+    if (label) label.textContent = window ? `Saved window: ${window.start_date} → ${window.end_date}` : '';
+    const hint = document.getElementById('active-range-hint');
+    if (hint) hint.textContent = window
+        ? `${window.start_date} → ${window.end_date}` : `${activeTimeframe.toUpperCase()} (rolling)`;
+}
+
 function setTimeframe(range) {
+    setCapturedBacktestWindow();
     activeTimeframe = range;
     document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.range === range);
@@ -1406,7 +1530,7 @@ function initTimeframeButtons() {
     document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const range = e.currentTarget.dataset.range;
-            if (range && range !== activeTimeframe) {
+            if (range && (range !== activeTimeframe || capturedBacktestWindow)) {
                 setTimeframe(range);
             }
         });
@@ -1512,6 +1636,7 @@ async function loadFilters() {
                 try {
                     await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value, {
                         showFeedback: true,
+                        restoreSignalSwitches: true,
                         refresh: true,
                     });
                 } finally {
@@ -1520,11 +1645,13 @@ async function loadFilters() {
             };
         }
         tickerSelect.onchange = async () => {
+            setCapturedBacktestWindow();
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
+            setCapturedBacktestWindow();
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
@@ -1912,7 +2039,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                 color: entryColor,
                 shape: isLong ? 'arrowUp' : 'arrowDown',
                 markerClass: slopedStyle?.markerClass || 'default-entry',
-                text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
+                text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}${trade.quantity != null ? ` · ${Number(trade.quantity).toFixed(6).replace(/0+$/, '').replace(/\.$/, '')} shares` : ''}`
             });
         }
 
@@ -1945,7 +2072,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                     color: exitColor,
                     shape: isLong ? 'arrowDown' : 'arrowUp',
                     markerClass: slopedStyle?.markerClass || 'default-exit',
-                    text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
+                    text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)${trade.quantity != null ? ` · ${Number(trade.quantity).toFixed(6)} shares · P&L $${Number(trade.pnl_usd).toFixed(2)} · balance $${Number(trade.balance_after).toFixed(2)}` : ''}`
                 });
             }
         }
@@ -2060,9 +2187,9 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0, levelBadges: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}${fullCandleParam}`);
         if (!res.ok) return summary;
         const data = await res.json();
         if (!isCurrent()) return summary;
@@ -2271,7 +2398,7 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}&channel_mult=${mult}&lookback=${lb}`);
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!isCurrent()) return;
@@ -2339,6 +2466,7 @@ async function updateDashboard() {
     const symbol = tickerSelect.value;
     const strategy = strategySelect.value || 'all';
     if (!symbol) return;
+    if (['sloped_lines', 'slope_lines'].includes(strategy) && slopedInitialCapitalInput && !slopedInitialCapitalInput.checkValidity()) return;
     const requestGeneration = ++dashboardRequestGeneration;
     const isCurrentRequest = () => requestGeneration === dashboardRequestGeneration;
 
@@ -2348,10 +2476,10 @@ async function updateDashboard() {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
         const strategyWindow = getActiveTradingWindow();
-        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
+        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}${getCapturedWindowQuery()}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2513,9 +2641,9 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}${getCapturedWindowQuery()}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2621,6 +2749,8 @@ async function updateAdvDashboard() {
 // Bootstrap — runs once DOM scripts have executed
 // ============================================================
 (function bootstrap() {
+    initChartWindowControls();
+    document.getElementById('saved-window-clear')?.addEventListener('click', () => setTimeframe(activeTimeframe));
     try {
         if (typeof LightweightCharts === 'undefined') {
             console.error('[TV] LightweightCharts not loaded');
@@ -2636,6 +2766,13 @@ async function updateAdvDashboard() {
     } catch (err) {
         console.error('[TV] Chart initialization failed:', err);
     }
+    [slopedLineBreakoutBuyCheckbox, slopedEntryBarrierSellCheckbox, slopedCompoundingCheckbox, slopedInitialCapitalInput].forEach(control => {
+        control?.addEventListener('change', () => {
+            if (control === slopedInitialCapitalInput && !control.reportValidity()) return;
+            updateDashboard();
+            if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+        });
+    });
     initTabs();
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);

@@ -118,7 +118,7 @@
         "Probe Yahoo public chart endpoint; it currently responds HTTP 429."
       ],
       "cause": "Yahoo is refusing the direct chart probe with HTTP 429. The app returns empty candles on failed Yahoo history requests and only caches successful results, so candles, trades, statistics and trendlines can repeatedly fetch the failing provider. Several async request handlers execute synchronous fetch/calculation work directly, delaying unrelated page requests.",
-      "verified": "99 offline Python tests, 8 JavaScript unit tests, charts build/lint, React chart browser smoke and dashboard window/settings smoke passed. Reconstructed local AAPL Saved Best snapshot reproduces 49.01%; SPY reproduces 17.06% while its original 17.07% record remains unchanged. Verified cached prices remain readable after provider failures and process-store restart, and a slow provider does not block dashboard HTML.",
+      "verified": "99 offline Python tests, 8 JavaScript unit tests, charts build/lint, React chart browser smoke and dashboard window/settings smoke passed. Reconstructed local AAPL Saved Best snapshot reproduces 49.01%; SPY reproduces 17.06% while its original 17.07% record remains unchanged. Verified cached prices remain readable after provider failures and process-store restart, and a slow provider does not block dashboard HTML. Live restarted-server check: AAPL 250 cached daily candles in 0.011 seconds; initial Hyperliquid BTC minute history persisted 2562 candles in 1.0117 seconds and repeat request took 0.0454 seconds.",
       "diagnostic_before_fix": "Dashboard HTML returned HTTP 200 in 0.001247 seconds. AAPL daily candle request returned HTTP 200 after 10.921413 seconds with zero candles. A page request during the fetch took 2.724866 seconds. A direct Yahoo chart API probe returned HTTP 429 in 0.180546 seconds. Server process remained listening on port 8000 with low CPU usage.",
       "fixed_in": "421ad5a",
       "fix_branch": "db_implementation",
@@ -127,22 +127,26 @@
     {
       "id": "BUG-006",
       "title": "Saved Best snapshot binding survives ticker and resolution changes",
-      "fixed": false,
+      "fixed": true,
       "found": "2026-10-25",
       "branch": "db_implementation",
       "symptom": "Switching from AAPL Saved Best to SPY retains the AAPL snapshot ID and receives HTTP 422; changing resolution/session can likewise attach an incompatible snapshot.",
       "cause": "The existing ticker handler copies captured dates to the new ticker without removing the newly introduced snapshot ID. Captured-window query construction does not distinguish chart resolution or session.",
-      "verified": "Live Chrome check observed SPY candle request with AAPL snapshot 4e345478 and AAPL dates returning HTTP 422."
+      "verified": "Dashboard settings/window smoke and React chart smoke pass with snapshot IDs. Regression checks cover ticker switching, alternate resolutions, sessions and data sources; 99 Python and 9 JavaScript unit tests pass.",
+      "fixed_in": "5ab436d",
+      "fix": "Clear snapshot binding on ticker changes while retaining active controls and captured dates. Attach IDs only for matching captured resolutions/sessions on both chart pages; VIX requests omit the main ticker snapshot."
     },
     {
       "id": "BUG-007",
       "title": "Dashboard favicon request produces a browser console error",
-      "fixed": false,
+      "fixed": true,
       "found": "2026-10-25",
       "branch": "db_implementation",
       "symptom": "Opening the live dashboard produces GET /favicon.ico HTTP 404 and a browser console error.",
       "cause": "There is no favicon route or linked icon.",
-      "verified": "Observed in live Chrome acceptance check and dashboard access log."
+      "verified": "New route is present in the tested app; final live Chrome check verifies no console errors.",
+      "fixed_in": "5ab436d",
+      "fix": "Return HTTP 204 from the favicon route instead of an unhandled HTTP 404."
     }
   ]
 }

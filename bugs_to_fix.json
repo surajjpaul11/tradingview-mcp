@@ -123,6 +123,26 @@
       "fixed_in": "421ad5a",
       "fix_branch": "db_implementation",
       "fix": "Persist shared Yahoo/Hyperliquid historical candles and coverage in SQLite; coalesce downloads using durable leases and provider cooldowns; serve cached history while refreshing off the ASGI event loop; return explicit errors for failed/incomplete backtests; pin chart calculations to immutable revisions and Saved Best snapshots."
+    },
+    {
+      "id": "BUG-006",
+      "title": "Saved Best snapshot binding survives ticker and resolution changes",
+      "fixed": false,
+      "found": "2026-10-25",
+      "branch": "db_implementation",
+      "symptom": "Switching from AAPL Saved Best to SPY retains the AAPL snapshot ID and receives HTTP 422; changing resolution/session can likewise attach an incompatible snapshot.",
+      "cause": "The existing ticker handler copies captured dates to the new ticker without removing the newly introduced snapshot ID. Captured-window query construction does not distinguish chart resolution or session.",
+      "verified": "Live Chrome check observed SPY candle request with AAPL snapshot 4e345478 and AAPL dates returning HTTP 422."
+    },
+    {
+      "id": "BUG-007",
+      "title": "Dashboard favicon request produces a browser console error",
+      "fixed": false,
+      "found": "2026-10-25",
+      "branch": "db_implementation",
+      "symptom": "Opening the live dashboard produces GET /favicon.ico HTTP 404 and a browser console error.",
+      "cause": "There is no favicon route or linked icon.",
+      "verified": "Observed in live Chrome acceptance check and dashboard access log."
     }
   ]
 }

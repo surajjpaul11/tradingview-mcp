@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { subscribeCandles } from '../feeds/index.js';
-import { historyRequestKey } from '../feeds/history.js';
+import { historyRequestKey, snapshotApplies } from '../feeds/history.js';
 import { toSeriesBar } from '../seriesBars.js';
 import { DAY, findRange, findResolution } from '../timeframes.js';
 
@@ -25,6 +25,6 @@ export function useCandleFeed({chartRef,seriesRef},{symbol,resolutionId,rangeId,
       lastTime=candle.time; publish();
     };
     const onError=(error)=>{console.error(error);onStatusChange({state:'error',message:error.message,historyKey});};
-    return subscribeCandles(symbol,{resolution,range:{...range,tradingWindow,backtestWindow}},{onHistory,onCandle,onError});
+    return subscribeCandles(symbol,{resolution,range:{...range,tradingWindow,backtestWindow:backtestWindow?{...backtestWindow,snapshot_id:snapshotApplies(symbol,resolutionId,tradingWindow,backtestWindow)?backtestWindow.snapshot_id:undefined}:null}},{onHistory,onCandle,onError});
   },[chartRef,seriesRef,symbol,resolutionId,rangeId,tradingWindow,backtestWindow,onStatusChange,onCandlesChange]);
 }

@@ -5,6 +5,12 @@ export const historyRequestKey=(symbol,resolutionId,rangeId,tradingWindow,backte
   JSON.stringify([symbol.source,symbol.id,resolutionId,rangeId,tradingWindow,backtestWindow]);
 
 
+export function snapshotApplies(symbol,resolutionId,tradingWindow,window){
+  return Boolean(window?.snapshot_id&&window.timeframe===resolutionId
+    &&(!window.symbol||window.symbol===symbol.id)&&(!window.source||window.source===symbol.source)
+    &&(symbol.source==='hyperliquid'||(window.trading_window||'regular market')===tradingWindow));
+}
+
 async function loadChartHistory(symbol, resolutionId, rangeId, signal, tradingWindow = 'regular market', backtestWindow = null) {
   const range = findRange(rangeId);
   const query = new URLSearchParams({
@@ -17,7 +23,7 @@ async function loadChartHistory(symbol, resolutionId, rangeId, signal, tradingWi
   if (backtestWindow) {
     query.set('start_date', backtestWindow.start_date);
     query.set('end_date', backtestWindow.end_date);
-    if (backtestWindow.snapshot_id) query.set('snapshot_id', backtestWindow.snapshot_id);
+    if (snapshotApplies(symbol,resolutionId,tradingWindow,backtestWindow)) query.set('snapshot_id', backtestWindow.snapshot_id);
   }
   const response = await fetch(`/api/chart/candles?${query}`, { signal });
   if (!response.ok) {

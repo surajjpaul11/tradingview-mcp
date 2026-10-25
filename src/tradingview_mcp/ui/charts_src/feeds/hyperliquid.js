@@ -11,7 +11,7 @@ export function subscribeHyperliquid(symbol,{resolution,range},{onHistory,onCand
     if(!active) return; onHistory(candles); historyReady=true;
     pending.sort((a,b)=>a.time-b.time).forEach(onCandle); pending.length=0;
   }).catch((error)=>{ if(active && error.name!=='AbortError') onError(error); });
-  const unsubscribe=range.backtestWindow?.snapshot_id?()=>{}:subscribeHyperliquidCandles(symbol.id,interval,(raw)=>{
+  const unsubscribe=range.backtestWindow?()=>{}:subscribeHyperliquidCandles(symbol.id,interval,(raw)=>{
     if(!active) return; const candle=aggregate(parseHyperliquidCandle(raw));
     if(!candle)return;
     if(historyReady) onCandle(candle); else pending.push(candle);

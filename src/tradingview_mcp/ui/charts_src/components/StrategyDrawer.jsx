@@ -36,7 +36,7 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
     const result=await response.json();
     if(!response.ok){setMessage(result.detail||`HTTP ${response.status}`);return;}
     if(!result.found){setMessage(`No saved best parameters for ${symbol.label} and ${pane.strategy.name}.`);return;}
-    const window=result.data.backtest_window?{...result.data.backtest_window,snapshot_id:result.data.snapshot_id}:null;
+    const window=result.data.backtest_window?{...result.data.backtest_window,timeframe:result.data.timeframe,symbol:symbol.id,source:symbol.source,snapshot_id:result.data.snapshot_id}:null;
     onChange({
       resolution:result.data.timeframe||pane.resolution,
       range:RANGES.find((item)=>item.period===result.data.period)?.id||pane.range,

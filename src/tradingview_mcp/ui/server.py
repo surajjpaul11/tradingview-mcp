@@ -14,7 +14,7 @@ from pathlib import Path
 from datetime import date as calendar_date, datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 import yfinance as yf
 
 # Import existing DB queries and backtesting service
@@ -188,6 +188,10 @@ def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):
 @app.on_event("startup")
 async def startup_event():
     _ensure_seeded()
+
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():

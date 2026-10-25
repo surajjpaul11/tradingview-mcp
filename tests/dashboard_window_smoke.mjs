@@ -26,8 +26,8 @@ await page.route('**/*', async route => {
     strategyRequests.push({ path: url.pathname, query: url.searchParams });
     const payload = url.pathname === '/api/filters' ? { symbols: ['AAPL', 'SPY', 'TEST'], strategies: ['sloped_lines'] }
       : url.pathname === '/api/best-parameters' ? (url.searchParams.get('symbol') === 'TEST' ? { found: false } : { found: true, data: url.searchParams.get('symbol') === 'SPY'
-        ? { timeframe: '1h', period: '3mo', backtest_window: { ...savedWindow, start_date: '2025-09-23', end_date: '2026-09-22' }, parameters: { ...savedSignals, full_candle: true, confirm_candles: 3, reentry_mode: 'none', reentry_price_breakout: false }, performance: { total_pnl_pct: 17.07 } }
-        : { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } })
+        ? { snapshot_id: 'spy-snapshot', timeframe: '1h', period: '3mo', backtest_window: { ...savedWindow, start_date: '2025-09-23', end_date: '2026-09-22' }, parameters: { ...savedSignals, full_candle: true, confirm_candles: 3, reentry_mode: 'none', reentry_price_breakout: false }, performance: { total_pnl_pct: 17.07 } }
+        : { snapshot_id: 'aapl-snapshot', timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } })
       : url.pathname === '/api/candles' ? { candles, data_status: { source:'sqlite', complete:true, stale:false, data_revision:'1:2', as_of:candles.at(-1).time } }
       : url.pathname === '/api/trades' ? { trades: [] }
       : url.pathname === '/api/trendlines' ? { trendlines: [] }
@@ -113,7 +113,7 @@ try {
   const settingsSnapshot = () => page.evaluate(() => ({
     controls: [...document.querySelectorAll('input[id^="sloped-"], select[id^="sloped-"]')].map(control =>
       [control.id, control.type === 'checkbox' ? control.checked : control.value]),
-    resolution: activeResolution, range: activeTimeframe, dates: getCapturedWindowQuery(),
+    resolution: activeResolution, range: activeTimeframe, dates: getCapturedWindowQuery(activeResolution, false),
     session: getActiveTradingWindow(),
   }));
   const activeSettings = await settingsSnapshot();
@@ -127,6 +127,7 @@ try {
   // Explicit Saved Best remains the operation that replaces the active setup.
   await page.locator('#ticker-select').selectOption('SPY');
   await page.waitForFunction(() => document.querySelector('#best-params-badge').textContent.includes('17.07'));
+  assert.equal(strategyRequests.filter(request => request.path === '/api/candles' && request.query.get('symbol') === 'SPY').at(-1)?.query.has('snapshot_id'), false);
   const spySaved = page.waitForResponse(response => response.url().includes('/api/stats?')
     && response.url().includes('symbol=SPY') && response.url().includes('start_date=2025-09-23'));
   await page.locator('#best-params-badge').click();
@@ -146,6 +147,10 @@ try {
   await page.locator('#best-params-badge').click();
   await aaplSaved;
   assert.equal(await page.locator('#sloped-reentry-price-checkbox').isChecked(), true);
+  const snapshotQueries = await page.evaluate(() => ({same:getCapturedWindowQuery('1d'),different:getCapturedWindowQuery('1h'),vix:getCapturedWindowQuery('1d',false)}));
+  assert.ok(snapshotQueries.same.includes('snapshot_id=aapl-snapshot'));
+  assert.ok(!snapshotQueries.different.includes('snapshot_id'));
+  assert.ok(!snapshotQueries.vix.includes('snapshot_id'));
   const rollingResponse = page.waitForResponse(response => response.url().includes('/api/stats?') && !response.url().includes('start_date='));
   await page.getByRole('button', { name: 'Use rolling range', exact: true }).click();
   await rollingResponse;

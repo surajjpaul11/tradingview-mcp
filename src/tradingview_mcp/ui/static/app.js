@@ -788,7 +788,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
 
             const window = result.data.backtest_window;
             setCapturedBacktestWindow(window?.start_date && window?.end_date
-                ? { ...window, symbol, strategy, snapshot_id: result.data.snapshot_id } : null);
+                ? { ...window, symbol, strategy, timeframe: result.data.timeframe, snapshot_id: result.data.snapshot_id } : null);
             if (window?.trading_window && tradingWindowSelect) tradingWindowSelect.value = window.trading_window;
         }
 
@@ -1512,10 +1512,11 @@ function setResolution(res) {
     updateDashboard();
 }
 
-function getCapturedWindowQuery() {
+function getCapturedWindowQuery(timeframe = activeResolution, includeSnapshot = true) {
     const window = capturedBacktestWindow;
     if (!window || window.symbol !== tickerSelect.value || window.strategy !== strategySelect.value) return '';
-    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}${window.snapshot_id ? `&snapshot_id=${encodeURIComponent(window.snapshot_id)}` : ""}`;
+    const snapshotMatches = includeSnapshot && window.snapshot_id && (!window.timeframe || window.timeframe === timeframe) && (!window.trading_window || window.trading_window === getActiveTradingWindow());
+    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}${snapshotMatches ? `&snapshot_id=${encodeURIComponent(window.snapshot_id)}` : ""}`;
 }
 
 function setCapturedBacktestWindow(window = null) {
@@ -1675,7 +1676,7 @@ async function loadFilters() {
         }
         tickerSelect.onchange = async () => {
             if (capturedBacktestWindow) {
-                setCapturedBacktestWindow({ ...capturedBacktestWindow, symbol: tickerSelect.value });
+                setCapturedBacktestWindow({ ...capturedBacktestWindow, symbol: tickerSelect.value, snapshot_id: undefined });
             }
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
@@ -2220,7 +2221,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}${fullCandleParam}${revisionParam}`);
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery(timeframe)}${fullCandleParam}${revisionParam}`);
         if (!res.ok) return summary;
         const data = await res.json();
         if (!isCurrent()) return summary;
@@ -2429,7 +2430,7 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}&channel_mult=${mult}&lookback=${lb}${revisionParam}`);
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery(timeframe)}&channel_mult=${mult}&lookback=${lb}${revisionParam}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!isCurrent()) return;
@@ -2527,7 +2528,7 @@ async function updateDashboard() {
             fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}${revisionParam}`),
             fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}${revisionParam}`),
             vixRequested
-                ? fetch(`/api/candles?symbol=${encodeURIComponent('^VIX')}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`)
+                ? fetch(`/api/candles?symbol=${encodeURIComponent('^VIX')}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}&trading_window=${encodeURIComponent(strategyWindow)}${getCapturedWindowQuery(reqResolution, false)}`)
                 : Promise.resolve(null),
         ]);
         await Promise.all([tradesRes, statsRes].map(checkedMarketResponse));
@@ -2678,7 +2679,7 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}${getCapturedWindowQuery()}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}${getCapturedWindowQuery(config.interval)}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
             ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}`
             : '';

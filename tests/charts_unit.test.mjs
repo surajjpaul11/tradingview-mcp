@@ -109,3 +109,15 @@ test('shares Hyperliquid socket and cleans subscriptions',async()=>{
   off2(); assert.ok(ws.sent.some((item)=>item.method==='unsubscribe'));
   await new Promise((resolve)=>setTimeout(resolve,1100)); assert.equal(ws.closed,true);
 });
+
+
+test('snapshot IDs apply only to their captured ticker, resolution, source and session',async()=>{
+  const {snapshotApplies}=await import('../src/tradingview_mcp/ui/charts_src/feeds/history.js');
+  const symbol={id:'AAPL',source:'yahoo'};
+  const window={snapshot_id:'frozen',symbol:'AAPL',source:'yahoo',timeframe:'1d',trading_window:'regular market'};
+  assert.equal(snapshotApplies(symbol,'1d','regular market',window),true);
+  assert.equal(snapshotApplies(symbol,'1h','regular market',window),false);
+  assert.equal(snapshotApplies(symbol,'1d','extended hours',window),false);
+  assert.equal(snapshotApplies({id:'SPY',source:'yahoo'},'1d','regular market',window),false);
+  assert.equal(snapshotApplies({...symbol,source:'hyperliquid'},'1d','24/7',window),false);
+});

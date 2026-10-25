@@ -9,23 +9,23 @@
       "branch": "claude",
       "found_by": "Strengthened dashboard browser test (tests/dashboard_ui_smoke.mjs) failed with 'Browser errors: Value is null'.",
       "where": [
-        "src/tradingview_mcp/ui/static/app.js → updateDashboard()",
+        "src/tradingview_mcp/ui/static/app.js \u2192 updateDashboard()",
         "Thrown inside Lightweight Charts v4.1.3 (static/lightweight-charts.standalone.production.js)"
       ],
       "symptom": "Browser console logged 'Uncaught Error: Value is null' one to three times. The chart still ended up drawn correctly, so users couldn't see it. It failed the browser test, which treats any browser error as a failure.",
       "reproduce": [
         "Start the dashboard: ./start.command (or uv run python src/tradingview_mcp/ui/server.py).",
-        "Open it in Chrome with DevTools → Console open.",
+        "Open it in Chrome with DevTools \u2192 Console open.",
         "Click the Advanced tab. Pick resolution 12H and range 5Y.",
         "Change the strategy dropdown to Bollinger, then back to Sloped Lines (this loads saved best parameters and resets the chart to 1D / 1Y).",
         "Trigger any reload of the chart: click range 5Y, or the Regular tab.",
         "'Value is null' appears in the console shortly after the reload."
       ],
-      "reproduce_automated": "npm run test:ui — its final step (click 5Y right after switching back to Sloped Lines) is this sequence and now guards against regression. Waiting before the click did not avoid the bug; it is not a click-timing issue.",
+      "reproduce_automated": "npm run test:ui \u2014 its final step (click 5Y right after switching back to Sloped Lines) is this sequence and now guards against regression. Waiting before the click did not avoid the bug; it is not a click-timing issue.",
       "cause": "The main chart shares one time scale across the candles and every overlay line. updateDashboard() loaded the new candles first and removed the previous trendline/channel overlay series only later, after the new trendlines were fetched. Removing series after the swap shifted the shared time-scale positions under the new candles, so the library looked up bars at positions that no longer existed.",
       "stack_traces": [
-        "Error: Value is null at ensureNotNull ← TimeScale._internal_timeRangeForLogicalRange ← TimeScaleApi.getVisibleRange ← TimeScaleApi._private__onVisibleBarsChanged (visible-time-range event)",
-        "Error: Value is null at ensureNotNull ← SeriesBarColorer.Candlestick ← SeriesCandlesticksPaneView._internal__createRawItem (drawing a candle)"
+        "Error: Value is null at ensureNotNull \u2190 TimeScale._internal_timeRangeForLogicalRange \u2190 TimeScaleApi.getVisibleRange \u2190 TimeScaleApi._private__onVisibleBarsChanged (visible-time-range event)",
+        "Error: Value is null at ensureNotNull \u2190 SeriesBarColorer.Candlestick \u2190 SeriesCandlesticksPaneView._internal__createRawItem (drawing a candle)"
       ],
       "debug_tip": "For readable stack traces, temporarily replace the bundled library with https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.development.js",
       "dead_ends": [
@@ -47,9 +47,9 @@
       "branch": "codex/codex",
       "found_by": "AAPL 1Y / 1D chart review showed the descending resistance anchored on December 3 and December 26 crossing candle bodies before its January 27 breakout.",
       "where": [
-        "strategies/sloped_lines/sloped_lines_strategy.py → build_descending_resistance()",
-        "strategies/sloped_lines/sloped_lines_strategy.py → build_ascending_support()",
-        "src/tradingview_mcp/ui/static/app.js → fetchAndRenderTrendlines()"
+        "strategies/sloped_lines/sloped_lines_strategy.py \u2192 build_descending_resistance()",
+        "strategies/sloped_lines/sloped_lines_strategy.py \u2192 build_ascending_support()",
+        "src/tradingview_mcp/ui/static/app.js \u2192 fetchAndRenderTrendlines()"
       ],
       "symptom": "A trendline could visibly cut through one or more later candles, disappear as a valid candidate, then be selected again after price moved back to the other side. The chart also labeled the second anchor as the confirmation date even though a pivot becomes knowable only after the lookback bars complete.",
       "reproduce": [
@@ -59,7 +59,7 @@
       ],
       "cause": "Candidate validation checked candles only between the two anchors plus the current evaluation candle. It skipped every candle after anchor two and before the current candle, allowing an invalidated candidate to become valid again later. Swing points also discarded their actual confirmation bar, and the UI redrew only endpoint interpolation instead of the strategy's per-bar projection.",
       "fix": "Preserve each swing's actual confirmation bar; validate every candle from anchor one through the current bar; permit formation tolerance only before anchor two; invalidate on any selected body or wick touch after anchor two; use inclusive active-line breaks; and send one projected trendline value per candle to the UI.",
-      "verified": "The former December 3 → December 26 → January 27 line no longer appears. AAPL now draws a clear December 3 → April 23 resistance, activates it after the April 30 pivot confirmation, and ends it May 1. 42 Python tests pass and the 19-case dashboard browser matrix passes across Regular/Advanced, 1D/4H/12H, and 3M/1Y/5Y.",
+      "verified": "The former December 3 \u2192 December 26 \u2192 January 27 line no longer appears. AAPL now draws a clear December 3 \u2192 April 23 resistance, activates it after the April 30 pivot confirmation, and ends it May 1. 42 Python tests pass and the 19-case dashboard browser matrix passes across Regular/Advanced, 1D/4H/12H, and 3M/1Y/5Y.",
       "performance_impact": "For AAPL's saved 1Y / 1D parameters on data from 2025-09-26 through 2026-09-25, the corrected engine returns 15.83% across 4 trades with a 50.0% win rate. The stored 46.71% badge remains a historical baseline from the previous engine and requires re-optimization before replacement.",
       "fixed_in": {
         "commit": "feeb2c0",
@@ -108,7 +108,7 @@
     {
       "id": "BUG-005",
       "title": "Yahoo data failures cause empty charts and repeated slow requests",
-      "fixed": false,
+      "fixed": true,
       "found": "2026-10-24",
       "branch": "strategy-tweaks",
       "symptom": "The dashboard page responds immediately, but an AAPL daily candle request takes about 10.9 seconds and returns an empty candle array; the graph appears stalled.",
@@ -118,7 +118,11 @@
         "Probe Yahoo public chart endpoint; it currently responds HTTP 429."
       ],
       "cause": "Yahoo is refusing the direct chart probe with HTTP 429. The app returns empty candles on failed Yahoo history requests and only caches successful results, so candles, trades, statistics and trendlines can repeatedly fetch the failing provider. Several async request handlers execute synchronous fetch/calculation work directly, delaying unrelated page requests.",
-      "verified": "Dashboard HTML returned HTTP 200 in 0.001247 seconds. AAPL daily candle request returned HTTP 200 after 10.921413 seconds with zero candles. A page request during the fetch took 2.724866 seconds. A direct Yahoo chart API probe returned HTTP 429 in 0.180546 seconds. Server process remained listening on port 8000 with low CPU usage."
+      "verified": "99 offline Python tests, 8 JavaScript unit tests, charts build/lint, React chart browser smoke and dashboard window/settings smoke passed. Reconstructed local AAPL Saved Best snapshot reproduces 49.01%; SPY reproduces 17.06% while its original 17.07% record remains unchanged. Verified cached prices remain readable after provider failures and process-store restart, and a slow provider does not block dashboard HTML.",
+      "diagnostic_before_fix": "Dashboard HTML returned HTTP 200 in 0.001247 seconds. AAPL daily candle request returned HTTP 200 after 10.921413 seconds with zero candles. A page request during the fetch took 2.724866 seconds. A direct Yahoo chart API probe returned HTTP 429 in 0.180546 seconds. Server process remained listening on port 8000 with low CPU usage.",
+      "fixed_in": "421ad5a",
+      "fix_branch": "db_implementation",
+      "fix": "Persist shared Yahoo/Hyperliquid historical candles and coverage in SQLite; coalesce downloads using durable leases and provider cooldowns; serve cached history while refreshing off the ASGI event loop; return explicit errors for failed/incomplete backtests; pin chart calculations to immutable revisions and Saved Best snapshots."
     }
   ]
 }

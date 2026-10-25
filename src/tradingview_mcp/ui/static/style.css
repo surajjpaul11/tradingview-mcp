@@ -170,6 +170,20 @@ h1 {
     white-space: nowrap;
 }
 
+.sloped-reentry-row {
+    flex: 1 0 100%;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding-top: 0.15rem;
+}
+
+.sloped-reentry-row select {
+    min-width: 84px;
+}
+
 .best-params-badge {
     display: inline-flex;
     align-items: center;
@@ -213,6 +227,22 @@ h1 {
 
 .best-params-message.error {
     color: #fca5a5;
+}
+
+.sloped-reentry-warning {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    border-radius: 8px;
+    background: rgba(120, 53, 15, 0.28);
+    color: #fde68a;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.sloped-reentry-warning[hidden] {
+    display: none;
 }
 
 .best-params-badge .star-icon {
@@ -498,6 +528,59 @@ select:focus {
     opacity: 1;
 }
 
+.chart-window {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.chart-window-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0.5rem 0.25rem 1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.chart-window-controls { display: flex; gap: 0.2rem; }
+.chart-window-controls button {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.chart-window-controls button:hover:not(:disabled) { background: rgba(125, 211, 252, 0.15); color: #7dd3fc; }
+.chart-window-controls button:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+.chart-window-controls button:disabled { opacity: 0.35; cursor: default; }
+.chart-window-controls svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.chart-window[data-display-mode="minimized"] .chart-workspace { display: none; }
+.chart-window[data-display-mode="minimized"] { gap: 0; }
+body.chart-fullscreen-active { overflow: hidden; }
+.chart-window[data-display-mode="fullscreen"] {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100dvh;
+    padding: 0.75rem;
+    background: #0b1120;
+    overflow: auto;
+}
+.chart-window[data-display-mode="fullscreen"] .chart-window-header { flex-shrink: 0; }
+.chart-window[data-display-mode="fullscreen"] .chart-workspace { flex: 1; min-height: 0; }
+.chart-window[data-display-mode="fullscreen"] .chart-main-column { flex: 1; min-height: 260px; }
+.chart-window[data-display-mode="fullscreen"] .chart-wrapper { flex: 1; height: auto; min-height: 240px; }
+.chart-window[data-display-mode="fullscreen"] .chart-control-rail,
+.chart-window[data-display-mode="fullscreen"] .indicator-stack { flex-shrink: 0; }
+
 .chart-workspace {
     display: flex;
     flex-direction: column;
@@ -618,6 +701,12 @@ select:focus {
     inset: 0;
     z-index: 4;
     overflow: hidden;
+    pointer-events: none;
+}
+
+.volume-profile-layer {
+    position: absolute;
+    z-index: 6;
     pointer-events: none;
 }
 
@@ -934,3 +1023,16 @@ select:focus {
     border-radius: 50%;
     flex-shrink: 0;
 }
+
+/* Keep the window's control rail responsive despite generic toolbar rules. */
+.chart-window .chart-control-rail { flex-direction: row; flex-wrap: wrap; }
+@media (max-width: 820px) {
+    .chart-window .chart-control-rail .control-section { flex: 0 1 auto; width: 100%; }
+}
+
+.saved-window-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 1rem; font-size: 0.8rem; color: #7dd3fc; flex-shrink: 0; }
+.saved-window-controls[hidden], .chart-window[data-display-mode="minimized"] .saved-window-controls { display: none; }
+.saved-window-controls button { color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 5px; padding: 0.3rem 0.6rem; cursor: pointer; }
+
+#sloped-initial-capital { background: rgba(255, 255, 255, 0.05); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.55rem 0.65rem; font: inherit; }
+#sloped-initial-capital:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }

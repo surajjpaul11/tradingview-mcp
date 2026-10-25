@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trade Visualizer</title>
-    <link rel="stylesheet" href="/static/style.css?v=20">
+    <link rel="stylesheet" href="/static/style.css?v=25">
     <!-- Google Fonts for typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -130,7 +130,7 @@
                 </div>
 
                 <div class="filter-group" id="sloped-full-candle-group" style="display: flex;">
-                    <label class="checkbox-container" for="sloped-full-candle-checkbox">
+                    <label class="checkbox-container" for="sloped-full-candle-checkbox" title="Use closing prices for line breaks, trap re-entry and entry protection. Peak Reclaim has its own checkbox.">
                         <input type="checkbox" id="sloped-full-candle-checkbox">
                         <span class="checkbox-text">Full Candle</span>
                     </label>
@@ -140,6 +140,34 @@
                     <label class="checkbox-container" for="sloped-wick-checkbox">
                         <input type="checkbox" id="sloped-wick-checkbox">
                         <span class="checkbox-text">Wick Anchors</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-gap-up-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-gap-up-checkbox">
+                        <input type="checkbox" id="sloped-gap-up-checkbox">
+                        <span class="checkbox-text">Gap Up</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-gap-down-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-gap-down-checkbox">
+                        <input type="checkbox" id="sloped-gap-down-checkbox">
+                        <span class="checkbox-text">Gap Down</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-staggered-lines-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-staggered-lines-checkbox" title="Build tighter resistance from the latest touch and local maximum; build tighter support from later higher-low pivots">
+                        <input type="checkbox" id="sloped-staggered-lines-checkbox">
+                        <span class="checkbox-text">Staggered Lines</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-trendline-labels-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-trendline-labels-checkbox" title="Show a price-axis label only for the currently active support or resistance line">
+                        <input type="checkbox" id="sloped-trendline-labels-checkbox">
+                        <span class="checkbox-text">Active Line Labels</span>
                     </label>
                 </div>
 
@@ -225,6 +253,36 @@
                     </div>
                 </div>
 
+                <div class="filter-group" id="sloped-line-breakout-buy-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-line-breakout-buy-checkbox" title="Enable buys when descending resistance breaks">
+                        <input type="checkbox" id="sloped-line-breakout-buy-checkbox">
+                        <span class="checkbox-text">Line Breakout Buy</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-entry-barrier-sell-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-entry-barrier-sell-checkbox" title="Enable protective exits below the entry low before support forms; includes ATR Stop Buffer">
+                        <input type="checkbox" id="sloped-entry-barrier-sell-checkbox">
+                        <span class="checkbox-text">Entry Barrier Sell</span>
+                    </label>
+                </div>
+
+                <div class="filter-group" id="sloped-accounting-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-compounding-checkbox" title="Reinvest the available balance, including gains and losses. Off: use the starting-capital budget, capped by available cash.">
+                        <input type="checkbox" id="sloped-compounding-checkbox" checked>
+                        <span class="checkbox-text">Compounding</span>
+                    </label>
+                    <label for="sloped-initial-capital">Starting Capital ($)</label>
+                    <input type="number" id="sloped-initial-capital" value="10000" min="0.01" step="0.01" required style="max-width: 140px;">
+                </div>
+
+                <div class="filter-group" id="sloped-peak-reclaim-full-candle-group" style="display: flex;">
+                    <label class="checkbox-container" for="sloped-peak-reclaim-full-candle-checkbox" title="Peak Reclaim only: require a close strictly above the sell candle reference peak and buy at that close. Independent of Full Candle.">
+                        <input type="checkbox" id="sloped-peak-reclaim-full-candle-checkbox">
+                        <span class="checkbox-text">Peak Reclaim Full Candle</span>
+                    </label>
+                </div>
+
                 <div class="filter-group" id="sloped-stop-loss-group" style="display: flex;">
                     <label for="sloped-stop-loss-select">Stop Loss</label>
                     <div class="custom-select">
@@ -250,6 +308,38 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="sloped-reentry-row" id="sloped-reentry-row" style="display: flex;">
+                    <div class="filter-group">
+                        <label for="sloped-reentry-mode-select">Recovery Re-entry</label>
+                        <div class="custom-select">
+                            <select id="sloped-reentry-mode-select" title="Choose how many enabled recovery signals must match on the same completed candle">
+                                <option value="none" selected>None</option>
+                                <option value="any">Any</option>
+                                <option value="any_two">Any Two</option>
+                                <option value="any_three">Any Three</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label class="checkbox-container" for="sloped-reentry-rsi-checkbox" title="RSI(14) crosses upward through 50">
+                        <input type="checkbox" id="sloped-reentry-rsi-checkbox">
+                        <span class="checkbox-text">RSI ↑ 50</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-ema-checkbox" title="Closing price is above EMA(20)">
+                        <input type="checkbox" id="sloped-reentry-ema-checkbox">
+                        <span class="checkbox-text">Close &gt; EMA20</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-price-checkbox" title="Closing price is above the preceding five-bar high">
+                        <input type="checkbox" id="sloped-reentry-price-checkbox">
+                        <span class="checkbox-text">Close &gt; 5-Bar High</span>
+                    </label>
+                    <label class="checkbox-container" for="sloped-reentry-volume-checkbox" title="Volume is at least 1.2 times the preceding 20-bar average">
+                        <input type="checkbox" id="sloped-reentry-volume-checkbox">
+                        <span class="checkbox-text">Volume ≥ 1.2× Avg20</span>
+                    </label>
+                </div>
+                <div id="sloped-reentry-warning" class="sloped-reentry-warning" role="alert" aria-live="assertive" hidden></div>
             </div>
         </header>
 
@@ -283,7 +373,26 @@
             <div class="tab-content">
                 <!-- REGULAR TAB — existing chart (unchanged behavior) -->
                 <div class="tab-panel active" id="panel-regular">
-                    <div class="chart-workspace">
+                    <section id="chart-window" class="chart-window" data-display-mode="normal" aria-label="Dashboard chart">
+                        <header class="chart-window-header glass-panel">
+                            <span>Chart</span>
+                            <div class="chart-window-controls" role="group" aria-label="Chart window controls">
+                                <button id="chart-minimize" type="button" title="Minimize chart" aria-label="Minimize chart" aria-controls="chart-workspace" aria-expanded="true">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 14h12"/></svg>
+                                </button>
+                                <button id="chart-restore" type="button" title="Restore chart size" aria-label="Restore chart size" disabled>
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 7V4h9v9h-3M4 7h9v9H4z"/></svg>
+                                </button>
+                                <button id="chart-fullscreen" type="button" title="Fullscreen chart" aria-label="Fullscreen chart">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4H4v4m8-4h4v4M4 12v4h4m8-4v4h-4"/></svg>
+                                </button>
+                            </div>
+                        </header>
+                    <div id="saved-window-controls" class="saved-window-controls glass-panel" hidden>
+                        <span id="saved-window-label"></span>
+                        <button id="saved-window-clear" type="button">Use rolling range</button>
+                    </div>
+                    <div class="chart-workspace" id="chart-workspace">
                         <div class="chart-main-column">
                     <div class="chart-wrapper glass-panel">
                         <div id="channel-legend" class="channel-legend" style="display: none;"></div>
@@ -336,6 +445,10 @@
                                     <input type="checkbox" id="volume-indicator-checkbox" checked>
                                     <span>Volume</span>
                                 </label>
+                                <label class="indicator-toggle" for="volume-profile-indicator-checkbox" title="Visible-range volume traded at each price level">
+                                    <input type="checkbox" id="volume-profile-indicator-checkbox">
+                                    <span>Volume Profile</span>
+                                </label>
                                 <label class="indicator-toggle" for="rsi-indicator-checkbox">
                                     <input type="checkbox" id="rsi-indicator-checkbox" checked>
                                     <span>RSI (14)</span>
@@ -382,6 +495,7 @@
                         </div>
                     </aside>
                     </div>
+                    </section>
                 </div>
 
             </div>
@@ -395,6 +509,6 @@
             document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
         }
     </script>
-    <script src="/static/app.js?v=60"></script>
+    <script src="/static/app.js?v=70"></script>
 </body>
 </html>

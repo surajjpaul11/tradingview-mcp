@@ -22,19 +22,34 @@
             "pivot_lookback": 5,
             "anchor_source": "any_valid_candle",
             "validation_boundary": "close",
-            "trendline_tolerance": 0.015
+            "trendline_tolerance": 0.015,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false,
+            "reentry_mode": "any",
+            "reentry_price_breakout": true,
+            "reentry_rsi": false,
+            "reentry_ema": false,
+            "reentry_volume": false
           },
           "performance": {
-            "total_pnl": 4761.26,
-            "total_pnl_pct": 47.61,
+            "total_pnl": 4900.7,
+            "total_pnl_pct": 49.01,
             "buy_and_hold_pct": 34.01,
-            "beats_bnh_pct": 13.6,
+            "beats_bnh_pct": 15.0,
             "win_rate_pct": 42.1,
             "total_trades": 38,
-            "initial_capital": 10000.0
+            "initial_capital": 10000
           },
-          "notes": "Saved baseline parameter set yielding +47.61% on the fixed AAPL one-year dataset, using any valid candle anchors, close validation, and 1.5% line tolerance.",
-          "last_updated": "2026-09-27"
+          "notes": "Saved AAPL preset with Recovery Re-entry set to Any and only Close > 5-Bar High enabled. Reproduced +49.01% on 2025-09-26 through 2026-09-25 daily regular-market candles with compounding and $10,000 starting capital, improving the prior 47.61% preset. Other recovery signals and Peak Reclaim Full Candle remain off.",
+          "last_updated": "2026-10-24",
+          "backtest_window": {
+            "start_date": "2025-09-26",
+            "end_date": "2026-09-25",
+            "trading_window": "regular market"
+          }
         },
         "NVDA": {
           "timeframe": "1d",
@@ -46,7 +61,12 @@
             "inverse_color_trigger": true,
             "line_angle": 3.0,
             "stop_loss_mode": "barrier_trap_reentry",
-            "min_anchor_bars": 3
+            "min_anchor_bars": 3,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 5576.99,
@@ -70,7 +90,12 @@
             "inverse_color_trigger": false,
             "line_angle": 0.0,
             "stop_loss_mode": "barrier_trap_reentry",
-            "min_anchor_bars": 4
+            "min_anchor_bars": 4,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false
           },
           "performance": {
             "total_pnl": 38474.51,
@@ -94,7 +119,24 @@
             "inverse_color_trigger": false,
             "line_angle": 0.0,
             "stop_loss_mode": "atr_stop_buffer",
-            "min_anchor_bars": 2
+            "min_anchor_bars": 2,
+            "line_breakout_buy": true,
+            "entry_barrier_sell": true,
+            "compounding": true,
+            "initial_capital": 10000,
+            "peak_reclaim_full_candle": false,
+            "pivot_lookback": 5,
+            "anchor_source": "any_valid_candle",
+            "validation_boundary": "close",
+            "trendline_tolerance": 0.015,
+            "gap_up": false,
+            "gap_down": false,
+            "staggered_lines": false,
+            "reentry_mode": "none",
+            "reentry_rsi": false,
+            "reentry_ema": false,
+            "reentry_price_breakout": false,
+            "reentry_volume": false
           },
           "performance": {
             "total_pnl": 1707.35,
@@ -105,8 +147,21 @@
             "total_trades": 11,
             "initial_capital": 10000.0
           },
-          "notes": "Optimal parameter set yielding +17.07% return with high win rate (72.7% across 11 trades) vs +17.89% buy & hold.",
-          "last_updated": "2026-09-23"
+          "notes": "Historical saved return: +17.07% across 11 trades, with 72.7% win rate. Restored original any-valid-candle anchors, close validation, 1.5% tolerance and the 2025-09-23 through 2026-09-22 daily regular-market window. On current Yahoo historical candles, both the original strategy implementation and current engine reproduce +17.06% across 11 trades (72.7% win rate; buy and hold +17.87%). The exact original candle snapshot was not retained; the historical 17.07% record is preserved.",
+          "last_updated": "2026-09-23",
+          "backtest_window": {
+            "start_date": "2025-09-23",
+            "end_date": "2026-09-22",
+            "trading_window": "regular market"
+          },
+          "last_verified": {
+            "date": "2026-10-24",
+            "total_pnl_pct": 17.06,
+            "total_trades": 11,
+            "win_rate_pct": 72.7,
+            "buy_and_hold_pct": 17.87,
+            "original_engine_return_pct": 17.06
+          }
         }
       }
     }

@@ -65,6 +65,45 @@
         "commit": "feeb2c0",
         "date": "2026-09-26"
       }
+    },
+    {
+      "id": "BUG-003",
+      "title": "SPY Saved Best omits historical date window and line validation settings",
+      "fixed": true,
+      "found": "2026-10-24",
+      "branch": "strategy-tweaks",
+      "symptom": "Saved Best displays the historical 17.07% label while the current SPY run returns 7.73% across only two trades.",
+      "reproduce": [
+        "Select SPY, Sloped Lines, 1Y and 1D.",
+        "Click Saved Best and compare the P&L with the saved historical return."
+      ],
+      "cause": "The legacy preset has no captured dates, anchor_source or trendline_tolerance. Current defaults use confirmed pivots and zero tolerance, whereas the original engine used candidate candles and 1.5% tolerance with close validation. The original return was recorded on an older one-year window.",
+      "fix": "Recorded the SPY historical daily window (2025-09-23 through 2026-09-22) and explicit any-valid-candle anchors, close validation, 1.5% tolerance, pivot lookback and disabled recovery/gap defaults. Preserved historical 17.07% metadata and recorded current-price verification at 17.06%.",
+      "verified": "52 Python tests pass. The original strategy implementation and current engine both return 17.06% across 11 trades at 72.7% win rate on current historical prices. Live Saved Best browser check restores the dates and settings and returns 17.06%.",
+      "fixed_in": {
+        "commit": "9b2b254",
+        "date": "2026-10-24"
+      }
+    },
+    {
+      "id": "BUG-004",
+      "title": "Changing ticker automatically overwrites active strategy controls with saved parameters",
+      "fixed": true,
+      "found": "2026-10-24",
+      "branch": "strategy-tweaks",
+      "symptom": "Switching AAPL to SPY clears an enabled Close > 5-Bar High recovery checkbox without clicking Saved Best.",
+      "reproduce": [
+        "Enable Recovery Re-entry Any and Close > 5-Bar High on AAPL.",
+        "Select SPY without clicking Saved Best.",
+        "Observe recovery settings reset to the SPY preset."
+      ],
+      "cause": "Ticker changes call applyBestParametersIfAvailable, which applies saved controls, resolution and range while fetching the preset badge.",
+      "fix": "Only explicit Saved Best clicks apply controls, resolution, range and captured dates. Ticker changes fetch badge metadata without overwriting controls, and rebind the retained fixed date window to the new symbol. Yahoo chart symbol changes retain their selected window too.",
+      "verified": "Dashboard browser checks retain every Sloped Lines input, resolution, range, session and dates across AAPL, SPY and a symbol with no preset. Explicit Saved Best clicks still replace them. Charts smoke test passes; a live AAPL-to-SPY check confirms recovery remains enabled until SPY Saved Best is clicked.",
+      "fixed_in": {
+        "commit": "9b2b254",
+        "date": "2026-10-24"
+      }
     }
   ]
 }

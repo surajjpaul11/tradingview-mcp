@@ -191,6 +191,12 @@ page.on('pageerror', error => pageErrors.push(error.message));
 try {
   await page.goto(`${dashboard.url}/?ui-smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
   await waitForAnyChart(page);
+  assert.equal(await page.locator('#sloped-line-breakout-buy-checkbox').isChecked(), false);
+  assert.equal(await page.locator('#sloped-entry-barrier-sell-checkbox').isChecked(), false);
+  // Existing baseline checks explicitly opt into the original trading rules.
+  await page.locator('#sloped-line-breakout-buy-checkbox').check();
+  await page.locator('#sloped-entry-barrier-sell-checkbox').check();
+  await waitForAnyChart(page);
 
   async function readSavedBestState(symbol) {
     await page.locator('#ticker-select').selectOption(symbol);
@@ -201,8 +207,13 @@ try {
         && chart.dataset.symbol === expectedSymbol
         && chart.dataset.resolution === '1d'
         && chart.dataset.timeframe === '1y'
-        && badge?.title.includes(`for ${expectedSymbol} `);
+        && badge?.title.includes(expectedSymbol);
     }, symbol, { timeout: 90_000 });
+    const savedResponse = page.waitForResponse(response => response.url().includes('/api/stats?')
+      && new URL(response.url()).searchParams.get('symbol') === symbol);
+    await page.locator('#best-params-badge').click();
+    await savedResponse;
+    await waitForAnyChart(page);
     return page.evaluate(() => ({
       badge: document.querySelector('#best-params-badge')?.textContent.trim(),
       confirmation: document.querySelector('#sloped-confirm-candles-select')?.value,
@@ -210,6 +221,10 @@ try {
       anchorSource: document.querySelector('#sloped-anchor-source-select')?.value,
       validationBoundary: document.querySelector('#sloped-validation-boundary-select')?.value,
       tolerance: document.querySelector('#sloped-tolerance-select')?.value,
+      gapUp: document.querySelector('#sloped-gap-up-checkbox')?.checked,
+      gapDown: document.querySelector('#sloped-gap-down-checkbox')?.checked,
+      staggeredLines: document.querySelector('#sloped-staggered-lines-checkbox')?.checked,
+      trendlineLabels: document.querySelector('#sloped-trendline-labels-checkbox')?.checked,
       angle: document.querySelector('#sloped-line-angle-select')?.value,
       stopLoss: document.querySelector('#sloped-stop-loss-select')?.value,
       anchors: document.querySelector('#sloped-anchor-bars-select')?.value,
@@ -224,31 +239,39 @@ try {
     badge: '★ Saved Best (+17.07%) baseline',
     confirmation: '1',
     pivotLookback: '5',
-    anchorSource: 'confirmed_pivots',
-    validationBoundary: 'body',
-    tolerance: '0',
+    anchorSource: 'any_valid_candle',
+    validationBoundary: 'close',
+    tolerance: '0.015',
+    gapUp: false,
+    gapDown: false,
+    staggeredLines: false,
+    trendlineLabels: false,
     angle: '0',
     stopLoss: 'atr_stop_buffer',
     anchors: '2',
     resolution: '1d',
     timeframe: '1y',
     resolutionHint: 'Daily (1D)',
-    timeframeHint: '1-Year (1Y)',
+    timeframeHint: '2025-09-23 → 2026-09-22',
   });
   assert.deepEqual(await readSavedBestState('AAPL'), {
-    badge: '★ Saved Best (+47.61%) baseline',
+    badge: '★ Saved Best (+49.01%) baseline',
     confirmation: '0',
     pivotLookback: '5',
     anchorSource: 'any_valid_candle',
     validationBoundary: 'close',
     tolerance: '0.015',
+    gapUp: false,
+    gapDown: false,
+    staggeredLines: false,
+    trendlineLabels: false,
     angle: '3',
     stopLoss: 'exit_peak_reclaim',
     anchors: '2',
     resolution: '1d',
     timeframe: '1y',
     resolutionHint: 'Daily (1D)',
-    timeframeHint: '1-Year (1Y)',
+    timeframeHint: '2025-09-26 → 2026-09-25',
   });
 
   const manualToleranceResponse = page.waitForResponse(
@@ -279,6 +302,95 @@ try {
   await page.locator('#strategy-select').selectOption('sloped_lines');
   await waitForStrategyChart(page, 'sloped_lines');
 
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
+  assert.deepEqual(
+    await page.locator('#sloped-reentry-mode-select option').evaluateAll(options => options.map(option => option.value)),
+    ['none', 'any', 'any_two', 'any_three', 'all'],
+  );
+  for (const selector of [
+    '#sloped-reentry-rsi-checkbox',
+    '#sloped-reentry-ema-checkbox',
+    '#sloped-reentry-price-checkbox',
+    '#sloped-reentry-volume-checkbox',
+  ]) {
+    assert.equal(await page.locator(selector).isChecked(), false);
+  }
+
+  const insufficientTwoResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=none')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
+    document.querySelector('#sloped-reentry-ema-checkbox').checked = true;
+    const mode = document.querySelector('#sloped-reentry-mode-select');
+    mode.value = 'any_two';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await insufficientTwoResponse;
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
+  await page.locator('#sloped-reentry-warning').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#sloped-reentry-warning').textContent(), /Please select at least three checkboxes for Any Two/);
+
+  const reentryResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=any_two')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true')
+      && response.url().includes('reentry_price_breakout=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-mode-select').value = 'any_two';
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = true;
+    document.querySelector('#sloped-reentry-price-checkbox').checked = true;
+    const ema = document.querySelector('#sloped-reentry-ema-checkbox');
+    ema.checked = true;
+    ema.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await reentryResponse;
+  await waitForStrategyChart(page, 'sloped_lines');
+
+  const anyThreeResponse = page.waitForResponse(
+    response => response.url().includes('/api/stats?')
+      && response.url().includes('reentry_mode=any_three')
+      && response.url().includes('reentry_rsi=true')
+      && response.url().includes('reentry_ema=true')
+      && response.url().includes('reentry_price_breakout=true')
+      && response.url().includes('reentry_volume=true'),
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    const mode = document.querySelector('#sloped-reentry-mode-select');
+    mode.value = 'any_three';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await anyThreeResponse;
+  assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'any_three');
+  for (const selector of [
+    '#sloped-reentry-rsi-checkbox',
+    '#sloped-reentry-ema-checkbox',
+    '#sloped-reentry-price-checkbox',
+    '#sloped-reentry-volume-checkbox',
+  ]) {
+    assert.equal(await page.locator(selector).isChecked(), true);
+  }
+  assert.equal(await page.locator('#sloped-reentry-warning').isHidden(), true);
+
+  await page.evaluate(() => {
+    document.querySelector('#sloped-reentry-mode-select').value = 'any';
+    document.querySelector('#sloped-reentry-rsi-checkbox').checked = false;
+    document.querySelector('#sloped-reentry-price-checkbox').checked = false;
+    document.querySelector('#sloped-reentry-volume-checkbox').checked = false;
+    const ema = document.querySelector('#sloped-reentry-ema-checkbox');
+    ema.checked = false;
+    ema.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await waitForStrategyChart(page, 'sloped_lines');
+
   const pivotResponses = Promise.all([
     page.waitForResponse(response => response.url().includes('/api/trades?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
     page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=2'), { timeout: 90_000 }),
@@ -288,6 +400,44 @@ try {
   await pivotResponses;
   await waitForStrategyChart(page, 'sloped_lines');
   assert.equal(await page.locator('#sloped-pivot-lookback-select').inputValue(), '2');
+
+  const staggeredResponses = Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/stats?') && response.url().includes('staggered_lines=true'), { timeout: 90_000 }),
+    page.waitForResponse(response => response.url().includes('/api/trendlines?') && response.url().includes('staggered_lines=true'), { timeout: 90_000 }),
+  ]);
+  await page.locator('#sloped-staggered-lines-checkbox').check();
+  await staggeredResponses;
+  await waitForStrategyChart(page, 'sloped_lines');
+  assert.equal(await page.locator('#sloped-staggered-lines-checkbox').isChecked(), true);
+  const staggeredPresentation = await page.evaluate(() => ({
+    count: Number(document.querySelector('#tv-chart')?.dataset.staggeredTrendlineCount ?? 0),
+    maxLevel: Number(document.querySelector('#tv-chart')?.dataset.maxTrendlineLevel ?? 1),
+    badges: Number(document.querySelector('#tv-chart')?.dataset.trendlineLevelBadgeCount ?? 0),
+    l1Resistance: getSlopedTrendlinePresentation({ type: 'resistance', level: 1 }),
+    l2Resistance: getSlopedTrendlinePresentation({ type: 'resistance', level: 2 }),
+    l2Support: getSlopedTrendlinePresentation({ type: 'support', level: 2 }),
+  }));
+  assert.notEqual(staggeredPresentation.l1Resistance.color, staggeredPresentation.l2Resistance.color);
+  assert.notEqual(staggeredPresentation.l2Resistance.color, staggeredPresentation.l2Support.color);
+  assert.ok(staggeredPresentation.l2Resistance.width > staggeredPresentation.l1Resistance.width);
+  assert.equal(staggeredPresentation.l2Resistance.badge, 'L2');
+  if (staggeredPresentation.count > 0) {
+    assert.ok(staggeredPresentation.maxLevel >= 2);
+    assert.ok(staggeredPresentation.badges > 0);
+  }
+  await page.locator('#sloped-staggered-lines-checkbox').uncheck();
+  await waitForStrategyChart(page, 'sloped_lines');
+
+  const labelResponse = page.waitForResponse(
+    response => response.url().includes('/api/trendlines?') && response.url().includes('strategy=sloped_lines'),
+    { timeout: 90_000 },
+  );
+  await page.locator('#sloped-trendline-labels-checkbox').check();
+  await labelResponse;
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.trendlineLabelsVisible === 'true');
+  assert.equal(await page.locator('#sloped-trendline-labels-checkbox').isChecked(), true);
+  await page.locator('#sloped-trendline-labels-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.trendlineLabelsVisible === 'false');
 
   const restoredPivotResponse = page.waitForResponse(
     response => response.url().includes('/api/stats?') && response.url().includes('pivot_lookback=5'),
@@ -342,10 +492,13 @@ try {
   assert.ok(chartControlLayout.tabsWidth > 0, 'Regular/Advanced controls have no width');
 
   const axisLabels = await page.evaluate(() => ({
+    hover: formatMarketChartTime(Date.UTC(2026, 6, 21, 16) / 1000, true, true),
     fourAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 3),
     fiveAm: formatMarketAxisTick(Date.UTC(2026, 6, 21, 9) / 1000, 3),
     dateBoundary: formatMarketAxisTick(Date.UTC(2026, 6, 21, 8) / 1000, 2),
   }));
+  assert.match(axisLabels.hover, /2026/);
+  delete axisLabels.hover;
   assert.deepEqual(axisLabels, {
     fourAm: '4',
     fiveAm: '5',
@@ -430,6 +583,28 @@ try {
     both: 'extended hours',
   });
 
+  await page.locator('#tab-advanced').click();
+  await page.locator('#volume-profile-indicator-checkbox').check();
+  await page.waitForFunction(() => {
+    const chart = document.querySelector('#tv-chart');
+    const layer = document.querySelector('.chart-wrapper > .volume-profile-layer');
+    if (!layer || layer.hidden || layer.width <= 0 || layer.height <= 0) return false;
+    const pixels = layer.getContext('2d').getImageData(0, 0, layer.width, layer.height).data;
+    let paintedPixels = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) paintedPixels += 1;
+      if (paintedPixels >= 50) break;
+    }
+    return chart?.dataset.volumeProfileVisible === 'true'
+      && Number(chart.dataset.volumeProfileBinCount) === 30
+      && Number(chart.dataset.volumeProfileCandleCount) > 0
+      && layer.parentElement?.classList.contains('chart-wrapper')
+      && paintedPixels >= 50;
+  }, null, { timeout: 90_000 });
+  await page.locator('#volume-profile-indicator-checkbox').uncheck();
+  await page.waitForFunction(() => document.querySelector('#tv-chart')?.dataset.volumeProfileVisible === 'false');
+  await page.locator('#tab-regular').click();
+
   const results = [];
 
   if (!MAIN_TESTS_ONLY) {
@@ -450,6 +625,7 @@ try {
   ));
   assert.deepEqual(indicatorToggleOrder, [
     'volume-indicator-checkbox',
+    'volume-profile-indicator-checkbox',
     'rsi-indicator-checkbox',
     'vix-indicator-checkbox',
   ]);

@@ -26,6 +26,7 @@ const winrateVal = document.getElementById('winrate-val');
 const totalTradesVal = document.getElementById('total-trades-val');
 const marketRefreshStatus = document.getElementById('market-refresh-status');
 const volumeIndicatorCheckbox = document.getElementById('volume-indicator-checkbox');
+const volumeProfileIndicatorCheckbox = document.getElementById('volume-profile-indicator-checkbox');
 const rsiIndicatorCheckbox = document.getElementById('rsi-indicator-checkbox');
 const vixIndicatorCheckbox = document.getElementById('vix-indicator-checkbox');
 const indicatorStack = document.getElementById('indicator-stack');
@@ -54,7 +55,7 @@ function formatMarketChartTime(time, includeDate = true, includeZone = false) {
     if (!date || Number.isNaN(date.getTime())) return '';
     return new Intl.DateTimeFormat('en-US', {
         timeZone: MARKET_TIME_ZONE,
-        ...(includeDate ? { month: 'short', day: 'numeric' } : {}),
+        ...(includeDate ? { month: 'short', day: 'numeric', year: 'numeric' } : {}),
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
@@ -191,6 +192,71 @@ function refreshMainChartLayout() {
     if (width > 50 && height > 50) chart.applyOptions({ width, height });
 }
 
+function initChartWindowControls() {
+    const host = document.getElementById('chart-window');
+    const minimize = document.getElementById('chart-minimize');
+    const restore = document.getElementById('chart-restore');
+    const fullscreen = document.getElementById('chart-fullscreen');
+    if (!host || !minimize || !restore || !fullscreen) return;
+
+    let fullscreenRequestPending = false;
+    function setMode(mode) {
+        host.dataset.displayMode = mode;
+        document.body.classList.toggle('chart-fullscreen-active', mode === 'fullscreen');
+        minimize.disabled = mode === 'minimized';
+        minimize.setAttribute('aria-expanded', String(mode !== 'minimized'));
+        restore.disabled = mode === 'normal';
+        fullscreen.disabled = mode === 'fullscreen';
+        // A collapsed chart keeps its header available for keyboard restoration.
+        if (mode === 'minimized') restore.focus();
+        else if (mode === 'normal') fullscreen.focus();
+        else minimize.focus();
+    }
+
+    async function leaveFullscreen(mode) {
+        setMode(mode);
+        if (document.fullscreenElement === host) {
+            try { await document.exitFullscreen(); } catch { /* CSS layout is already restored. */ }
+        }
+    }
+
+    minimize.addEventListener('click', () => { void leaveFullscreen('minimized'); });
+    restore.addEventListener('click', () => { void leaveFullscreen('normal'); });
+    fullscreen.addEventListener('click', async () => {
+        setMode('fullscreen');
+        if (!host.requestFullscreen) return; // Viewport fullscreen fallback.
+        fullscreenRequestPending = true;
+        try {
+            await host.requestFullscreen();
+            // Handle restore/minimize clicked while the native request was pending.
+            if (host.dataset.displayMode !== 'fullscreen' && document.fullscreenElement === host) {
+                await document.exitFullscreen();
+            }
+        } catch { /* Keep the viewport fullscreen fallback when native fullscreen is blocked. */ }
+        finally { fullscreenRequestPending = false; }
+    });
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement && !fullscreenRequestPending && host.dataset.displayMode === 'fullscreen') {
+            setMode('normal');
+        }
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && host.dataset.displayMode === 'fullscreen') {
+            void leaveFullscreen('normal');
+        }
+        if (event.key === 'Tab' && host.dataset.displayMode === 'fullscreen') {
+            const controls = [...host.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href]')]
+                .filter(control => control.getClientRects().length > 0);
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (first && (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            }
+        }
+    });
+}
+
 function getActiveTradingWindow() {
     return tradingWindowSelect?.value || 'regular market';
 }
@@ -292,10 +358,27 @@ function getChannelCurlEnabled() {
     return mode !== 'none';
 }
 
+const slopedAccountingGroup = document.getElementById('sloped-accounting-group');
+const slopedCompoundingCheckbox = document.getElementById('sloped-compounding-checkbox');
+const slopedInitialCapitalInput = document.getElementById('sloped-initial-capital');
+const slopedLineBreakoutBuyGroup = document.getElementById('sloped-line-breakout-buy-group');
+const slopedLineBreakoutBuyCheckbox = document.getElementById('sloped-line-breakout-buy-checkbox');
+const slopedEntryBarrierSellGroup = document.getElementById('sloped-entry-barrier-sell-group');
+const slopedEntryBarrierSellCheckbox = document.getElementById('sloped-entry-barrier-sell-checkbox');
+const slopedPeakReclaimFullCandleGroup = document.getElementById('sloped-peak-reclaim-full-candle-group');
+const slopedPeakReclaimFullCandleCheckbox = document.getElementById('sloped-peak-reclaim-full-candle-checkbox');
 const slopedFullCandleGroup = document.getElementById('sloped-full-candle-group');
 const slopedFullCandleCheckbox = document.getElementById('sloped-full-candle-checkbox');
 const slopedWickGroup = document.getElementById('sloped-wick-group');
 const slopedWickCheckbox = document.getElementById('sloped-wick-checkbox');
+const slopedGapUpGroup = document.getElementById('sloped-gap-up-group');
+const slopedGapUpCheckbox = document.getElementById('sloped-gap-up-checkbox');
+const slopedGapDownGroup = document.getElementById('sloped-gap-down-group');
+const slopedGapDownCheckbox = document.getElementById('sloped-gap-down-checkbox');
+const slopedStaggeredLinesGroup = document.getElementById('sloped-staggered-lines-group');
+const slopedStaggeredLinesCheckbox = document.getElementById('sloped-staggered-lines-checkbox');
+const slopedTrendlineLabelsGroup = document.getElementById('sloped-trendline-labels-group');
+const slopedTrendlineLabelsCheckbox = document.getElementById('sloped-trendline-labels-checkbox');
 const slopedConfirmCandlesGroup = document.getElementById('sloped-confirm-candles-group');
 const slopedConfirmCandlesSelect = document.getElementById('sloped-confirm-candles-select');
 const slopedPivotLookbackGroup = document.getElementById('sloped-pivot-lookback-group');
@@ -314,6 +397,13 @@ const slopedStopLossGroup = document.getElementById('sloped-stop-loss-group');
 const slopedStopLossSelect = document.getElementById('sloped-stop-loss-select');
 const slopedAnchorBarsGroup = document.getElementById('sloped-anchor-bars-group');
 const slopedAnchorBarsSelect = document.getElementById('sloped-anchor-bars-select');
+const slopedReentryRow = document.getElementById('sloped-reentry-row');
+const slopedReentryModeSelect = document.getElementById('sloped-reentry-mode-select');
+const slopedReentryRsiCheckbox = document.getElementById('sloped-reentry-rsi-checkbox');
+const slopedReentryEmaCheckbox = document.getElementById('sloped-reentry-ema-checkbox');
+const slopedReentryPriceCheckbox = document.getElementById('sloped-reentry-price-checkbox');
+const slopedReentryVolumeCheckbox = document.getElementById('sloped-reentry-volume-checkbox');
+const slopedReentryWarning = document.getElementById('sloped-reentry-warning');
 
 function getFullCandleEnabled() {
     if (!slopedFullCandleCheckbox) return false;
@@ -323,6 +413,22 @@ function getFullCandleEnabled() {
 function getWickEnabled() {
     if (!slopedWickCheckbox) return false;
     return slopedWickCheckbox.checked;
+}
+
+function getGapUpEnabled() {
+    return Boolean(slopedGapUpCheckbox?.checked);
+}
+
+function getGapDownEnabled() {
+    return Boolean(slopedGapDownCheckbox?.checked);
+}
+
+function getStaggeredLinesEnabled() {
+    return Boolean(slopedStaggeredLinesCheckbox?.checked);
+}
+
+function getTrendlineLabelsEnabled() {
+    return Boolean(slopedTrendlineLabelsCheckbox?.checked);
 }
 
 function getConfirmCandles() {
@@ -374,6 +480,69 @@ function getMinAnchorBars() {
     return isNaN(val) ? 2 : val;
 }
 
+function getReentryMode() {
+    const mode = slopedReentryModeSelect?.value;
+    return ['none', 'any', 'any_two', 'any_three', 'all'].includes(mode) ? mode : 'none';
+}
+
+function getReentryRsiEnabled() {
+    return Boolean(slopedReentryRsiCheckbox?.checked);
+}
+
+function getReentryEmaEnabled() {
+    return Boolean(slopedReentryEmaCheckbox?.checked);
+}
+
+function getReentryPriceEnabled() {
+    return Boolean(slopedReentryPriceCheckbox?.checked);
+}
+
+function getReentryVolumeEnabled() {
+    return Boolean(slopedReentryVolumeCheckbox?.checked);
+}
+
+function getEnabledReentrySignalCount() {
+    return [
+        slopedReentryRsiCheckbox,
+        slopedReentryEmaCheckbox,
+        slopedReentryPriceCheckbox,
+        slopedReentryVolumeCheckbox,
+    ].filter(control => control?.checked).length;
+}
+
+function validateReentrySelection() {
+    const mode = getReentryMode();
+    const requiredCount = mode === 'any_two' ? 3 : mode === 'any_three' ? 3 : 0;
+    const enabledCount = getEnabledReentrySignalCount();
+    if (requiredCount > 0 && enabledCount < requiredCount) {
+        if (slopedReentryWarning) {
+            slopedReentryWarning.textContent = mode === 'any_two'
+                ? 'Please select at least three checkboxes for Any Two. Recovery Re-entry was reset to None.'
+                : 'Any Three requires at least three enabled signals. Recovery Re-entry was reset to None.';
+            slopedReentryWarning.hidden = false;
+        }
+        if (slopedReentryModeSelect) slopedReentryModeSelect.value = 'none';
+        return false;
+    }
+    if (slopedReentryWarning) {
+        slopedReentryWarning.textContent = '';
+        slopedReentryWarning.hidden = true;
+    }
+    return true;
+}
+
+function getSlopedAccountingQueryParams() {
+    return `&compounding=${slopedCompoundingCheckbox?.checked !== false}&initial_capital=${Number(slopedInitialCapitalInput?.value ?? 10000)}`;
+}
+
+function getSlopedSignalQueryParams() {
+    return `&peak_reclaim_full_candle=${Boolean(slopedPeakReclaimFullCandleCheckbox?.checked)}&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}`;
+}
+
+function getReentryQueryParams() {
+    return `&reentry_mode=${encodeURIComponent(getReentryMode())}&reentry_rsi=${getReentryRsiEnabled()}&reentry_ema=${getReentryEmaEnabled()}&reentry_price_breakout=${getReentryPriceEnabled()}&reentry_volume=${getReentryVolumeEnabled()}`;
+}
+
 function syncChannelMultVisibility(strategy) {
     const currentStrat = strategy || (strategySelect ? strategySelect.value : '');
     const isChannel = (currentStrat === 'enhanced_channel');
@@ -384,8 +553,16 @@ function syncChannelMultVisibility(strategy) {
     if (channelMidlineGroup) channelMidlineGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelLowerReclaimGroup) channelLowerReclaimGroup.style.display = isChannel ? 'flex' : 'none';
     if (channelCurlGroup) channelCurlGroup.style.display = isChannel ? 'flex' : 'none';
+    if (slopedPeakReclaimFullCandleGroup) slopedPeakReclaimFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedAccountingGroup) slopedAccountingGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedLineBreakoutBuyGroup) slopedLineBreakoutBuyGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedEntryBarrierSellGroup) slopedEntryBarrierSellGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedFullCandleGroup) slopedFullCandleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedGapUpGroup) slopedGapUpGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedGapDownGroup) slopedGapDownGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedStaggeredLinesGroup) slopedStaggeredLinesGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedTrendlineLabelsGroup) slopedTrendlineLabelsGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedPivotLookbackGroup) slopedPivotLookbackGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAnchorSourceGroup) slopedAnchorSourceGroup.style.display = isSloped ? 'flex' : 'none';
@@ -395,6 +572,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedLineAngleGroup) slopedLineAngleGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedStopLossGroup) slopedStopLossGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedAnchorBarsGroup) slopedAnchorBarsGroup.style.display = isSloped ? 'flex' : 'none';
+    if (slopedReentryRow) slopedReentryRow.style.display = isSloped ? 'flex' : 'none';
 }
 
 const bestParamsBadgeGroup = document.getElementById('best-params-badge-group');
@@ -415,7 +593,7 @@ function resetBestParamsButton() {
     bestParamsBadge.title = 'Load saved best parameters for this ticker and strategy';
 }
 
-async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false } = {}) {
+async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback = false, refresh = false, restoreSavedSettings = false } = {}) {
     const requestGeneration = ++bestParametersRequestGeneration;
     if (bestParamsBadgeGroup) bestParamsBadgeGroup.style.display = symbol ? 'flex' : 'none';
     if (!strategy || !symbol || strategy === 'all') {
@@ -443,105 +621,150 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             return false;
         }
 
-        const p = result.data.parameters;
+        // Loading badge metadata must not change the active setup. Only an
+        // explicit Saved Best click restores strategy controls and captured dates.
+        if (restoreSavedSettings) {
+            const p = result.data.parameters;
 
-        // Sloped Lines strategy controls
-        if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
-            if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
-                slopedFullCandleCheckbox.checked = p.full_candle;
-            }
-            if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
-                slopedWickCheckbox.checked = p.use_wick;
-            }
-            if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
-                slopedConfirmCandlesSelect.value = String(p.confirm_candles);
-            }
-            if (p.pivot_lookback !== undefined && slopedPivotLookbackSelect) {
-                slopedPivotLookbackSelect.value = String(p.pivot_lookback);
-            } else if (slopedPivotLookbackSelect) {
-                slopedPivotLookbackSelect.value = '5';
-            }
-            if (slopedAnchorSourceSelect) {
-                slopedAnchorSourceSelect.value = p.anchor_source || 'confirmed_pivots';
-            }
-            if (slopedValidationBoundarySelect) {
-                slopedValidationBoundarySelect.value = p.validation_boundary || 'body';
-            }
-            if (slopedToleranceSelect) {
-                slopedToleranceSelect.value = String(p.trendline_tolerance ?? 0);
-            }
-            if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
-                slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
-            }
-            if (p.line_angle !== undefined && slopedLineAngleSelect) {
-                const angleTarget = parseFloat(p.line_angle);
-                for (const opt of slopedLineAngleSelect.options) {
-                    if (parseFloat(opt.value) === angleTarget) {
-                        slopedLineAngleSelect.value = opt.value;
-                        break;
+            // Sloped Lines strategy controls
+            if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
+                if (slopedCompoundingCheckbox) slopedCompoundingCheckbox.checked = p.compounding !== false;
+                if (slopedInitialCapitalInput) slopedInitialCapitalInput.value = String(p.initial_capital ?? 10000);
+                if (slopedPeakReclaimFullCandleCheckbox) slopedPeakReclaimFullCandleCheckbox.checked = Boolean(p.peak_reclaim_full_candle);
+                if (typeof p.full_candle === 'boolean' && slopedFullCandleCheckbox) {
+                    slopedFullCandleCheckbox.checked = p.full_candle;
+                }
+                if (typeof p.use_wick === 'boolean' && slopedWickCheckbox) {
+                    slopedWickCheckbox.checked = p.use_wick;
+                }
+                if (slopedLineBreakoutBuyCheckbox && p.line_breakout_buy !== undefined) slopedLineBreakoutBuyCheckbox.checked = Boolean(p.line_breakout_buy);
+                if (slopedEntryBarrierSellCheckbox && p.entry_barrier_sell !== undefined) slopedEntryBarrierSellCheckbox.checked = Boolean(p.entry_barrier_sell);
+                if (slopedGapUpCheckbox) {
+                    slopedGapUpCheckbox.checked = Boolean(p.gap_up);
+                }
+                if (slopedGapDownCheckbox) {
+                    slopedGapDownCheckbox.checked = Boolean(p.gap_down);
+                }
+                if (slopedStaggeredLinesCheckbox) {
+                    slopedStaggeredLinesCheckbox.checked = Boolean(p.staggered_lines);
+                }
+                if (slopedTrendlineLabelsCheckbox) {
+                    slopedTrendlineLabelsCheckbox.checked = Boolean(p.trendline_labels);
+                }
+                if (p.confirm_candles !== undefined && slopedConfirmCandlesSelect) {
+                    slopedConfirmCandlesSelect.value = String(p.confirm_candles);
+                }
+                if (p.pivot_lookback !== undefined && slopedPivotLookbackSelect) {
+                    slopedPivotLookbackSelect.value = String(p.pivot_lookback);
+                } else if (slopedPivotLookbackSelect) {
+                    slopedPivotLookbackSelect.value = '5';
+                }
+                if (slopedAnchorSourceSelect) {
+                    slopedAnchorSourceSelect.value = p.anchor_source || 'confirmed_pivots';
+                }
+                if (slopedValidationBoundarySelect) {
+                    slopedValidationBoundarySelect.value = p.validation_boundary || 'body';
+                }
+                if (slopedToleranceSelect) {
+                    slopedToleranceSelect.value = String(p.trendline_tolerance ?? 0);
+                }
+                if (typeof p.inverse_color_trigger === 'boolean' && slopedInverseColorCheckbox) {
+                    slopedInverseColorCheckbox.checked = p.inverse_color_trigger;
+                }
+                if (p.line_angle !== undefined && slopedLineAngleSelect) {
+                    const angleTarget = parseFloat(p.line_angle);
+                    for (const opt of slopedLineAngleSelect.options) {
+                        if (parseFloat(opt.value) === angleTarget) {
+                            slopedLineAngleSelect.value = opt.value;
+                            break;
+                        }
                     }
                 }
+                if (p.stop_loss_mode && slopedStopLossSelect) {
+                    slopedStopLossSelect.value = p.stop_loss_mode;
+                }
+                if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
+                    slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
+                }
+                if (slopedReentryModeSelect) {
+                    const reentryMode = p.reentry_mode;
+                    slopedReentryModeSelect.value = ['none', 'any', 'any_two', 'any_three', 'all'].includes(reentryMode)
+                        ? reentryMode
+                        : 'none';
+                }
+                if (slopedReentryRsiCheckbox) {
+                    slopedReentryRsiCheckbox.checked = Boolean(p.reentry_rsi);
+                }
+                if (slopedReentryEmaCheckbox) {
+                    slopedReentryEmaCheckbox.checked = Boolean(p.reentry_ema);
+                }
+                if (slopedReentryPriceCheckbox) {
+                    slopedReentryPriceCheckbox.checked = Boolean(p.reentry_price_breakout);
+                }
+                if (slopedReentryVolumeCheckbox) {
+                    slopedReentryVolumeCheckbox.checked = Boolean(p.reentry_volume);
+                }
+                validateReentrySelection();
             }
-            if (p.stop_loss_mode && slopedStopLossSelect) {
-                slopedStopLossSelect.value = p.stop_loss_mode;
-            }
-            if (p.min_anchor_bars !== undefined && slopedAnchorBarsSelect) {
-                slopedAnchorBarsSelect.value = String(p.min_anchor_bars);
-            }
-        }
 
-        // Enhanced Channel strategy controls
-        if (strategy === 'enhanced_channel') {
-            if (p.channel_multiplier !== undefined && channelMultSelect) {
-                channelMultSelect.value = String(p.channel_multiplier);
-            } else if (p.channel_mult !== undefined && channelMultSelect) {
-                channelMultSelect.value = String(p.channel_mult);
+            // Enhanced Channel strategy controls
+            if (strategy === 'enhanced_channel') {
+                if (p.channel_multiplier !== undefined && channelMultSelect) {
+                    channelMultSelect.value = String(p.channel_multiplier);
+                } else if (p.channel_mult !== undefined && channelMultSelect) {
+                    channelMultSelect.value = String(p.channel_mult);
+                }
+                if (p.lookback !== undefined && channelLookbackSelect) {
+                    channelLookbackSelect.value = String(p.lookback);
+                }
+                if (typeof p.use_stop_loss === 'boolean' && channelStoplossCheckbox) {
+                    channelStoplossCheckbox.checked = p.use_stop_loss;
+                }
+                if (typeof p.midline_cross === 'boolean' && channelMidlineCheckbox) {
+                    channelMidlineCheckbox.checked = p.midline_cross;
+                }
+                if (typeof p.lower_reclaim === 'boolean' && channelLowerReclaimCheckbox) {
+                    channelLowerReclaimCheckbox.checked = p.lower_reclaim;
+                }
+                if (p.channel_curl_mode && channelCurlSelect) {
+                    channelCurlSelect.value = p.channel_curl_mode;
+                }
             }
-            if (p.lookback !== undefined && channelLookbackSelect) {
-                channelLookbackSelect.value = String(p.lookback);
-            }
-            if (typeof p.use_stop_loss === 'boolean' && channelStoplossCheckbox) {
-                channelStoplossCheckbox.checked = p.use_stop_loss;
-            }
-            if (typeof p.midline_cross === 'boolean' && channelMidlineCheckbox) {
-                channelMidlineCheckbox.checked = p.midline_cross;
-            }
-            if (typeof p.lower_reclaim === 'boolean' && channelLowerReclaimCheckbox) {
-                channelLowerReclaimCheckbox.checked = p.lower_reclaim;
-            }
-            if (p.channel_curl_mode && channelCurlSelect) {
-                channelCurlSelect.value = p.channel_curl_mode;
-            }
-        }
 
-        // Timeframe & Resolution if specified in config
-        if (result.data.timeframe && result.data.timeframe !== activeResolution) {
-            activeResolution = result.data.timeframe;
-            document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.res === activeResolution);
-            });
-        }
-        const resolutionLabels = {
-            '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
-            '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
-        };
-        const resolutionHint = document.getElementById('active-res-hint');
-        if (resolutionHint && result.data.timeframe) {
-            resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
-        }
-        if (result.data.period && result.data.period !== activeTimeframe) {
-            activeTimeframe = result.data.period;
-            document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
-            });
-        }
-        const timeframeLabels = {
-            '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
-            '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
-        };
-        const timeframeHint = document.getElementById('active-range-hint');
-        if (timeframeHint && result.data.period) {
-            timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
+            // Timeframe & Resolution if specified in config
+            if (result.data.timeframe && result.data.timeframe !== activeResolution) {
+                activeResolution = result.data.timeframe;
+                document.querySelectorAll('#resolution-btn-group .res-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.res === activeResolution);
+                });
+            }
+            const resolutionLabels = {
+                '30m': '30 Minutes (30m)', '1h': '1 Hour (1H)', '4h': '4 Hours (4H)',
+                '12h': '12 Hours (12H)', '1d': 'Daily (1D)', '5d': '5 Days (5D)',
+            };
+            const resolutionHint = document.getElementById('active-res-hint');
+            if (resolutionHint && result.data.timeframe) {
+                resolutionHint.textContent = resolutionLabels[activeResolution] || activeResolution;
+            }
+            if (result.data.period && result.data.period !== activeTimeframe) {
+                activeTimeframe = result.data.period;
+                document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.range === activeTimeframe);
+                });
+            }
+            const timeframeLabels = {
+                '3mo': '3 Months (3M)', '1y': '1-Year (1Y)',
+                '5y': '5-Year (5Y)', 'max': 'Max History (MAX)',
+            };
+            const timeframeHint = document.getElementById('active-range-hint');
+            if (timeframeHint && result.data.period) {
+                timeframeHint.textContent = timeframeLabels[activeTimeframe] || activeTimeframe;
+            }
+
+            const window = result.data.backtest_window;
+            setCapturedBacktestWindow(window?.start_date && window?.end_date
+                ? { ...window, symbol, strategy } : null);
+            if (window?.trading_window && tradingWindowSelect) tradingWindowSelect.value = window.trading_window;
         }
 
         // Display Best Params badge
@@ -556,10 +779,15 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             const baselineContext = [result.data.timeframe, result.data.period].filter(Boolean).join(' / ').toUpperCase();
             const updatedText = result.data.last_updated ? ` · captured ${result.data.last_updated}` : '';
             bestParamsBadge.innerHTML = `<span class="star-icon">★</span> Saved Best${pnlText} baseline`;
-            bestParamsBadge.title = `Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
+            bestParamsBadge.title = `Click to apply this preset. Changing tickers retains your active settings. Historical optimization snapshot for ${symbol} · ${strategy}${baselineContext ? ` · ${baselineContext}` : ''}${updatedText}${beatsText}. Current P&L cards are recalculated using the current strategy engine, data, range, and trading window.`;
             bestParamsBadgeGroup.style.display = 'flex';
         }
-        if (showFeedback) showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.`);
+        if (showFeedback) {
+            const dates = capturedBacktestWindow
+                ? ` Window: ${capturedBacktestWindow.start_date} through ${capturedBacktestWindow.end_date}.`
+                : ' No captured dates are recorded for this preset; using the rolling range.';
+            showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.${dates}`);
+        }
         if (refresh) {
             await updateDashboard();
             if (activeTab === 'advanced' && advChart) await updateAdvDashboard();
@@ -577,6 +805,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
 let chart = null;
 let candlestickSeries = null;
 let activeResolution = '1d'; // Default: 1D candles
+let capturedBacktestWindow = null;
 let activeTimeframe = '1y';  // Default: 1-Year range
 let trendlineSeries = []; // LineSeries for trendline overlays
 let volumeChart = null;
@@ -590,6 +819,7 @@ let vixSeries = null;
 let currentVixCandles = [];
 let currentCandles = [];
 let sessionZoneFrame = null;
+let volumeProfileFrame = null;
 let chartDataUpdateInProgress = false;
 let dashboardRequestGeneration = 0;
 
@@ -695,6 +925,112 @@ function renderAllSessionZones() {
 function scheduleSessionZoneRender() {
     if (sessionZoneFrame != null) cancelAnimationFrame(sessionZoneFrame);
     sessionZoneFrame = requestAnimationFrame(renderAllSessionZones);
+}
+
+function ensureVolumeProfileLayer() {
+    const container = document.getElementById('tv-chart');
+    const host = container?.closest('.chart-wrapper');
+    if (!container || !host) return null;
+    let canvas = host.querySelector(':scope > .volume-profile-layer');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.className = 'volume-profile-layer';
+        canvas.setAttribute('aria-hidden', 'true');
+        host.appendChild(canvas);
+    }
+    canvas.style.left = `${container.offsetLeft}px`;
+    canvas.style.top = `${container.offsetTop}px`;
+    return canvas;
+}
+
+function buildVisibleVolumeProfile(candles, binCount = 30) {
+    if (!candles.length || binCount < 1) return null;
+    const priceLow = Math.min(...candles.map(candle => Number(candle.low)));
+    const priceHigh = Math.max(...candles.map(candle => Number(candle.high)));
+    const binSize = (priceHigh - priceLow) / binCount || 1;
+    const volumes = new Array(binCount).fill(0);
+    candles.forEach(candle => {
+        const volume = Number(candle.volume || 0);
+        const range = Math.max(Number(candle.high) - Number(candle.low), 0);
+        const first = Math.max(0, Math.min(binCount - 1, Math.floor((Number(candle.low) - priceLow) / binSize)));
+        const last = Math.max(0, Math.min(binCount - 1, Math.floor((Number(candle.high) - priceLow) / binSize)));
+        if (range === 0 || first === last) {
+            volumes[first] += volume;
+            return;
+        }
+        for (let index = first; index <= last; index += 1) {
+            const low = priceLow + index * binSize;
+            const overlap = Math.min(Number(candle.high), low + binSize) - Math.max(Number(candle.low), low);
+            volumes[index] += volume * Math.max(overlap, 0) / range;
+        }
+    });
+    const maxVolume = Math.max(...volumes);
+    return {
+        maxVolume,
+        pocIndex: volumes.indexOf(maxVolume),
+        bins: volumes.map((volume, index) => ({
+            low: priceLow + index * binSize,
+            high: priceLow + (index + 1) * binSize,
+            volume,
+        })),
+    };
+}
+
+function renderVolumeProfile() {
+    volumeProfileFrame = null;
+    const container = document.getElementById('tv-chart');
+    const canvas = ensureVolumeProfileLayer();
+    if (!container || !canvas) return;
+    const enabled = activeTab === 'advanced' && Boolean(volumeProfileIndicatorCheckbox?.checked);
+    container.dataset.volumeProfileVisible = String(enabled);
+    if (!enabled || !chart || !candlestickSeries || !currentCandles.length) {
+        canvas.hidden = true;
+        container.dataset.volumeProfileBinCount = '0';
+        container.dataset.volumeProfileCandleCount = '0';
+        return;
+    }
+
+    let logicalRange = null;
+    try { logicalRange = chart.timeScale().getVisibleLogicalRange(); } catch (_) {}
+    const first = Math.max(0, Math.floor(logicalRange?.from ?? 0));
+    const last = Math.min(currentCandles.length - 1, Math.ceil(logicalRange?.to ?? (currentCandles.length - 1)));
+    const visibleCandles = currentCandles.slice(first, last + 1);
+    const profile = buildVisibleVolumeProfile(visibleCandles, 30);
+    if (!profile || profile.maxVolume <= 0) {
+        canvas.hidden = true;
+        container.dataset.volumeProfileBinCount = '0';
+        container.dataset.volumeProfileCandleCount = String(visibleCandles.length);
+        return;
+    }
+
+    canvas.hidden = false;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(width * ratio));
+    canvas.height = Math.max(1, Math.round(height * ratio));
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const context = canvas.getContext('2d');
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    const paneRight = Math.min(width, chart.timeScale().width?.() || width);
+    const maxBarWidth = paneRight * 0.24;
+    profile.bins.forEach((bin, index) => {
+        const top = candlestickSeries.priceToCoordinate(bin.high);
+        const bottom = candlestickSeries.priceToCoordinate(bin.low);
+        if (top == null || bottom == null || bin.volume <= 0) return;
+        const barWidth = (bin.volume / profile.maxVolume) * maxBarWidth;
+        context.fillStyle = index === profile.pocIndex ? 'rgba(255, 183, 77, 0.58)' : 'rgba(59, 130, 246, 0.28)';
+        context.fillRect(paneRight - barWidth, top, barWidth, Math.max(1, bottom - top - 1));
+    });
+    container.dataset.volumeProfileBinCount = String(profile.bins.length);
+    container.dataset.volumeProfileCandleCount = String(visibleCandles.length);
+}
+
+function scheduleVolumeProfileRender() {
+    if (volumeProfileFrame != null) cancelAnimationFrame(volumeProfileFrame);
+    volumeProfileFrame = requestAnimationFrame(renderVolumeProfile);
 }
 
 // ============================================================
@@ -819,14 +1155,18 @@ function initChart() {
             const width = container.clientWidth || (entries[0] && entries[0].contentRect.width) || 800;
             const height = container.clientHeight || (entries[0] && entries[0].contentRect.height) || 500;
             if (width > 50 && height > 50) {
+                const visibleRange = chart.timeScale().getVisibleLogicalRange();
                 chart.applyOptions({ width, height });
+                if (visibleRange) chart.timeScale().setVisibleLogicalRange(visibleRange);
                 scheduleSessionZoneRender();
+                scheduleVolumeProfileRender();
             }
         }
     }).observe(container);
 
     chart.timeScale().subscribeVisibleTimeRangeChange(range => {
         scheduleSessionZoneRender();
+        scheduleVolumeProfileRender();
         if (!range || activeTab !== 'advanced' || chartDataUpdateInProgress) return;
         safelySetIndicatorRange(volumeChart, volumeIndicatorCheckbox?.checked, range);
         safelySetIndicatorRange(rsiChart, rsiIndicatorCheckbox?.checked, range);
@@ -868,7 +1208,9 @@ function createIndicatorChart(container, height) {
     new ResizeObserver(entries => {
         const width = container.clientWidth || entries[0]?.contentRect?.width || 800;
         if (width > 50) {
+            const visibleRange = indicatorChart.timeScale().getVisibleLogicalRange();
             indicatorChart.applyOptions({ width, height });
+            if (visibleRange) indicatorChart.timeScale().setVisibleLogicalRange(visibleRange);
             scheduleSessionZoneRender();
         }
     }).observe(container);
@@ -1051,6 +1393,7 @@ function updateIndicatorVisibility() {
     chart?.priceScale('vix').applyOptions({ visible: showVix });
     const chartContainer = document.getElementById('tv-chart');
     if (chartContainer) chartContainer.dataset.vixVisible = String(showVix);
+    scheduleVolumeProfileRender();
     if (advanced) {
         requestAnimationFrame(() => {
             renderAdvancedIndicators(currentCandles);
@@ -1144,7 +1487,25 @@ function setResolution(res) {
     updateDashboard();
 }
 
+function getCapturedWindowQuery() {
+    const window = capturedBacktestWindow;
+    if (!window || window.symbol !== tickerSelect.value || window.strategy !== strategySelect.value) return '';
+    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}`;
+}
+
+function setCapturedBacktestWindow(window = null) {
+    capturedBacktestWindow = window;
+    const controls = document.getElementById('saved-window-controls');
+    const label = document.getElementById('saved-window-label');
+    if (controls) controls.hidden = !window;
+    if (label) label.textContent = window ? `Saved window: ${window.start_date} → ${window.end_date}` : '';
+    const hint = document.getElementById('active-range-hint');
+    if (hint) hint.textContent = window
+        ? `${window.start_date} → ${window.end_date}` : `${activeTimeframe.toUpperCase()} (rolling)`;
+}
+
 function setTimeframe(range) {
+    setCapturedBacktestWindow();
     activeTimeframe = range;
     document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.range === range);
@@ -1173,7 +1534,7 @@ function initTimeframeButtons() {
     document.querySelectorAll('#timeframe-btn-group .range-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const range = e.currentTarget.dataset.range;
-            if (range && range !== activeTimeframe) {
+            if (range && (range !== activeTimeframe || capturedBacktestWindow)) {
                 setTimeframe(range);
             }
         });
@@ -1279,6 +1640,7 @@ async function loadFilters() {
                 try {
                     await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value, {
                         showFeedback: true,
+                        restoreSavedSettings: true,
                         refresh: true,
                     });
                 } finally {
@@ -1287,11 +1649,15 @@ async function loadFilters() {
             };
         }
         tickerSelect.onchange = async () => {
+            if (capturedBacktestWindow) {
+                setCapturedBacktestWindow({ ...capturedBacktestWindow, symbol: tickerSelect.value });
+            }
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
             if (activeTab === 'advanced' && advChart) updateAdvDashboard();
         };
         strategySelect.onchange = async () => {
+            setCapturedBacktestWindow();
             syncChannelMultVisibility(strategySelect.value);
             await applyBestParametersIfAvailable(strategySelect.value, tickerSelect.value);
             updateDashboard();
@@ -1360,6 +1726,14 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
+        for (const checkbox of [slopedGapUpCheckbox, slopedGapDownCheckbox, slopedStaggeredLinesCheckbox, slopedTrendlineLabelsCheckbox]) {
+            if (checkbox) {
+                checkbox.onchange = () => {
+                    updateDashboard();
+                    if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+                };
+            }
+        }
         if (slopedConfirmCandlesSelect) {
             slopedConfirmCandlesSelect.onchange = () => {
                 updateDashboard();
@@ -1403,6 +1777,37 @@ async function loadFilters() {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
+        }
+        if (slopedReentryModeSelect) {
+            slopedReentryModeSelect.onchange = () => {
+                if (getReentryMode() === 'any_three') {
+                    for (const checkbox of [
+                        slopedReentryRsiCheckbox,
+                        slopedReentryEmaCheckbox,
+                        slopedReentryPriceCheckbox,
+                        slopedReentryVolumeCheckbox,
+                    ]) {
+                        if (checkbox) checkbox.checked = true;
+                    }
+                }
+                validateReentrySelection();
+                updateDashboard();
+                if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+            };
+        }
+        for (const control of [
+            slopedReentryRsiCheckbox,
+            slopedReentryEmaCheckbox,
+            slopedReentryPriceCheckbox,
+            slopedReentryVolumeCheckbox,
+        ]) {
+            if (control) {
+                control.onchange = () => {
+                    validateReentrySelection();
+                    updateDashboard();
+                    if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+                };
+            }
         }
         syncChannelMultVisibility(strategySelect.value);
         filtersLoaded = true;
@@ -1564,6 +1969,12 @@ function getSlopedEntryMarkerStyle(reason, isLong) {
             color: isLong ? '#059669' : '#DC2626',
         };
     }
+    if (reason === 'gap_up') {
+        return { markerClass: 'sloped-gap-up', prefix: 'BODY GAP UP ', color: '#14B8A6' };
+    }
+    if (reason === 'recovery_reentry') {
+        return { markerClass: 'sloped-reentry', prefix: 'RECOVERY REENTRY ', color: '#22D3EE' };
+    }
     if (reason === 'exit_peak_reclaim') {
         return { markerClass: 'sloped-reentry', prefix: 'PEAK RECLAIM ', color: '#6EE7B7' };
     }
@@ -1580,6 +1991,9 @@ function getSlopedExitMarkerStyle(reason, isLong, isWin) {
             prefix: reason === 'support_break' ? 'LINE SUPPORT BREAK ' : 'LINE RESISTANCE BREAK ',
             color: reason === 'support_break' ? '#DC2626' : '#059669',
         };
+    }
+    if (reason === 'gap_down') {
+        return { markerClass: 'sloped-gap-down', prefix: 'BODY GAP DOWN ', color: '#E11D48' };
     }
     if (reason === 'entry_barrier_break') {
         return { markerClass: 'sloped-protection', prefix: 'ENTRY BARRIER ', color: '#F59E0B' };
@@ -1631,7 +2045,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                 color: entryColor,
                 shape: isLong ? 'arrowUp' : 'arrowDown',
                 markerClass: slopedStyle?.markerClass || 'default-entry',
-                text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}`
+                text: `${stratPrefix}${entryPrefix}${isLong ? 'BUY' : 'SHORT'} $${Number(trade.entry_price || 0).toFixed(2)}${trade.quantity != null ? ` · ${Number(trade.quantity).toFixed(6).replace(/0+$/, '').replace(/\.$/, '')} shares` : ''}`
             });
         }
 
@@ -1664,7 +2078,7 @@ function buildMarkers(tradesData, sorted, strategy) {
                     color: exitColor,
                     shape: isLong ? 'arrowDown' : 'arrowUp',
                     markerClass: slopedStyle?.markerClass || 'default-exit',
-                    text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)`
+                    text: `${stratPrefix}${exitPrefix}${action} $${Number(trade.exit_price).toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)${trade.quantity != null ? ` · ${Number(trade.quantity).toFixed(6)} shares · P&L $${Number(trade.pnl_usd).toFixed(2)} · balance $${Number(trade.balance_after).toFixed(2)}` : ''}`
                 });
             }
         }
@@ -1757,13 +2171,31 @@ function buildMarkers(tradesData, sorted, strategy) {
 // ============================================================
 // TRENDLINE OVERLAY
 // ============================================================
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, isCurrent = () => true) {
+const SLOPED_TRENDLINE_COLORS = {
+    resistance: ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0'],
+    support: ['#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'],
+};
+
+function getSlopedTrendlinePresentation(trendline) {
+    const type = trendline?.type === 'resistance' ? 'resistance' : 'support';
+    const level = Math.max(1, Number.parseInt(trendline?.level, 10) || 1);
+    const palette = SLOPED_TRENDLINE_COLORS[type];
+    return {
+        level,
+        color: palette[Math.min(level - 1, palette.length - 1)],
+        width: Math.min(4, level + 1),
+        badge: level > 1 ? `L${level}` : '',
+        badgePosition: type === 'resistance' ? 'aboveBar' : 'belowBar',
+    };
+}
+
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, showTrendlineLabels = false, isCurrent = () => true) {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
-    const summary = { returned: 0, drawn: 0 };
+    const summary = { returned: 0, drawn: 0, levelBadges: 0 };
     try {
-        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}` : '';
+        const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${fullCandleParam}`);
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}${fullCandleParam}`);
         if (!res.ok) return summary;
         const data = await res.json();
         if (!isCurrent()) return summary;
@@ -1773,12 +2205,23 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
         existingSeriesList.length = 0;
         if (!data.trendlines || data.trendlines.length === 0) return summary;
         summary.returned = data.trendlines.length;
+        const chartContainer = document.getElementById('tv-chart');
+        if (chartContainer && chartInstance === chart) {
+            chartContainer.dataset.trendlineLabelsVisible = String(Boolean(showTrendlineLabels));
+            chartContainer.dataset.activeTrendlineLabelCount = String(
+                data.trendlines.filter(line => line.status === 'active').length
+            );
+        }
 
         if (candleData.length === 0) return summary;
         const firstCandle = candleData[0].time;
         const lastCandle = candleData[candleData.length - 1].time;
 
         data.trendlines.forEach(tl => {
+            const showAxisLabel = Boolean(showTrendlineLabels && tl.status === 'active');
+            const slopedPresentation = strategy === 'sloped_lines'
+                ? getSlopedTrendlinePresentation(tl)
+                : null;
             const startTime = tl.start_time || toChartTime(tl.start_date);
             const endTime = tl.end_time || toChartTime(tl.end_date);
 
@@ -1790,7 +2233,7 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
             if (strategy === 'sloped_lines') {
                 // Descending resistance = green (breakout = buy)
                 // Ascending support = blue (breakdown = sell)
-                color = tl.color || (tl.type === 'resistance' ? '#10B981' : '#3B82F6');
+                color = slopedPresentation.color;
                 lineStyle = 0; // Solid line for sloped lines
             } else {
                 color = tl.color || (tl.type === 'support' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)');
@@ -1819,16 +2262,16 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
             }
 
-            const addTrendlineSeries = (dataPoints, style, width, title) => {
+            const addTrendlineSeries = (dataPoints, style, width, title, showLevelBadge = false) => {
                 if (dataPoints.length < 2 || dataPoints[1].time <= dataPoints[0].time) return false;
                 const seriesOptions = {
                     color,
                     lineWidth: width,
                     lineStyle: style,
                     crosshairMarkerVisible: false,
-                    lastValueVisible: false,
+                    lastValueVisible: showAxisLabel,
                     priceLineVisible: false,
-                    title,
+                    title: showAxisLabel ? title : '',
                 };
                 let lineSeries;
                 if (typeof chartInstance.addLineSeries === 'function') {
@@ -1838,6 +2281,16 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                 }
                 if (!lineSeries) return false;
                 lineSeries.setData(dataPoints);
+                if (showLevelBadge && slopedPresentation?.badge && typeof lineSeries.setMarkers === 'function') {
+                    lineSeries.setMarkers([{
+                        time: dataPoints[0].time,
+                        position: slopedPresentation.badgePosition,
+                        color: slopedPresentation.color,
+                        shape: 'circle',
+                        text: slopedPresentation.badge,
+                    }]);
+                    summary.levelBadges += 1;
+                }
                 existingSeriesList.push(lineSeries);
                 return true;
             };
@@ -1861,8 +2314,19 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                         { time: confirmationTime, value: tl.confirmation_price },
                         { time: snappedEnd, value: tl.end_price },
                     ];
-                const forming = addTrendlineSeries(formingData, 2, 1, `${tl.label || ''} (forming)`);
-                const active = addTrendlineSeries(activeData, 0, 2, `${tl.label || ''} (active)`);
+                const forming = addTrendlineSeries(
+                    formingData,
+                    2,
+                    slopedPresentation ? Math.max(1, slopedPresentation.width - 1) : 1,
+                    `${tl.label || ''} (forming)`,
+                    true,
+                );
+                const active = addTrendlineSeries(
+                    activeData,
+                    0,
+                    slopedPresentation?.width || 2,
+                    `${tl.label || ''} (active)`,
+                );
                 if (forming || active) summary.drawn += 1;
             } else if (addTrendlineSeries(
                 projectedPoints.length ? projectedPoints : [
@@ -1870,12 +2334,22 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                     { time: snappedEnd, value: tl.end_price },
                 ],
                 lineStyle,
-                2,
+                slopedPresentation?.width || 2,
                 tl.label || '',
+                true,
             )) {
                 summary.drawn += 1;
             }
         });
+        if (chartContainer && chartInstance === chart) {
+            chartContainer.dataset.staggeredTrendlineCount = String(
+                data.trendlines.filter(line => Number(line.level || 1) > 1).length
+            );
+            chartContainer.dataset.maxTrendlineLevel = String(
+                Math.max(1, ...data.trendlines.map(line => Number(line.level || 1)))
+            );
+            chartContainer.dataset.trendlineLevelBadgeCount = String(summary.levelBadges);
+        }
     } catch (err) {
         console.warn('[TV] Trendline fetch error:', err);
     }
@@ -1901,9 +2375,11 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
-            <div class="channel-pill">Dashed = forming · Solid = active</div>
+            <div class="channel-pill">Dashed = forming · Brighter/thicker + L badge = staggered</div>
             <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
             <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
+            <div class="channel-pill"><span style="color: #14B8A6;">▲</span> Body gap-up buy</div>
+            <div class="channel-pill"><span style="color: #E11D48;">▼</span> Body gap-down sell</div>
             <div class="channel-pill"><span style="color: #DC2626;">▼</span> Line support-break sell</div>
             <div class="channel-pill"><span style="color: #F59E0B;">▼</span> Protection / other sell</div>
         `;
@@ -1928,7 +2404,7 @@ async function fetchAndRenderChannels(symbol, chartInstance, candleData, existin
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}&channel_mult=${mult}&lookback=${lb}`);
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}&channel_mult=${mult}&lookback=${lb}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!isCurrent()) return;
@@ -1996,6 +2472,7 @@ async function updateDashboard() {
     const symbol = tickerSelect.value;
     const strategy = strategySelect.value || 'all';
     if (!symbol) return;
+    if (['sloped_lines', 'slope_lines'].includes(strategy) && slopedInitialCapitalInput && !slopedInitialCapitalInput.checkValidity()) return;
     const requestGeneration = ++dashboardRequestGeneration;
     const isCurrentRequest = () => requestGeneration === dashboardRequestGeneration;
 
@@ -2005,10 +2482,10 @@ async function updateDashboard() {
         const reqResolution = activeResolution || '1d';
         const reqPeriod = activeTimeframe || '1y';
         const strategyWindow = getActiveTradingWindow();
-        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}`;
+        const strategyWindowParam = `&trading_window=${encodeURIComponent(strategyWindow)}${getCapturedWindowQuery()}`;
 
         const slopedParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2057,6 +2534,7 @@ async function updateDashboard() {
             }
             if (candlestickSeries) {
                 candlestickSeries.setData(sorted);
+                scheduleVolumeProfileRender();
             }
             renderVixOverlay(vixData.candles || [], vixData);
             renderAdvancedIndicators(sorted);
@@ -2085,7 +2563,7 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled(), isCurrentRequest);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
@@ -2169,9 +2647,9 @@ async function updateAdvDashboard() {
     setLoading(true, 'adv-loading');
 
     try {
-        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}`;
+        const windowParam = `&trading_window=${encodeURIComponent(getActiveTradingWindow())}${getCapturedWindowQuery()}`;
         const slopedAdvParam = (strategy === 'sloped_lines' || strategy === 'slope_lines')
-            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}`
+            ? `&full_candle=${getFullCandleEnabled()}&use_wick=${getWickEnabled()}&confirm_candles=${getConfirmCandles()}&pivot_lookback=${getPivotLookback()}&anchor_source=${encodeURIComponent(getAnchorSource())}&validation_boundary=${encodeURIComponent(getValidationBoundary())}&trendline_tolerance=${getTrendlineTolerance()}&gap_up=${getGapUpEnabled()}&gap_down=${getGapDownEnabled()}&staggered_lines=${getStaggeredLinesEnabled()}&inverse_color_trigger=${getInverseColorTriggerEnabled()}&line_angle=${getLineAngle()}&stop_loss_mode=${encodeURIComponent(getStopLossMode())}&min_anchor_bars=${getMinAnchorBars()}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}`
             : '';
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
@@ -2215,7 +2693,7 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled());
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
@@ -2277,6 +2755,8 @@ async function updateAdvDashboard() {
 // Bootstrap — runs once DOM scripts have executed
 // ============================================================
 (function bootstrap() {
+    initChartWindowControls();
+    document.getElementById('saved-window-clear')?.addEventListener('click', () => setTimeframe(activeTimeframe));
     try {
         if (typeof LightweightCharts === 'undefined') {
             console.error('[TV] LightweightCharts not loaded');
@@ -2292,9 +2772,17 @@ async function updateAdvDashboard() {
     } catch (err) {
         console.error('[TV] Chart initialization failed:', err);
     }
+    [slopedLineBreakoutBuyCheckbox, slopedEntryBarrierSellCheckbox, slopedPeakReclaimFullCandleCheckbox, slopedCompoundingCheckbox, slopedInitialCapitalInput].forEach(control => {
+        control?.addEventListener('change', () => {
+            if (control === slopedInitialCapitalInput && !control.reportValidity()) return;
+            updateDashboard();
+            if (activeTab === 'advanced' && advChart) updateAdvDashboard();
+        });
+    });
     initTabs();
     initTimeframeButtons();
     volumeIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
+    volumeProfileIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     rsiIndicatorCheckbox?.addEventListener('change', updateIndicatorVisibility);
     vixIndicatorCheckbox?.addEventListener('change', () => {
         updateIndicatorVisibility();

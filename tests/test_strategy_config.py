@@ -12,6 +12,11 @@ class TestStrategyConfig(unittest.TestCase):
         aapl_cfg = get_best_parameters("sloped_lines", "AAPL")
         self.assertIsNotNone(aapl_cfg)
         params = aapl_cfg["parameters"]
+        self.assertFalse(params["peak_reclaim_full_candle"])
+        self.assertTrue(params["compounding"])
+        self.assertEqual(params["initial_capital"], 10000)
+        self.assertTrue(params["line_breakout_buy"])
+        self.assertTrue(params["entry_barrier_sell"])
         self.assertEqual(params["full_candle"], False)
         self.assertEqual(params["use_wick"], False)
         self.assertEqual(params["confirm_candles"], 0)
@@ -25,10 +30,15 @@ class TestStrategyConfig(unittest.TestCase):
         self.assertEqual(params["trendline_tolerance"], 0.015)
 
         perf = aapl_cfg["performance"]
-        self.assertEqual(perf["total_pnl"], 4761.26)
-        self.assertEqual(perf["total_pnl_pct"], 47.61)
+        self.assertEqual(params["reentry_mode"], "any")
+        self.assertTrue(params["reentry_price_breakout"])
+        self.assertFalse(params["reentry_rsi"])
+        self.assertFalse(params["reentry_ema"])
+        self.assertFalse(params["reentry_volume"])
+        self.assertEqual(perf["total_pnl"], 4900.70)
+        self.assertEqual(perf["total_pnl_pct"], 49.01)
         self.assertEqual(perf["buy_and_hold_pct"], 34.01)
-        self.assertEqual(perf["beats_bnh_pct"], 13.60)
+        self.assertEqual(perf["beats_bnh_pct"], 15.00)
         self.assertEqual(perf["win_rate_pct"], 42.1)
         self.assertEqual(perf["total_trades"], 38)
 
@@ -36,6 +46,11 @@ class TestStrategyConfig(unittest.TestCase):
         nvda_cfg = get_best_parameters("sloped_lines", "NVDA")
         self.assertIsNotNone(nvda_cfg)
         params = nvda_cfg["parameters"]
+        self.assertFalse(params["peak_reclaim_full_candle"])
+        self.assertTrue(params["compounding"])
+        self.assertEqual(params["initial_capital"], 10000)
+        self.assertTrue(params["line_breakout_buy"])
+        self.assertTrue(params["entry_barrier_sell"])
         self.assertEqual(params["full_candle"], False)
         self.assertEqual(params["use_wick"], False)
         self.assertEqual(params["confirm_candles"], 0)
@@ -66,6 +81,15 @@ class TestStrategyConfig(unittest.TestCase):
     def test_get_best_parameters_spy(self):
         spy_cfg = get_best_parameters("sloped_lines", "SPY")
         self.assertIsNotNone(spy_cfg)
+        params = spy_cfg["parameters"]
+        self.assertEqual(params["anchor_source"], "any_valid_candle")
+        self.assertEqual(params["validation_boundary"], "close")
+        self.assertEqual(params["trendline_tolerance"], 0.015)
+        self.assertEqual(params["pivot_lookback"], 5)
+        self.assertEqual(params["reentry_mode"], "none")
+        self.assertFalse(params["reentry_price_breakout"])
+        self.assertEqual(spy_cfg["backtest_window"]["start_date"], "2025-09-23")
+        self.assertEqual(spy_cfg["backtest_window"]["end_date"], "2026-09-22")
         perf = spy_cfg["performance"]
         self.assertEqual(perf["total_pnl_pct"], 17.07)
         self.assertEqual(perf["buy_and_hold_pct"], 17.89)

@@ -3,7 +3,7 @@ import { subscribeCandles } from '../feeds/index.js';
 import { toSeriesBar } from '../seriesBars.js';
 import { DAY, findRange, findResolution } from '../timeframes.js';
 
-export function useCandleFeed({chartRef,seriesRef},{symbol,resolutionId,rangeId,tradingWindow},onStatusChange,onCandlesChange){
+export function useCandleFeed({chartRef,seriesRef},{symbol,resolutionId,rangeId,tradingWindow,backtestWindow},onStatusChange,onCandlesChange){
   useEffect(()=>{
     const chart=chartRef.current; const series=seriesRef.current;
     const resolution=findResolution(resolutionId); const range=findRange(rangeId);
@@ -21,6 +21,6 @@ export function useCandleFeed({chartRef,seriesRef},{symbol,resolutionId,rangeId,
       lastTime=candle.time; publish();
     };
     const onError=(error)=>{console.error(error);onStatusChange({state:'error',message:error.message});};
-    return subscribeCandles(symbol,{resolution,range:{...range,tradingWindow}},{onHistory,onCandle,onError});
-  },[chartRef,seriesRef,symbol,resolutionId,rangeId,tradingWindow,onStatusChange,onCandlesChange]);
+    return subscribeCandles(symbol,{resolution,range:{...range,tradingWindow,backtestWindow}},{onHistory,onCandle,onError});
+  },[chartRef,seriesRef,symbol,resolutionId,rangeId,tradingWindow,backtestWindow,onStatusChange,onCandlesChange]);
 }

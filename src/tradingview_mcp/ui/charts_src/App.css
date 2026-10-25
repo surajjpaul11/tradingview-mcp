@@ -63,12 +63,146 @@
   outline-offset: 1px;
 }
 
+/* ---------- Searchable symbol selector ---------- */
+
+.symbol-combobox {
+  position: relative;
+  z-index: 8;
+  width: 112px;
+}
+
+.symbol-combobox__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 22px 3px 6px;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%), linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 10px) 50%, calc(100% - 6px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.symbol-combobox__input:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.symbol-combobox__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: 230px;
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.symbol-combobox__group-label {
+  padding: 7px 7px 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.symbol-combobox__group button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 7px;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.symbol-combobox__group button:hover,
+.symbol-combobox__group button.active {
+  background: var(--color-border);
+}
+
+.symbol-combobox__group button[aria-selected='true'] {
+  color: #fff;
+  background: rgba(41, 98, 255, 0.42);
+}
+
+.symbol-combobox__group small {
+  margin-left: 12px;
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.symbol-combobox__empty {
+  padding: 12px 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
 /* ---------- Indicator toggles ---------- */
 
 .indicator-toggles {
   display: grid;
   grid-auto-flow: column;
   gap: 4px;
+}
+
+/* ---------- Drawing tools ---------- */
+
+.drawing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.drawing-toolbar button {
+  min-width: 24px;
+  padding: 2px 5px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.drawing-toolbar button:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.drawing-toolbar button[aria-pressed='true'] {
+  color: #fff;
+  background: rgba(245, 158, 11, 0.34);
+  border-color: #f59e0b;
+}
+
+.drawing-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chart-widget__body[data-drawing-tool='trendline'],
+.chart-widget__body[data-drawing-tool='parallel_channel'] {
+  cursor: crosshair;
 }
 
 .toggle {
@@ -289,7 +423,7 @@
 .app__workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--grid-gap); }
 .app__workspace.drawer-open { grid-template-columns: minmax(0, 1fr) 320px; }
 .chart-widget.active { border-color: rgba(41, 98, 255, 0.8); box-shadow: inset 0 0 0 1px rgba(41, 98, 255, 0.25); }
-.chart-widget__header { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+.chart-widget__header { grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; }
 .strategy-toggle { padding: 2px 6px; color: var(--color-text-muted); background: transparent; border: 1px solid var(--color-border); border-radius: 4px; font: inherit; font-size: 11px; cursor: pointer; }
 .strategy-toggle.enabled { color: #fff; border-color: var(--color-accent); background: rgba(41, 98, 255, 0.35); }
 .chart-widget__footer { grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 27px; }

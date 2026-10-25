@@ -6,8 +6,14 @@ import { chromium } from 'playwright-core';
 
 const ROOT=new URL('..',import.meta.url).pathname.replace(/\/$/,'');
 const chrome=['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'].find(existsSync);
-const freePort=()=>new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const {port}=server.address();server.close(()=>resolve(port));});});
-async function start(){const port=await freePort();const python=existsSync(`${ROOT}/.venv/bin/python`)?`${ROOT}/.venv/bin/python`:'python3';const child=spawn(python,['-m','uvicorn','tradingview_mcp.ui.server:app','--host','127.0.0.1','--port',String(port)],{cwd:ROOT,env:{...process.env,PYTHONPATH:`${ROOT}/src`},stdio:'ignore'});const url=`http://127.0.0.1:${port}`;for(let i=0;i<100;i++){try{if((await fetch(`${url}/charts`)).ok)return{url,child};}catch{}await new Promise((r)=>setTimeout(r,100));}throw new Error('charts server did not start');}
+const freePort=async()=>{
+  for(let port=8001;port<=8004;port++){
+    const available=await new Promise((resolve)=>{const server=net.createServer();server.once('error',()=>resolve(false));server.listen(port,'0.0.0.0',()=>server.close(()=>resolve(true)));});
+    if(available)return port;
+  }
+  throw new Error('No free test port in 8001–8004');
+};
+async function start(){const port=await freePort();const python=process.env.PYTHON_BIN||(existsSync(`${ROOT}/.venv/bin/python`)?`${ROOT}/.venv/bin/python`:'python3');const child=spawn(python,['-m','uvicorn','tradingview_mcp.ui.server:app','--host','0.0.0.0','--port',String(port)],{cwd:ROOT,env:{...process.env,PYTHONPATH:`${ROOT}/src`},stdio:'ignore'});const url=`http://127.0.0.1:${port}`;for(let i=0;i<100;i++){try{if((await fetch(`${url}/charts`)).ok)return{url,child};}catch{}await new Promise((r)=>setTimeout(r,100));}throw new Error('charts server did not start');}
 assert.ok(chrome,'Chrome or Edge is required');
 const dashboard=await start();const browser=await chromium.launch({executablePath:chrome,headless:true});const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',(error)=>errors.push(error.message));page.setDefaultTimeout(15000);
 await page.addInitScript(()=>{
@@ -23,9 +29,9 @@ const candles=[
   {time:120,date:'1970-01-01 00:02',open:10.5,high:12,low:10,close:11.5,volume:20},
   {time:180,date:'1970-01-01 00:03',open:13,high:14,low:13,close:13.5,volume:30},
 ];
-await page.route('**/api/chart/candles?**',(route)=>route.fulfill({json:{source:new URL(route.request().url()).searchParams.get('source'),candles,timeframe:'1m',period:'1d'}}));
+await page.route('**/api/chart/candles?**',(route)=>route.fulfill({json:{source:new URL(route.request().url()).searchParams.get('source'),candles,timeframe:'1m',period:'1d',data_status:{source:'sqlite',complete:true,stale:false,data_revision:'1:2',as_of:180}}}));
 await page.route('**/api/filters',(route)=>route.fulfill({json:{symbols:['AAPL','SNDK','WULF'],strategies:['sloped_lines','enhanced_channel']}}));
-await page.route('**/api/best-parameters?**',(route)=>route.fulfill({json:{found:true,data:{timeframe:'1d',period:'1y',backtest_window:{start_date:'2025-09-26',end_date:'2026-09-25',trading_window:'regular market'},parameters:{line_breakout_buy:true,entry_barrier_sell:true,pivot_lookback:5,anchor_source:'any_valid_candle',validation_boundary:'close',trendline_tolerance:.015},performance:{total_pnl_pct:47.61}}}}));
+await page.route('**/api/best-parameters?**',(route)=>route.fulfill({json:{found:true,data:{timeframe:'1d',period:'1y',backtest_window:{start_date:'2025-09-26',end_date:'2026-09-25',trading_window:'regular market'},snapshot_id:'test-snapshot',snapshot_origin:'reconstructed',parameters:{line_breakout_buy:true,entry_barrier_sell:true,pivot_lookback:5,anchor_source:'any_valid_candle',validation_boundary:'close',trendline_tolerance:.015},performance:{total_pnl_pct:47.61}}}}));
 await page.route('**/api/stats?**',(route)=>route.fulfill({json:{total_pnl_pct:12.5,buy_and_hold_pct:8.1,win_rate_pct:55,total_trades:2}}));
 await page.route('**/api/trades?**',(route)=>route.fulfill({json:{trades:[{created_at:'1970-01-01T00:01:00Z',closed_at:'1970-01-01T00:03:00Z',entry_price:10,exit_price:13,pnl_pct:30,entry_reason:'breakout',exit_reason:'support break'}]}}));
 await page.route('**/api/trendlines?**',(route)=>route.fulfill({json:{trendlines:[{type:'resistance',status:'active',color:'#10b981',points:[{time:60,value:11},{time:180,value:14}]}]}}));

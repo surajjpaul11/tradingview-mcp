@@ -104,6 +104,21 @@
         "commit": "9b2b254",
         "date": "2026-10-24"
       }
+    },
+    {
+      "id": "BUG-005",
+      "title": "Yahoo data failures cause empty charts and repeated slow requests",
+      "fixed": false,
+      "found": "2026-10-24",
+      "branch": "strategy-tweaks",
+      "symptom": "The dashboard page responds immediately, but an AAPL daily candle request takes about 10.9 seconds and returns an empty candle array; the graph appears stalled.",
+      "reproduce": [
+        "Open the dashboard and request AAPL 1Y daily candles while Yahoo requests are failing.",
+        "Observe repeated no-price-data messages and empty chart data.",
+        "Probe Yahoo public chart endpoint; it currently responds HTTP 429."
+      ],
+      "cause": "Yahoo is refusing the direct chart probe with HTTP 429. The app returns empty candles on failed Yahoo history requests and only caches successful results, so candles, trades, statistics and trendlines can repeatedly fetch the failing provider. Several async request handlers execute synchronous fetch/calculation work directly, delaying unrelated page requests.",
+      "verified": "Dashboard HTML returned HTTP 200 in 0.001247 seconds. AAPL daily candle request returned HTTP 200 after 10.921413 seconds with zero candles. A page request during the fetch took 2.724866 seconds. A direct Yahoo chart API probe returned HTTP 429 in 0.180546 seconds. Server process remained listening on port 8000 with low CPU usage."
     }
   ]
 }

@@ -32,18 +32,19 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
   };
   const loadBest=async()=>{
     setMessage('Loading…');
-    const response=await fetch(`/api/best-parameters?strategy=${encodeURIComponent(pane.strategy.name)}&symbol=${encodeURIComponent(symbol.id)}`);
+    const response=await fetch(`/api/best-parameters?strategy=${encodeURIComponent(pane.strategy.name)}&symbol=${encodeURIComponent(symbol.id)}&capture_snapshot=true`);
     const result=await response.json();
+    if(!response.ok){setMessage(result.detail||`HTTP ${response.status}`);return;}
     if(!result.found){setMessage(`No saved best parameters for ${symbol.label} and ${pane.strategy.name}.`);return;}
-    const window=result.data.backtest_window||null;
+    const window=result.data.backtest_window?{...result.data.backtest_window,snapshot_id:result.data.snapshot_id}:null;
     onChange({
       resolution:result.data.timeframe||pane.resolution,
       range:RANGES.find((item)=>item.period===result.data.period)?.id||pane.range,
       tradingWindow:window?.trading_window||pane.tradingWindow,
       backtestWindow:window,
-      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,peak_reclaim_full_candle:false,compounding:true,initial_capital:10000,...result.data.parameters}},
+      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,peak_reclaim_full_candle:false,compounding:true,initial_capital:10000,...result.data.parameters,...result.data.costs}},
     });
-    setMessage(`Loaded saved best${result.data.performance?.total_pnl_pct!==undefined?` (${result.data.performance.total_pnl_pct}%)`:''}.`);
+    setMessage(`Loaded saved best${result.data.performance?.total_pnl_pct!==undefined?` (${result.data.performance.total_pnl_pct}%)`:''}.${result.data.snapshot_origin?` Candle snapshot: ${result.data.snapshot_origin}.`:''}${result.data.engine_changed?' Strategy code has changed since capture.':''}`);
   };
   return <aside className="strategy-drawer" aria-label="Strategy controls">
     <header><strong>Strategy · {symbol.label}</strong><button type="button" onClick={onClose} aria-label="Close strategy drawer">×</button></header>

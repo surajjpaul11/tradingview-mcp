@@ -531,8 +531,10 @@ function validateReentrySelection() {
     return true;
 }
 
+let activeSlopedCosts = { commission_pct: 0.1, slippage_pct: 0.05 };
+
 function getSlopedAccountingQueryParams() {
-    return `&compounding=${slopedCompoundingCheckbox?.checked !== false}&initial_capital=${Number(slopedInitialCapitalInput?.value ?? 10000)}`;
+    return `&compounding=${slopedCompoundingCheckbox?.checked !== false}&initial_capital=${Number(slopedInitialCapitalInput?.value ?? 10000)}&commission_pct=${activeSlopedCosts.commission_pct}&slippage_pct=${activeSlopedCosts.slippage_pct}`;
 }
 
 function getSlopedSignalQueryParams() {
@@ -580,6 +582,28 @@ const bestParamsBadge = document.getElementById('best-params-badge');
 const bestParamsMessage = document.getElementById('best-params-message');
 let bestParametersRequestGeneration = 0;
 
+function showMarketDataStatus(data) {
+    let node = document.getElementById('market-data-status');
+    if (!node) {
+        node = document.createElement('div');
+        node.id = 'market-data-status';
+        node.setAttribute('role', 'status');
+        node.style.cssText = 'padding:6px 12px;color:var(--text-secondary);font-size:12px';
+        document.querySelector('main')?.prepend(node);
+        if (!node.isConnected) document.body.prepend(node);
+    }
+    const status = data?.data_status;
+    node.textContent = status
+        ? `${status.source === 'snapshot' ? `Saved candle snapshot (${status.origin})` : 'Local SQLite history'} · ${status.as_of ? `through ${new Date(status.as_of * 1000).toLocaleString()}` : 'no bars'}${status.stale ? ' · stale' : ''}${status.refreshing ? ' · updating in background' : ''}${status.complete ? '' : ' · incomplete history'}${status.error ? ` · ${status.error}` : ''}`
+        : '';
+}
+
+async function checkedMarketResponse(response) {
+    if (response.ok) return response;
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Market data request failed (HTTP ${response.status})`);
+}
+
 function showBestParamsMessage(message, isError = false) {
     if (!bestParamsMessage) return;
     bestParamsMessage.textContent = message || '';
@@ -603,7 +627,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
     }
     if (!showFeedback) showBestParamsMessage('');
     try {
-        const res = await fetch(`/api/best-parameters?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}`);
+        const res = await fetch(`/api/best-parameters?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}${restoreSavedSettings ? "&capture_snapshot=true" : ""}`);
         if (!res.ok) {
             resetBestParamsButton();
             if (showFeedback) showBestParamsMessage(`Could not load saved parameters for ${symbol} and ${strategy}.`, true);
@@ -625,6 +649,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
         // explicit Saved Best click restores strategy controls and captured dates.
         if (restoreSavedSettings) {
             const p = result.data.parameters;
+            activeSlopedCosts = { commission_pct: 0.1, slippage_pct: 0.05, ...result.data.costs };
 
             // Sloped Lines strategy controls
             if (strategy === 'sloped_lines' || strategy === 'slope_lines') {
@@ -763,7 +788,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
 
             const window = result.data.backtest_window;
             setCapturedBacktestWindow(window?.start_date && window?.end_date
-                ? { ...window, symbol, strategy } : null);
+                ? { ...window, symbol, strategy, snapshot_id: result.data.snapshot_id } : null);
             if (window?.trading_window && tradingWindowSelect) tradingWindowSelect.value = window.trading_window;
         }
 
@@ -786,7 +811,7 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
             const dates = capturedBacktestWindow
                 ? ` Window: ${capturedBacktestWindow.start_date} through ${capturedBacktestWindow.end_date}.`
                 : ' No captured dates are recorded for this preset; using the rolling range.';
-            showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.${dates}`);
+            showBestParamsMessage(`Loaded saved best parameters for ${symbol} and ${strategy}.${dates}${result.data.snapshot_origin ? ` Candle snapshot: ${result.data.snapshot_origin}.` : ""}${result.data.engine_changed ? " Strategy code has changed since this snapshot was recorded." : ""}`);
         }
         if (refresh) {
             await updateDashboard();
@@ -1490,7 +1515,7 @@ function setResolution(res) {
 function getCapturedWindowQuery() {
     const window = capturedBacktestWindow;
     if (!window || window.symbol !== tickerSelect.value || window.strategy !== strategySelect.value) return '';
-    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}`;
+    return `&start_date=${encodeURIComponent(window.start_date)}&end_date=${encodeURIComponent(window.end_date)}${window.snapshot_id ? `&snapshot_id=${encodeURIComponent(window.snapshot_id)}` : ""}`;
 }
 
 function setCapturedBacktestWindow(window = null) {
@@ -2189,13 +2214,13 @@ function getSlopedTrendlinePresentation(trendline) {
     };
 }
 
-async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, showTrendlineLabels = false, isCurrent = () => true) {
+async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, existingSeriesList, strategy = 'enhanced_lines', fullCandle = true, timeframe = '1d', period = '1y', useWick = false, confirmCandles = 0, pivotLookback = 5, inverseColorTrigger = false, lineAngle = 0, stopLossMode = 'none', minAnchorBars = 2, anchorSource = 'confirmed_pivots', validationBoundary = 'body', trendlineTolerance = 0, gapUp = false, gapDown = false, staggeredLines = false, showTrendlineLabels = false, isCurrent = () => true, revisionParam = '') {
     // Counts let the UI smoke test verify that returned trendlines were actually drawn.
     const summary = { returned: 0, drawn: 0, levelBadges: 0 };
     try {
         const fullCandleParam = (strategy === 'sloped_lines' || strategy === 'slope_lines') ? `&full_candle=${fullCandle}&use_wick=${useWick}&confirm_candles=${confirmCandles}&pivot_lookback=${pivotLookback}&anchor_source=${encodeURIComponent(anchorSource)}&validation_boundary=${encodeURIComponent(validationBoundary)}&trendline_tolerance=${trendlineTolerance}&gap_up=${gapUp}&gap_down=${gapDown}&staggered_lines=${staggeredLines}&inverse_color_trigger=${inverseColorTrigger}&line_angle=${lineAngle}&stop_loss_mode=${encodeURIComponent(stopLossMode)}&min_anchor_bars=${minAnchorBars}${getReentryQueryParams()}${getSlopedSignalQueryParams()}${getSlopedAccountingQueryParams()}` : '';
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}${fullCandleParam}`);
+        const res = await fetch(`/api/trendlines?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}${fullCandleParam}${revisionParam}`);
         if (!res.ok) return summary;
         const data = await res.json();
         if (!isCurrent()) return summary;
@@ -2399,12 +2424,12 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
     }
 }
 
-async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y', isCurrent = () => true) {
+async function fetchAndRenderChannels(symbol, chartInstance, candleData, existingSeriesList, timeframe = '1d', period = '5y', isCurrent = () => true, revisionParam = '') {
     try {
         const mult = getSelectedChannelMult();
         const lb = getSelectedChannelLookback();
         const tradingWindow = encodeURIComponent(getActiveTradingWindow());
-        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}&channel_mult=${mult}&lookback=${lb}`);
+        const res = await fetch(`/api/channels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&period=${encodeURIComponent(period)}&trading_window=${tradingWindow}${getCapturedWindowQuery()}&channel_mult=${mult}&lookback=${lb}${revisionParam}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!isCurrent()) return;
@@ -2492,14 +2517,20 @@ async function updateDashboard() {
             : slopedParam;
 
         const vixRequested = Boolean(vixIndicatorCheckbox?.checked);
+        const candleResponse = await checkedMarketResponse(await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`));
+        const candlePayload = await candleResponse.clone().json();
+        showMarketDataStatus(candlePayload);
+        const revisionParam = candlePayload.data_status?.data_revision && !candlePayload.data_status?.snapshot_id
+            ? `&data_revision=${encodeURIComponent(candlePayload.data_status.data_revision)}` : '';
         const [candlesRes, tradesRes, statsRes, vixRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}`),
+            Promise.resolve(candleResponse),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}${revisionParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}${multParam}${revisionParam}`),
             vixRequested
                 ? fetch(`/api/candles?symbol=${encodeURIComponent('^VIX')}&timeframe=${encodeURIComponent(reqResolution)}&period=${encodeURIComponent(reqPeriod)}${strategyWindowParam}`)
                 : Promise.resolve(null),
         ]);
+        await Promise.all([tradesRes, statsRes].map(checkedMarketResponse));
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
@@ -2563,14 +2594,14 @@ async function updateDashboard() {
             channelSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             channelSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled(), isCurrentRequest);
+            const trendlineSummary = await fetchAndRenderTrendlines(symbol, chart, sorted, trendlineSeries, strategy, getFullCandleEnabled(), reqResolution, reqPeriod, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled(), isCurrentRequest, revisionParam);
             overlays.trendlinesReturned = trendlineSummary.returned;
             overlays.trendlinesDrawn = trendlineSummary.drawn;
         } else if (chart && strategy === 'enhanced_channel' && sorted.length > 0) {
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
             trendlineSeries.length = 0;
             updateChannelLegend('channel-legend', true, strategy);
-            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries, reqResolution, reqPeriod, isCurrentRequest);
+            await fetchAndRenderChannels(symbol, chart, sorted, channelSeries, reqResolution, reqPeriod, isCurrentRequest, revisionParam);
         } else {
             updateChannelLegend('channel-legend', false);
             trendlineSeries.forEach(s => { try { chart.removeSeries(s); } catch (_) {} });
@@ -2627,7 +2658,7 @@ async function updateDashboard() {
         lastDataRefreshAt = Date.now();
 
     } catch (err) {
-        if (isCurrentRequest()) console.error('[TV] updateDashboard failed:', err);
+        if (isCurrentRequest()) { showBestParamsMessage(err.message, true); console.error('[TV] updateDashboard failed:', err); }
     } finally {
         if (isCurrentRequest()) setLoading(false, 'loading');
     }
@@ -2654,11 +2685,17 @@ async function updateAdvDashboard() {
         const multParam = (strategy === 'enhanced_channel')
             ? `&channel_mult=${getSelectedChannelMult()}&lookback=${getSelectedChannelLookback()}&use_stop_loss=${getChannelStoplossEnabled()}&midline_reentry=${getChannelMidlineEnabled()}&midline_cross=${getChannelMidlineEnabled()}&lower_reclaim=${getChannelLowerReclaimEnabled()}&channel_curl_mode=${encodeURIComponent(getChannelCurlMode())}&channel_inflection=${getChannelCurlEnabled()}`
             : slopedAdvParam;
+        const candleResponse = await checkedMarketResponse(await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}`));
+        const candlePayload = await candleResponse.clone().json();
+        showMarketDataStatus(candlePayload);
+        const revisionParam = candlePayload.data_status?.data_revision && !candlePayload.data_status?.snapshot_id
+            ? `&data_revision=${encodeURIComponent(candlePayload.data_status.data_revision)}` : '';
         const [candlesRes, tradesRes, statsRes] = await Promise.all([
-            fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}`),
-            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}${multParam}`),
-            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}${multParam}`)
+            Promise.resolve(candleResponse),
+            fetch(`/api/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}${multParam}${revisionParam}`),
+            fetch(`/api/stats?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&timeframe=${encodeURIComponent(config.interval)}&period=${encodeURIComponent(config.period)}${windowParam}${multParam}${revisionParam}`)
         ]);
+        await Promise.all([tradesRes, statsRes].map(checkedMarketResponse));
 
         const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
         const tradesData = tradesRes.ok ? await tradesRes.json() : { trades: [] };
@@ -2693,12 +2730,12 @@ async function updateAdvDashboard() {
             advChannelSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advChannelSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled());
+            await fetchAndRenderTrendlines(symbol, advChart, sorted, advTrendlineSeries, strategy, getFullCandleEnabled(), config.interval, config.period, getWickEnabled(), getConfirmCandles(), getPivotLookback(), getInverseColorTriggerEnabled(), getLineAngle(), getStopLossMode(), getMinAnchorBars(), getAnchorSource(), getValidationBoundary(), getTrendlineTolerance(), getGapUpEnabled(), getGapDownEnabled(), getStaggeredLinesEnabled(), getTrendlineLabelsEnabled(), () => true, revisionParam);
         } else if (strategy === 'enhanced_channel' && sorted.length > 0) {
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
             advTrendlineSeries.length = 0;
             updateChannelLegend('adv-channel-legend', true, strategy);
-            await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries, config.interval, config.period);
+            await fetchAndRenderChannels(symbol, advChart, sorted, advChannelSeries, config.interval, config.period, () => true, revisionParam);
         } else {
             updateChannelLegend('adv-channel-legend', false);
             advTrendlineSeries.forEach(s => { try { advChart.removeSeries(s); } catch (_) {} });
@@ -2745,7 +2782,7 @@ async function updateAdvDashboard() {
         advChart.timeScale().fitContent();
 
     } catch (err) {
-        console.error('[TV-ADV] updateAdvDashboard failed:', err);
+        showBestParamsMessage(err.message, true); console.error('[TV-ADV] updateAdvDashboard failed:', err);
     } finally {
         setLoading(false, 'adv-loading');
     }

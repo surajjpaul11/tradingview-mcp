@@ -18,7 +18,7 @@ class ChartWorkspaceBackendTests(unittest.TestCase):
     def test_hyperliquid_history_is_normalized_and_deduplicated(self):
         raw=[{"t":2000,"o":"2","h":"3","l":"1","c":"2.5","v":"4"},{"t":1000,"o":"1","h":"2","l":".5","c":"1.5","v":"3"},{"t":2000,"o":"2","h":"4","l":"1","c":"3","v":"5"}]
         with patch.object(server.urllib.request,"urlopen",return_value=_Response(raw)):
-            candles,tf,period=server.fetch_hyperliquid_candles("BTC","1m","1d")
+            candles,tf,period=server._download_hyperliquid_candles("BTC","1m","1d")
         self.assertEqual([c["time"] for c in candles],[1,2])
         self.assertEqual(candles[-1]["close"],3)
         self.assertEqual((tf,period),("1m","1d"))

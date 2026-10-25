@@ -1,4 +1,5 @@
 const STATUS_LABELS = {
+  stale: 'Cached · updating',
   loading: 'Loading…',
   live: 'Live',
   error: 'Error',

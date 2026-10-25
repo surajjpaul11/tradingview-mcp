@@ -49,7 +49,22 @@ class TradeMarkerTimestampTests(unittest.TestCase):
 
 class YahooRefreshCacheTests(unittest.TestCase):
     def setUp(self):
-        server._yahoo_candle_cache.clear()
+        from tradingview_mcp.core.services.market_data_store import MarketDataStore, request_bounds, yahoo_request_bounds
+        self.directory = tempfile.TemporaryDirectory()
+        self.store = MarketDataStore(Path(self.directory.name) / 'market.sqlite3')
+        self.addCleanup(self.directory.cleanup)
+        self.addCleanup(self.store.close)
+        store_patch = patch.object(server, 'get_market_store', return_value=self.store)
+        store_patch.start()
+        self.addCleanup(store_patch.stop)
+        bounds_patch = patch.object(server, 'request_bounds', side_effect=lambda period, start=None, end=None:
+            request_bounds(period, start, end, now=datetime(2026, 9, 24, tzinfo=timezone.utc)))
+        bounds_patch.start()
+        self.addCleanup(bounds_patch.stop)
+        yahoo_bounds_patch = patch.object(server, 'yahoo_request_bounds', side_effect=lambda symbol, period, session, start=None, end=None:
+            yahoo_request_bounds(symbol, period, session, start, end, now=datetime(2026, 9, 24, tzinfo=timezone.utc)))
+        yahoo_bounds_patch.start()
+        self.addCleanup(yahoo_bounds_patch.stop)
 
     def test_repeated_dashboard_requests_share_recent_yahoo_candles(self):
         ticker = Mock()
@@ -62,7 +77,7 @@ class YahooRefreshCacheTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(first[0]), 1)
         ticker_factory.assert_called_once_with("AAPL")
-        ticker.history.assert_called_once_with(period="1y", interval="1d", prepost=False)
+        ticker.history.assert_called_once_with(start="2025-09-24", end="2026-09-25", interval="1d", prepost=False, auto_adjust=True)
 
     def test_window_is_part_of_cache_key_and_extended_hours_are_requested(self):
         ticker = Mock()

@@ -12,8 +12,8 @@ import { useStrategyData } from '../hooks/useStrategyData.js';
 export default function ChartWidget({pane,active,symbolGroups,onActivate,onPaneChange,onOpenStrategy}){
   const [status,setStatus]=useState({state:'loading'}); const symbol=findSymbol(pane.symbolId,symbolGroups);
   const [drawingTool,setDrawingTool]=useState('cursor'); const [drawingProgress,setDrawingProgress]=useState(0);
-  const strategy=useStrategyData(symbol,pane);
-  const symbolChange=(symbolId)=>{setDrawingTool('cursor');setDrawingProgress(0);onPaneChange((current)=>{const next=findSymbol(symbolId,symbolGroups);return {symbolId,backtestWindow:next.source==='yahoo'?current.backtestWindow:null,source:next.source,resolution:resolveResolution(next.source,current.resolution,current.range),drawings:[]};});};
+  const strategy=useStrategyData(symbol,pane,status);
+  const symbolChange=(symbolId)=>{setDrawingTool('cursor');setDrawingProgress(0);onPaneChange((current)=>{const next=findSymbol(symbolId,symbolGroups);return {symbolId,backtestWindow:next.source==='yahoo'&&current.backtestWindow?{...current.backtestWindow,snapshot_id:undefined}:null,source:next.source,resolution:resolveResolution(next.source,current.resolution,current.range),drawings:[]};});};
   const toggle=(key)=>onPaneChange((current)=>({indicators:{...current.indicators,[key]:!current.indicators[key]}}));
   const addDrawing=(drawing)=>{onPaneChange((current)=>({drawings:[...(current.drawings||[]),drawing]}));setDrawingTool('cursor');setDrawingProgress(0);};
   const undoDrawing=()=>onPaneChange((current)=>({drawings:(current.drawings||[]).slice(0,-1)}));

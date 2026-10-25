@@ -28,7 +28,7 @@ await page.route('**/*', async route => {
       : url.pathname === '/api/best-parameters' ? (url.searchParams.get('symbol') === 'TEST' ? { found: false } : { found: true, data: url.searchParams.get('symbol') === 'SPY'
         ? { timeframe: '1h', period: '3mo', backtest_window: { ...savedWindow, start_date: '2025-09-23', end_date: '2026-09-22' }, parameters: { ...savedSignals, full_candle: true, confirm_candles: 3, reentry_mode: 'none', reentry_price_breakout: false }, performance: { total_pnl_pct: 17.07 } }
         : { timeframe: '1d', period: '1y', backtest_window: savedWindow, parameters: { ...savedSignals }, performance: { total_pnl_pct: 49.01 } } })
-      : url.pathname === '/api/candles' ? { candles }
+      : url.pathname === '/api/candles' ? { candles, data_status: { source:'sqlite', complete:true, stale:false, data_revision:'1:2', as_of:candles.at(-1).time } }
       : url.pathname === '/api/trades' ? { trades: [] }
       : url.pathname === '/api/trendlines' ? { trendlines: [] }
       : url.pathname === '/api/market-status' ? { configured_default_window: 'regular market' }

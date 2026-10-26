@@ -151,12 +151,14 @@
     {
       "id": "BUG-008",
       "title": "Line Angle label implies geometric steepness but measures total anchor movement",
-      "fixed": false,
+      "fixed": true,
       "found": "2026-10-25",
       "branch": "adaptive_changes",
       "symptom": "Increasing Line Angle does not directly select a steeper line; elapsed candles between anchors are absent from its calculation.",
       "cause": "The line_angle parameter filters the total percentage price change between anchors while the UI labels it Line Angle.",
-      "verified": "Inspected both line builders and matched the SPY April 27 support to its April 27/29 anchors."
+      "verified": "110 Python and 10 JavaScript unit tests pass; both browser smoke checks pass, including adaptive controls, setting retention and Saved Best reset. All six pre-change baseline ledgers reproduced exactly. Comparison report records fixed-snapshot returns and daily-close drawdowns.",
+      "fixed_in": "4c62271",
+      "fix": "Rename the UI control to Minimum anchor move (%) on both chart pages while preserving the line_angle parameter and all existing Saved Best values. Adaptive line overlays additionally report slope per candle and percentage per candle."
     },
     {
       "id": "BUG-009",

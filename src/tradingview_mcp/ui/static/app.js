@@ -375,6 +375,15 @@ const slopedGapUpGroup = document.getElementById('sloped-gap-up-group');
 const slopedGapUpCheckbox = document.getElementById('sloped-gap-up-checkbox');
 const slopedGapDownGroup = document.getElementById('sloped-gap-down-group');
 const slopedGapDownCheckbox = document.getElementById('sloped-gap-down-checkbox');
+const slopedAdaptiveGroup = document.getElementById('sloped-adaptive-group');
+const slopedAdaptiveCheckbox = document.getElementById('sloped-adaptive-checkbox');
+const slopedAdaptivePivotsGroup = document.getElementById('sloped-adaptive-pivots-group');
+const slopedAdaptivePivotsSelect = document.getElementById('sloped-adaptive-pivots-select');
+const slopedAdaptiveMarginGroup = document.getElementById('sloped-adaptive-margin-group');
+const slopedAdaptiveMarginSelect = document.getElementById('sloped-adaptive-margin-select');
+function getAdaptiveLineQueryParams() {
+    return `&adaptive_tightening=${Boolean(slopedAdaptiveCheckbox?.checked)}&adaptive_pivot_bars=${Number(slopedAdaptivePivotsSelect?.value ?? 2)}&adaptive_min_improvement_atr=${Number(slopedAdaptiveMarginSelect?.value ?? .25)}`;
+}
 const slopedStaggeredLinesGroup = document.getElementById('sloped-staggered-lines-group');
 const slopedStaggeredLinesCheckbox = document.getElementById('sloped-staggered-lines-checkbox');
 const slopedTrendlineLabelsGroup = document.getElementById('sloped-trendline-labels-group');
@@ -538,7 +547,7 @@ function getSlopedAccountingQueryParams() {
 }
 
 function getSlopedSignalQueryParams() {
-    return `&peak_reclaim_full_candle=${Boolean(slopedPeakReclaimFullCandleCheckbox?.checked)}&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}`;
+    return `&peak_reclaim_full_candle=${Boolean(slopedPeakReclaimFullCandleCheckbox?.checked)}&line_breakout_buy=${Boolean(slopedLineBreakoutBuyCheckbox?.checked)}&entry_barrier_sell=${Boolean(slopedEntryBarrierSellCheckbox?.checked)}${getAdaptiveLineQueryParams()}`;
 }
 
 function getReentryQueryParams() {
@@ -563,6 +572,7 @@ function syncChannelMultVisibility(strategy) {
     if (slopedWickGroup) slopedWickGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedGapUpGroup) slopedGapUpGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedGapDownGroup) slopedGapDownGroup.style.display = isSloped ? 'flex' : 'none';
+    for (const group of [slopedAdaptiveGroup, slopedAdaptivePivotsGroup, slopedAdaptiveMarginGroup]) { if (group) group.style.display = isSloped ? 'flex' : 'none'; }
     if (slopedStaggeredLinesGroup) slopedStaggeredLinesGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedTrendlineLabelsGroup) slopedTrendlineLabelsGroup.style.display = isSloped ? 'flex' : 'none';
     if (slopedConfirmCandlesGroup) slopedConfirmCandlesGroup.style.display = isSloped ? 'flex' : 'none';
@@ -670,6 +680,9 @@ async function applyBestParametersIfAvailable(strategy, symbol, { showFeedback =
                 if (slopedGapDownCheckbox) {
                     slopedGapDownCheckbox.checked = Boolean(p.gap_down);
                 }
+                if (slopedAdaptiveCheckbox) slopedAdaptiveCheckbox.checked = Boolean(p.adaptive_tightening);
+                if (slopedAdaptivePivotsSelect) slopedAdaptivePivotsSelect.value = String(p.adaptive_pivot_bars ?? 2);
+                if (slopedAdaptiveMarginSelect) slopedAdaptiveMarginSelect.value = String(p.adaptive_min_improvement_atr ?? .25);
                 if (slopedStaggeredLinesCheckbox) {
                     slopedStaggeredLinesCheckbox.checked = Boolean(p.staggered_lines);
                 }
@@ -1752,7 +1765,7 @@ async function loadFilters() {
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
         }
-        for (const checkbox of [slopedGapUpCheckbox, slopedGapDownCheckbox, slopedStaggeredLinesCheckbox, slopedTrendlineLabelsCheckbox]) {
+        for (const checkbox of [slopedAdaptiveCheckbox, slopedGapUpCheckbox, slopedGapDownCheckbox, slopedStaggeredLinesCheckbox, slopedTrendlineLabelsCheckbox]) {
             if (checkbox) {
                 checkbox.onchange = () => {
                     updateDashboard();
@@ -1785,6 +1798,9 @@ async function loadFilters() {
                 updateDashboard();
                 if (activeTab === 'advanced' && advChart) updateAdvDashboard();
             };
+        }
+        for (const select of [slopedAdaptivePivotsSelect, slopedAdaptiveMarginSelect]) {
+            if (select) select.onchange = () => { updateDashboard(); if (activeTab === 'advanced' && advChart) updateAdvDashboard(); };
         }
         if (slopedLineAngleSelect) {
             slopedLineAngleSelect.onchange = () => {
@@ -2208,9 +2224,9 @@ function getSlopedTrendlinePresentation(trendline) {
     const palette = SLOPED_TRENDLINE_COLORS[type];
     return {
         level,
-        color: palette[Math.min(level - 1, palette.length - 1)],
-        width: Math.min(4, level + 1),
-        badge: level > 1 ? `L${level}` : '',
+        color: trendline.status === 'superseded' ? (type === 'support' ? 'rgba(59,130,246,0.3)' : 'rgba(16,185,129,0.3)') : palette[Math.min(level - 1, palette.length - 1)],
+        width: trendline.status === 'superseded' ? 1 : Math.min(4, level + 1),
+        badge: trendline.adaptive ? `A${level}` : (level > 1 ? `L${level}` : ''),
         badgePosition: type === 'resistance' ? 'aboveBar' : 'belowBar',
     };
 }
@@ -2322,7 +2338,9 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
             };
 
             const confirmationTime = tl.confirmation_time ? findNearestCandleTime(tl.confirmation_time, candleData) : null;
-            if (
+            if (tl.adaptive && confirmationTime != null && confirmationTime >= snappedEnd) {
+                if (addTrendlineSeries(projectedPoints, 2, 1, `${tl.label || ''} (forming)`, false)) summary.drawn += 1;
+            } else if (
                 strategy === 'sloped_lines'
                 && confirmationTime != null
                 && confirmationTime > snappedStart
@@ -2345,13 +2363,14 @@ async function fetchAndRenderTrendlines(symbol, chartInstance, candleData, exist
                     2,
                     slopedPresentation ? Math.max(1, slopedPresentation.width - 1) : 1,
                     `${tl.label || ''} (forming)`,
-                    true,
+                    !tl.adaptive,
                 );
                 const active = addTrendlineSeries(
                     activeData,
                     0,
                     slopedPresentation?.width || 2,
                     `${tl.label || ''} (active)`,
+                    Boolean(tl.adaptive),
                 );
                 if (forming || active) summary.drawn += 1;
             } else if (addTrendlineSeries(
@@ -2401,7 +2420,7 @@ function updateChannelLegend(containerId, isVisible, strategy = 'enhanced_channe
         el.innerHTML = `
             <div class="channel-pill"><span class="channel-dot" style="background: #10B981;"></span>Descending Resistance (Break = Buy)</div>
             <div class="channel-pill"><span class="channel-dot" style="background: #3B82F6;"></span>Ascending Support (Break = Sell)</div>
-            <div class="channel-pill">Dashed = forming · Brighter/thicker + L badge = staggered</div>
+            <div class="channel-pill">Dashed = forming · Brighter/thicker + L badge = staggered; A badge = adaptive</div>
             <div class="channel-pill"><span style="color: #059669;">▲</span> Line breakout buy</div>
             <div class="channel-pill"><span style="color: #6EE7B7;">▲</span> Reclaim / re-entry buy</div>
             <div class="channel-pill"><span style="color: #14B8A6;">▲</span> Body gap-up buy</div>

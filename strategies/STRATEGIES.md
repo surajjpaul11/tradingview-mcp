@@ -667,3 +667,31 @@ Each entry maps `strategy` -> `ticker` -> parameters and performance metrics (in
 - **REST API**: Query `GET /api/best-parameters?strategy=sloped_lines&symbol=NVDA`
 
 Sloped Lines position accounting uses the existing rounded per-trade net returns. Estimated round-trip commissions and slippage are settled at exit. Trade quantities, dollar P&L, and balances follow the same ledger used by the account summary.
+
+
+### Adaptive line tightening
+
+Optional on both chart pages and the standalone CLI (`--adaptive-tightening`).
+Off by default, preserving existing Saved Best trade ledgers. The default adaptive
+confirmation is two candles; one candle is the faster option. The minimum
+improvement is 0.25 ATR (UI also offers 0.5 and 1.0).
+
+The engine searches confirmed local pivots from the last 20 candles, including
+reuse of the active line's latest anchor when recent enough. Support must move
+up, resistance down. It selects the closest valid boundary rather than the
+largest slope. Existing candle-boundary validation, minimum anchor spacing,
+anchor-move percentage and inverse-color rules still apply. A replacement must
+not have been crossed before activation. Replacements are promoted after the
+current candle's break checks and can trade only from the next candle.
+
+When legacy Staggered Lines is also enabled, legacy and adaptive candidates share
+one selection step, one active trading line, and the same ATR improvement floor.
+Replaced lines are faint, adaptive levels carry A badges on the dashboard, and
+formation is dashed until actual activation. The older `line_angle` parameter
+retains its saved meaning; the UI now labels it Minimum anchor move (%).
+
+`compare_adaptive_lines.py` runs offline against immutable SQLite snapshots,
+comparing six preselected tracking profiles. It records net returns, trade costs,
+daily-close drawdowns and turnover; reports are in `reports/adaptive_line_comparison.*`.
+Earlier periods are robustness checks using the same preset parameters, not
+independent prospective validation. Existing Saved Best records are not updated.

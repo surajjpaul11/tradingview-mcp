@@ -121,3 +121,14 @@ test('snapshot IDs apply only to their captured ticker, resolution, source and s
   assert.equal(snapshotApplies({id:'SPY',source:'yahoo'},'1d','regular market',window),false);
   assert.equal(snapshotApplies({...symbol,source:'hyperliquid'},'1d','24/7',window),false);
 });
+
+
+test('adaptive settings default off and are forwarded alongside fixed snapshot queries',async()=>{
+  const {DEFAULT_STRATEGY}=await import('../src/tradingview_mcp/ui/charts_src/layouts.js');
+  const {strategyQuery}=await import('../src/tradingview_mcp/ui/charts_src/hooks/useStrategyData.js');
+  assert.equal(DEFAULT_STRATEGY.parameters.adaptive_tightening,false);
+  const query=strategyQuery({id:'SPY',source:'yahoo'}, {resolution:'1d',range:'1Y',strategy:{name:'sloped_lines',parameters:{adaptive_tightening:true,adaptive_pivot_bars:1,adaptive_min_improvement_atr:.5}}});
+  assert.equal(query.get('adaptive_tightening'),'true');
+  assert.equal(query.get('adaptive_pivot_bars'),'1');
+  assert.equal(query.get('adaptive_min_improvement_atr'),'0.5');
+});

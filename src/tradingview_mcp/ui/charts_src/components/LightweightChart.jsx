@@ -66,8 +66,14 @@ export default function LightweightChart({symbol,pane,strategyData,drawingTool,o
     overlays.forEach((overlay)=>{
       const points=linePoints(overlay,candles); if(points.length<2)return;
       const showLabel=Boolean(pane.strategy.parameters.trendline_labels&&overlay.status==='active');
-      const series=chart.addSeries(LineSeries,{color:overlay.color||(overlay.type==='support'?'#3b82f6':'#10b981'),lineWidth:2,lineStyle:overlay.status==='forming'?2:0,priceLineVisible:false,lastValueVisible:showLabel,title:showLabel?(overlay.label||overlay.type||''):''});
-      series.setData(points);overlayRef.current.push(series);
+      const color=overlay.status==='superseded'?(overlay.type==='support'?'rgba(59,130,246,.3)':'rgba(16,185,129,.3)'):(overlay.color||(overlay.type==='support'?'#3b82f6':'#10b981'));
+      const activation=overlay.adaptive?Number(overlay.activation_time):null;
+      const segments=activation?[{points:points.filter((p)=>p.time<=activation),forming:true},{points:points.filter((p)=>p.time>=activation),forming:false}]:[{points,forming:overlay.status==='forming'}];
+      segments.forEach((segment)=>{
+        if(segment.points.length<2)return;
+        const series=chart.addSeries(LineSeries,{color,lineWidth:overlay.status==='superseded'||segment.forming?1:overlay.adaptive?3:2,lineStyle:segment.forming?2:0,priceLineVisible:false,lastValueVisible:showLabel&&!segment.forming,title:showLabel&&!segment.forming?(overlay.label||overlay.type||''):''});
+        series.setData(segment.points);overlayRef.current.push(series);
+      });
     });
   },[strategyData.trendlines,strategyData.channels,candles,pane.strategy.parameters.trendline_labels]);
   useEffect(()=>{

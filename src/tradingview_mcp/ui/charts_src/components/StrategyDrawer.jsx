@@ -11,7 +11,7 @@ const SLOPED_FIELDS=[
   ['validation_boundary','Validation','select',['body','close','wick']],
   ['trendline_tolerance','Tolerance','select',[0,0.005,0.01,0.015,0.02]],
   ['confirm_candles','Confirm','select',[0,1,2,3]],
-  ['line_angle','Angle','select',[0,2,3,4,5,6,7,8]],
+  ['line_angle','Min anchor move (%)','select',[0,2,3,4,5,6,7,8]],
   ['stop_loss_mode','Stop','select',['none','exit_peak_reclaim','barrier_trap_reentry','atr_stop_buffer']],
   ['min_anchor_bars','Anchor bars','select',[0,1,2,3,4,5]],
 ];
@@ -42,7 +42,7 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       range:RANGES.find((item)=>item.period===result.data.period)?.id||pane.range,
       tradingWindow:window?.trading_window||pane.tradingWindow,
       backtestWindow:window,
-      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,peak_reclaim_full_candle:false,compounding:true,initial_capital:10000,...result.data.parameters,...result.data.costs}},
+      strategy:{...pane.strategy,parameters:{...pane.strategy.parameters,adaptive_tightening:false,adaptive_pivot_bars:2,adaptive_min_improvement_atr:.25,peak_reclaim_full_candle:false,compounding:true,initial_capital:10000,...result.data.parameters,...result.data.costs}},
     });
     setMessage(`Loaded saved best${result.data.performance?.total_pnl_pct!==undefined?` (${result.data.performance.total_pnl_pct}%)`:''}.${result.data.snapshot_origin?` Candle snapshot: ${result.data.snapshot_origin}.`:''}${result.data.engine_changed?' Strategy code has changed since capture.':''}`);
   };
@@ -72,6 +72,9 @@ export default function StrategyDrawer({pane,symbol,onChange,onClose}){
       <label><span>Gap Up</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_up)} onChange={(e)=>patchParam('gap_up',e.target.checked)}/></label>
       <label><span>Gap Down</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.gap_down)} onChange={(e)=>patchParam('gap_down',e.target.checked)}/></label>
       <label title="Build tighter resistance from the latest touch and local maximum; build tighter support from later higher-low pivots"><span>Staggered Lines</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.staggered_lines)} onChange={(e)=>patchParam('staggered_lines',e.target.checked)}/></label>
+      <label title="Tighten both buy and sell lines with recent confirmed swings; replacements trade from the next candle"><span>Adaptive line tightening</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.adaptive_tightening)} onChange={(e)=>patchParam('adaptive_tightening',e.target.checked)}/></label>
+      <label><span>Adaptive confirmation</span><select aria-label="Adaptive confirmation" value={pane.strategy.parameters.adaptive_pivot_bars??2} onChange={(e)=>patchParam('adaptive_pivot_bars',Number(e.target.value))}><option value="1">1 candle (fast)</option><option value="2">2 candles</option></select></label>
+      <label><span>Minimum tightening (ATR)</span><select aria-label="Minimum tightening (ATR)" value={pane.strategy.parameters.adaptive_min_improvement_atr??.25} onChange={(e)=>patchParam('adaptive_min_improvement_atr',Number(e.target.value))}>{[.25,.5,1].map((v)=><option key={v} value={v}>{v}</option>)}</select></label>
       <label title="Show a price-axis label only for the currently active support or resistance"><span>Active Line Labels</span><input type="checkbox" checked={Boolean(pane.strategy.parameters.trendline_labels)} onChange={(e)=>patchParam('trendline_labels',e.target.checked)}/></label>
     </div>}
     {pane.strategy.name==='enhanced_channel'&&<div className="strategy-fields">

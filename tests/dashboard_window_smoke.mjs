@@ -110,6 +110,17 @@ try {
     assert.ok(strategyRequests.some(request => request.path === path
       && request.query.get('start_date') === savedWindow.start_date && request.query.get('end_date') === savedWindow.end_date));
   }
+  const adaptive = page.locator('#sloped-adaptive-checkbox');
+  assert.equal(await adaptive.isChecked(), false);
+  assert.equal(await page.locator('#sloped-adaptive-pivots-select').inputValue(), '2');
+  assert.equal(await page.locator('#sloped-adaptive-margin-select').inputValue(), '0.25');
+  const adaptiveResponse = page.waitForResponse(response => response.url().includes('/api/stats?')
+    && response.url().includes('adaptive_tightening=true') && response.url().includes('adaptive_pivot_bars=1')
+    && response.url().includes('adaptive_min_improvement_atr=0.5'));
+  await adaptive.check();
+  await page.locator('#sloped-adaptive-pivots-select').selectOption('1');
+  await page.locator('#sloped-adaptive-margin-select').selectOption('0.5');
+  await adaptiveResponse;
   const settingsSnapshot = () => page.evaluate(() => ({
     controls: [...document.querySelectorAll('input[id^="sloped-"], select[id^="sloped-"]')].map(control =>
       [control.id, control.type === 'checkbox' ? control.checked : control.value]),
@@ -132,6 +143,9 @@ try {
     && response.url().includes('symbol=SPY') && response.url().includes('start_date=2025-09-23'));
   await page.locator('#best-params-badge').click();
   await spySaved;
+  assert.equal(await adaptive.isChecked(), false);
+  assert.equal(await page.locator('#sloped-adaptive-pivots-select').inputValue(), '2');
+  assert.equal(await page.locator('#sloped-adaptive-margin-select').inputValue(), '0.25');
   assert.equal(await page.locator('#sloped-reentry-price-checkbox').isChecked(), false);
   assert.equal(await page.locator('#sloped-reentry-mode-select').inputValue(), 'none');
   assert.equal(await generalFull.isChecked(), true);

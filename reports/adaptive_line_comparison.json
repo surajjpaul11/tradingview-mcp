@@ -1,0 +1,789 @@
+{
+  "generated_at": "2026-10-25T23:29:25.353315-04:00",
+  "source": "Immutable local SQLite adjusted daily candle snapshots; no live downloads",
+  "engine_hash": "d01587646a6d3bf2141b7772346cf0dfbc2b8741f96e707bc7190f3bcf8dd5ad",
+  "defaults": {
+    "adaptive_tightening": false,
+    "adaptive_pivot_bars": 2,
+    "adaptive_min_improvement_atr": 0.25,
+    "lookback_bars": 20
+  },
+  "notes": [
+    "The saved and two-year windows overlap; they are not independent samples.",
+    "Earlier periods precede each saved window but use the existing Saved Best parameters; not a prospective out-of-sample validation.",
+    "Drawdown is measured at daily closes; intraday drawdown may be greater.",
+    "Returns include 0.1% commission and 0.05% slippage per side unless a preset specifies otherwise.",
+    "Reentries within 3 bars are a turnover diagnostic, not proof of a false signal."
+  ],
+  "baseline_ledgers_verified": true,
+  "profiles": {
+    "baseline": {
+      "adaptive_tightening": false
+    },
+    "legacy_staggered": {
+      "adaptive_tightening": false,
+      "staggered_lines": true
+    },
+    "adaptive_balanced": {
+      "adaptive_tightening": true,
+      "adaptive_pivot_bars": 2,
+      "adaptive_min_improvement_atr": 0.25
+    },
+    "adaptive_fast": {
+      "adaptive_tightening": true,
+      "adaptive_pivot_bars": 1,
+      "adaptive_min_improvement_atr": 0.25
+    },
+    "adaptive_conservative": {
+      "adaptive_tightening": true,
+      "adaptive_pivot_bars": 2,
+      "adaptive_min_improvement_atr": 0.5
+    },
+    "adaptive_plus_staggered": {
+      "adaptive_tightening": true,
+      "adaptive_pivot_bars": 2,
+      "adaptive_min_improvement_atr": 0.25,
+      "staggered_lines": true
+    }
+  },
+  "windows": [
+    {
+      "symbol": "AAPL",
+      "window": "saved",
+      "snapshot_id": "4e345478de915c2e30ef3f8f6f40a63f76727545fac0c60aca18ee527349dbbc",
+      "candle_hash": "6ab32100e7262b7b4d2d3641611bb83c85d6977af9186a0e775efcb13723cc12",
+      "bars": 251,
+      "start": "2025-09-26",
+      "end": "2026-09-25",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 0,
+        "inverse_color_trigger": false,
+        "line_angle": 3.0,
+        "stop_loss_mode": "exit_peak_reclaim",
+        "min_anchor_bars": 2,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "reentry_mode": "any",
+        "reentry_price_breakout": true,
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        },
+        "adaptive_fast": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        },
+        "adaptive_conservative": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 49.01,
+          "final_capital": 14900.7,
+          "daily_close_drawdown_pct": 7.34,
+          "closed_trade_drawdown_pct": -7.34,
+          "trades": 38,
+          "losing_trades": 22,
+          "win_rate_pct": 42.1,
+          "costs_usd": 1328.36,
+          "average_profit_giveback_pct": 0.99,
+          "reentries_within_3_bars": 27,
+          "adaptive_replacements": 0
+        }
+      }
+    },
+    {
+      "symbol": "AAPL",
+      "window": "archive_2y",
+      "snapshot_id": "47eb86e8f5765692348684e7476fec7743935b1b7a090c17a06161492a85e969",
+      "candle_hash": "b2c331b916435304d58c11c897e7f644aeb73d70326dcd9f93d7a0d7a9010708",
+      "bars": 501,
+      "start": "2024-10-24",
+      "end": "2026-10-23",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 0,
+        "inverse_color_trigger": false,
+        "line_angle": 3.0,
+        "stop_loss_mode": "exit_peak_reclaim",
+        "min_anchor_bars": 2,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "reentry_mode": "any",
+        "reentry_price_breakout": true,
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 96.1,
+          "final_capital": 19610.13,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 69,
+          "losing_trades": 41,
+          "win_rate_pct": 40.6,
+          "costs_usd": 2858.02,
+          "average_profit_giveback_pct": 1.35,
+          "reentries_within_3_bars": 45,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 96.1,
+          "final_capital": 19610.13,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 69,
+          "losing_trades": 41,
+          "win_rate_pct": 40.6,
+          "costs_usd": 2858.02,
+          "average_profit_giveback_pct": 1.35,
+          "reentries_within_3_bars": 45,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 96.1,
+          "final_capital": 19610.13,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 69,
+          "losing_trades": 41,
+          "win_rate_pct": 40.6,
+          "costs_usd": 2858.02,
+          "average_profit_giveback_pct": 1.35,
+          "reentries_within_3_bars": 45,
+          "adaptive_replacements": 0
+        },
+        "adaptive_fast": {
+          "return_pct": 97.26,
+          "final_capital": 19726.39,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 68,
+          "losing_trades": 40,
+          "win_rate_pct": 41.2,
+          "costs_usd": 2837.05,
+          "average_profit_giveback_pct": 1.36,
+          "reentries_within_3_bars": 43,
+          "adaptive_replacements": 1
+        },
+        "adaptive_conservative": {
+          "return_pct": 96.1,
+          "final_capital": 19610.13,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 69,
+          "losing_trades": 41,
+          "win_rate_pct": 40.6,
+          "costs_usd": 2858.02,
+          "average_profit_giveback_pct": 1.35,
+          "reentries_within_3_bars": 45,
+          "adaptive_replacements": 0
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 96.1,
+          "final_capital": 19610.13,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 69,
+          "losing_trades": 41,
+          "win_rate_pct": 40.6,
+          "costs_usd": 2858.02,
+          "average_profit_giveback_pct": 1.35,
+          "reentries_within_3_bars": 45,
+          "adaptive_replacements": 0
+        }
+      }
+    },
+    {
+      "symbol": "AAPL",
+      "window": "earlier_period",
+      "snapshot_id": "47eb86e8f5765692348684e7476fec7743935b1b7a090c17a06161492a85e969",
+      "candle_hash": "db78c2f5e3f4d36605d1b5b0989cfbbafb97e69ec16142956f4e2b4a322f7250",
+      "bars": 230,
+      "start": "2024-10-24",
+      "end": "2025-09-25",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 0,
+        "inverse_color_trigger": false,
+        "line_angle": 3.0,
+        "stop_loss_mode": "exit_peak_reclaim",
+        "min_anchor_bars": 2,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "reentry_mode": "any",
+        "reentry_price_breakout": true,
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 32.61,
+          "final_capital": 13261.12,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 33,
+          "losing_trades": 19,
+          "win_rate_pct": 42.4,
+          "costs_usd": 1132.43,
+          "average_profit_giveback_pct": 1.63,
+          "reentries_within_3_bars": 22,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 32.61,
+          "final_capital": 13261.12,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 33,
+          "losing_trades": 19,
+          "win_rate_pct": 42.4,
+          "costs_usd": 1132.43,
+          "average_profit_giveback_pct": 1.63,
+          "reentries_within_3_bars": 22,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 32.61,
+          "final_capital": 13261.12,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 33,
+          "losing_trades": 19,
+          "win_rate_pct": 42.4,
+          "costs_usd": 1132.43,
+          "average_profit_giveback_pct": 1.63,
+          "reentries_within_3_bars": 22,
+          "adaptive_replacements": 0
+        },
+        "adaptive_fast": {
+          "return_pct": 33.4,
+          "final_capital": 13339.74,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 32,
+          "losing_trades": 18,
+          "win_rate_pct": 43.8,
+          "costs_usd": 1101.23,
+          "average_profit_giveback_pct": 1.67,
+          "reentries_within_3_bars": 20,
+          "adaptive_replacements": 1
+        },
+        "adaptive_conservative": {
+          "return_pct": 32.61,
+          "final_capital": 13261.12,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 33,
+          "losing_trades": 19,
+          "win_rate_pct": 42.4,
+          "costs_usd": 1132.43,
+          "average_profit_giveback_pct": 1.63,
+          "reentries_within_3_bars": 22,
+          "adaptive_replacements": 0
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 32.61,
+          "final_capital": 13261.12,
+          "daily_close_drawdown_pct": 20.39,
+          "closed_trade_drawdown_pct": -20.35,
+          "trades": 33,
+          "losing_trades": 19,
+          "win_rate_pct": 42.4,
+          "costs_usd": 1132.43,
+          "average_profit_giveback_pct": 1.63,
+          "reentries_within_3_bars": 22,
+          "adaptive_replacements": 0
+        }
+      }
+    },
+    {
+      "symbol": "SPY",
+      "window": "saved",
+      "snapshot_id": "3932549e6f0b9dcdf24de5419cb6510cb5808036e35edf66d85fffca0411dc7d",
+      "candle_hash": "240c31c8fcb75bbba69c9b7464ee910a61a3cb7f03577337a52f07d69f500ef3",
+      "bars": 251,
+      "start": "2025-09-23",
+      "end": "2026-09-22",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 1,
+        "inverse_color_trigger": false,
+        "line_angle": 0.0,
+        "stop_loss_mode": "atr_stop_buffer",
+        "min_anchor_bars": 2,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "gap_up": false,
+        "gap_down": false,
+        "staggered_lines": false,
+        "reentry_mode": "none",
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_price_breakout": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 17.06,
+          "final_capital": 11705.52,
+          "daily_close_drawdown_pct": 4.53,
+          "closed_trade_drawdown_pct": -2.76,
+          "trades": 11,
+          "losing_trades": 3,
+          "win_rate_pct": 72.7,
+          "costs_usd": 332.98,
+          "average_profit_giveback_pct": 0.66,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 8.47,
+          "final_capital": 10846.58,
+          "daily_close_drawdown_pct": 4.51,
+          "closed_trade_drawdown_pct": -0.66,
+          "trades": 16,
+          "losing_trades": 5,
+          "win_rate_pct": 68.8,
+          "costs_usd": 492.65,
+          "average_profit_giveback_pct": 0.52,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 17.23,
+          "final_capital": 11723.13,
+          "daily_close_drawdown_pct": 4.53,
+          "closed_trade_drawdown_pct": -2.76,
+          "trades": 17,
+          "losing_trades": 4,
+          "win_rate_pct": 76.5,
+          "costs_usd": 540.7,
+          "average_profit_giveback_pct": 0.61,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 2
+        },
+        "adaptive_fast": {
+          "return_pct": 8.95,
+          "final_capital": 10895.31,
+          "daily_close_drawdown_pct": 3.0,
+          "closed_trade_drawdown_pct": -1.5,
+          "trades": 20,
+          "losing_trades": 7,
+          "win_rate_pct": 65.0,
+          "costs_usd": 623.24,
+          "average_profit_giveback_pct": 0.44,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 7
+        },
+        "adaptive_conservative": {
+          "return_pct": 16.04,
+          "final_capital": 11604.11,
+          "daily_close_drawdown_pct": 4.53,
+          "closed_trade_drawdown_pct": -2.76,
+          "trades": 17,
+          "losing_trades": 4,
+          "win_rate_pct": 76.5,
+          "costs_usd": 538.26,
+          "average_profit_giveback_pct": 0.61,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 1
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 10.46,
+          "final_capital": 11045.83,
+          "daily_close_drawdown_pct": 3.0,
+          "closed_trade_drawdown_pct": -1.5,
+          "trades": 20,
+          "losing_trades": 7,
+          "win_rate_pct": 65.0,
+          "costs_usd": 625.23,
+          "average_profit_giveback_pct": 0.45,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 5
+        }
+      }
+    },
+    {
+      "symbol": "SPY",
+      "window": "archive_2y",
+      "snapshot_id": "3e05673cf0d915639b01b71943bad89046ddce15ffc51455c3f31560f47dfaf7",
+      "candle_hash": "1ea9c169936b324e3dd6a37f898cbed9501de9cfda08d2349f212db242b37d20",
+      "bars": 501,
+      "start": "2024-10-24",
+      "end": "2026-10-23",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 1,
+        "inverse_color_trigger": false,
+        "line_angle": 0.0,
+        "stop_loss_mode": "atr_stop_buffer",
+        "min_anchor_bars": 2,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "gap_up": false,
+        "gap_down": false,
+        "staggered_lines": false,
+        "reentry_mode": "none",
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_price_breakout": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 31.37,
+          "final_capital": 13137.48,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 33,
+          "losing_trades": 13,
+          "win_rate_pct": 60.6,
+          "costs_usd": 1053.51,
+          "average_profit_giveback_pct": 0.81,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 17.84,
+          "final_capital": 11784.21,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 37,
+          "losing_trades": 14,
+          "win_rate_pct": 62.2,
+          "costs_usd": 1179.82,
+          "average_profit_giveback_pct": 0.77,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 34.3,
+          "final_capital": 13429.59,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 40,
+          "losing_trades": 14,
+          "win_rate_pct": 65.0,
+          "costs_usd": 1330.9,
+          "average_profit_giveback_pct": 0.7,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 3
+        },
+        "adaptive_fast": {
+          "return_pct": 18.01,
+          "final_capital": 11801.02,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 41,
+          "losing_trades": 16,
+          "win_rate_pct": 61.0,
+          "costs_usd": 1319.37,
+          "average_profit_giveback_pct": 0.71,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 7
+        },
+        "adaptive_conservative": {
+          "return_pct": 32.93,
+          "final_capital": 13293.25,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 40,
+          "losing_trades": 14,
+          "win_rate_pct": 65.0,
+          "costs_usd": 1327.71,
+          "average_profit_giveback_pct": 0.7,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 2
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 20.01,
+          "final_capital": 12000.68,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 41,
+          "losing_trades": 16,
+          "win_rate_pct": 61.0,
+          "costs_usd": 1324.08,
+          "average_profit_giveback_pct": 0.71,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 6
+        }
+      }
+    },
+    {
+      "symbol": "SPY",
+      "window": "earlier_period",
+      "snapshot_id": "3e05673cf0d915639b01b71943bad89046ddce15ffc51455c3f31560f47dfaf7",
+      "candle_hash": "3b1dc52bd4d44204a7cf7eaab6c6443e16746001f73948920a9825b19e1e0759",
+      "bars": 227,
+      "start": "2024-10-24",
+      "end": "2025-09-22",
+      "parameters": {
+        "full_candle": false,
+        "use_wick": false,
+        "confirm_candles": 1,
+        "inverse_color_trigger": false,
+        "line_angle": 0.0,
+        "stop_loss_mode": "atr_stop_buffer",
+        "min_anchor_bars": 2,
+        "line_breakout_buy": true,
+        "entry_barrier_sell": true,
+        "compounding": true,
+        "initial_capital": 10000,
+        "peak_reclaim_full_candle": false,
+        "pivot_lookback": 5,
+        "anchor_source": "any_valid_candle",
+        "validation_boundary": "close",
+        "trendline_tolerance": 0.015,
+        "gap_up": false,
+        "gap_down": false,
+        "staggered_lines": false,
+        "reentry_mode": "none",
+        "reentry_rsi": false,
+        "reentry_ema": false,
+        "reentry_price_breakout": false,
+        "reentry_volume": false
+      },
+      "costs": {
+        "commission_pct": 0.1,
+        "slippage_pct": 0.05
+      },
+      "results": {
+        "baseline": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "legacy_staggered": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_balanced": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_fast": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_conservative": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        },
+        "adaptive_plus_staggered": {
+          "return_pct": 8.55,
+          "final_capital": 10855.27,
+          "daily_close_drawdown_pct": 7.94,
+          "closed_trade_drawdown_pct": -7.93,
+          "trades": 20,
+          "losing_trades": 9,
+          "win_rate_pct": 55.0,
+          "costs_usd": 610.99,
+          "average_profit_giveback_pct": 0.97,
+          "reentries_within_3_bars": 0,
+          "adaptive_replacements": 0
+        }
+      }
+    }
+  ],
+  "spy_screenshot_case": {
+    "baseline": {
+      "from_april_27_return_pct": 8.69,
+      "trades_from_april_27": 1,
+      "first_trade": {
+        "entry_date": "2026-04-27",
+        "exit_date": "2026-09-22",
+        "entry_price": 709.5754,
+        "exit_price": 773.38,
+        "return_pct": 8.692
+      },
+      "support_tightening": []
+    },
+    "adaptive_balanced": {
+      "from_april_27_return_pct": 7.75,
+      "trades_from_april_27": 7,
+      "first_trade": {
+        "entry_date": "2026-04-27",
+        "exit_date": "2026-06-05",
+        "entry_price": 709.5754,
+        "exit_price": 748.5181,
+        "return_pct": 5.188
+      },
+      "support_tightening": [
+        {
+          "anchor1_date": "2026-04-29",
+          "anchor2_date": "2026-05-19",
+          "activation_date": "2026-05-21",
+          "slope_per_bar": 1.61539
+        }
+      ]
+    }
+  }
+}

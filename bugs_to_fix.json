@@ -147,6 +147,26 @@
       "verified": "New route is present in the tested app; final live Chrome check verifies no console errors.",
       "fixed_in": "5ab436d",
       "fix": "Return HTTP 204 from the favicon route instead of an unhandled HTTP 404."
+    },
+    {
+      "id": "BUG-008",
+      "title": "Line Angle label implies geometric steepness but measures total anchor movement",
+      "fixed": false,
+      "found": "2026-10-25",
+      "branch": "adaptive_changes",
+      "symptom": "Increasing Line Angle does not directly select a steeper line; elapsed candles between anchors are absent from its calculation.",
+      "cause": "The line_angle parameter filters the total percentage price change between anchors while the UI labels it Line Angle.",
+      "verified": "Inspected both line builders and matched the SPY April 27 support to its April 27/29 anchors."
+    },
+    {
+      "id": "BUG-009",
+      "title": "Dashboard winning and losing trade counts are reconstructed from rounded win rate",
+      "fixed": false,
+      "found": "2026-10-25",
+      "branch": "adaptive_changes",
+      "symptom": "AAPL Saved Best engine has 16 winners out of 38 trades (42.1%), but the stats API calculates 15 winners using int(38*42.1/100). Return and win-rate percentages are unaffected.",
+      "cause": "api_stats reconstructs counts from an already rounded win_rate_pct instead of the actual winning_trades and losing_trades fields.",
+      "verified": "Observed while comparing the original AAPL engine ledger to the previously stored API statistics. Kept outside the adaptive-line implementation."
     }
   ]
 }

@@ -51,7 +51,7 @@ PERIOD               = "2y"    # data lookback
 INITIAL_CAPITAL      = 10_000.0
 COMMISSION_PCT       = 0.1
 SLIPPAGE_PCT         = 0.05
-DEFAULT_LINE_ANGLE   = 3.0     # default minimum percentage angle/slope threshold
+DEFAULT_LINE_ANGLE   = 3.0     # default minimum total anchor price move (%)
 DEFAULT_STOP_LOSS_MODE = "exit_peak_reclaim"  # default stop loss behavior
 DEFAULT_FULL_CANDLE  = False   # default breakout confirmation (default False: touch break)
 DEFAULT_MIN_ANCHOR_BARS = 2    # default minimum bar distance between anchors
@@ -752,6 +752,81 @@ def build_staggered_support(
     return candidate
 
 
+
+def build_adaptive_line(
+    active_line: dict,
+    confirmed_pivots: list[tuple[int, float, int]],
+    closes: list[float],
+    current_bar: int,
+    atr_value: float,
+    *,
+    since_bar: int = 0,
+    lookback_bars: int = 20,
+    min_improvement_atr: float = 0.25,
+    tolerance: float = TRENDLINE_TOLERANCE,
+    min_anchor_bars: int = DEFAULT_MIN_ANCHOR_BARS,
+    candles: list[dict] | None = None,
+    inverse_color_trigger: bool = False,
+    line_angle: float = 0.0,
+    use_wick: bool = False,
+    validation_boundary: str | None = None,
+) -> dict | None:
+    """Choose the closest valid recent line, using only already confirmed pivots.
+
+    Include the current line's latest anchor so one new swing can tighten it.
+    Every candidate must remain clear through today's close; it cannot resurrect
+    a previously crossed line. The caller promotes after today's break checks,
+    making the replacement tradable on the following candle only.
+    """
+    if active_line.get('type') not in ('support', 'resistance'):
+        return None
+    if not math.isfinite(atr_value) or atr_value <= 0:
+        return None
+    support = active_line['type'] == 'support'
+    cutoff = max(since_bar, current_bar - lookback_bars)
+    points = {int(p[0]): p for p in confirmed_pivots
+              if cutoff <= p[0] <= current_bar and _confirmed_at(p) <= current_bar}
+    latest = active_line['anchor2']
+    if latest[0] >= cutoff:
+        points.setdefault(latest[0], (*latest, active_line.get('confirmed_at_bar', latest[0])))
+    ordered = sorted(points.values(), key=lambda p: p[0])
+    current_value = trendline_value(active_line['anchor1'], latest, current_bar)
+    best, best_rank = None, None
+    for first_index, first in enumerate(ordered):
+        a1 = _anchor(first)
+        for second in ordered[first_index + 1:]:
+            a2 = _anchor(second)
+            if a2[0] <= latest[0] or a2[0] - a1[0] < max(1, min_anchor_bars):
+                continue
+            move = a2[1] - a1[1]
+            if (support and move <= 0) or (not support and move >= 0):
+                continue
+            if a1[1] <= 0 or abs(move) / a1[1] * 100 < line_angle:
+                continue
+            if inverse_color_trigger and candles is not None:
+                color_ok = (is_green_candle(candles[a1[0]]) and is_red_candle(candles[a2[0]])) if support else (is_red_candle(candles[a1[0]]) and is_green_candle(candles[a2[0]]))
+                if not color_ok:
+                    continue
+            value = trendline_value(a1, a2, current_bar)
+            improvement = (value - current_value) if support else (current_value - value)
+            if improvement <= 0 or improvement + 1e-10 < min_improvement_atr * atr_value:
+                continue
+            if value <= 0 or not _candidate_line_is_clear(
+                a1, a2, closes, candles, active_line['type'], use_wick,
+                tolerance, current_bar, validation_boundary,
+            ):
+                continue
+            # Max support / min resistance is closest to today's valid boundary.
+            rank = (value if support else -value, a2[0], a1[0])
+            if best_rank is None or rank > best_rank:
+                best_rank = rank
+                best = dict(type=active_line['type'], direction='ascending' if support else 'descending',
+                    anchor1=a1, anchor2=a2, confirmed_at_bar=max(_confirmed_at(first), _confirmed_at(second)),
+                    activated_at_bar=current_bar, effective_from_bar=current_bar + 1,
+                    adaptive=True, improvement_atr=improvement / atr_value,
+                    level=int(active_line.get('level', 1)) + 1)
+    return best
+
 # ==============================================================================
 # STRATEGY ENGINE
 # ==============================================================================
@@ -782,6 +857,9 @@ def run_sloped_lines(
     line_breakout_buy: bool = False,
     entry_barrier_sell: bool = False,
     peak_reclaim_full_candle: bool = False,
+    adaptive_tightening: bool = False,
+    adaptive_pivot_bars: int = 2,
+    adaptive_min_improvement_atr: float = 0.25,
 ) -> tuple[list[dict], list[dict]]:
     """
     Sloped Lines strategy — alternating trendline breakout.
@@ -807,7 +885,7 @@ def run_sloped_lines(
       - inverse_color_trigger: If True, ascending support lines can only start on a green candle
                                and end on a red candle; descending resistance lines can only start
                                on a red candle and end on a green candle.
-      - line_angle: Minimum percentage slope/angle threshold between anchors (0.0, 2.0, 3.0, 5.0, 8.0).
+      - line_angle: Minimum total percentage price move between anchors (0.0, 2.0, 3.0, 5.0, 8.0).
                     Lines with anchor rise/fall below this threshold are not formed.
       - stop_loss_mode: "none" (default), "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer".
       - min_anchor_bars: Minimum bar distance between anchor 1 and anchor 2 (default 2).
@@ -840,6 +918,11 @@ def run_sloped_lines(
     if reentry_mode not in REENTRY_MODES:
         raise ValueError(f"reentry_mode must be one of {sorted(REENTRY_MODES)}")
 
+    if adaptive_pivot_bars not in (1, 2):
+        raise ValueError('adaptive_pivot_bars must be 1 or 2')
+    if not math.isfinite(adaptive_min_improvement_atr) or adaptive_min_improvement_atr <= 0:
+        raise ValueError('adaptive_min_improvement_atr must be finite and positive')
+
     highs  = [c["high"] if use_wick else max(c["open"], c["close"]) for c in candles]
     lows   = [c["low"] if use_wick else min(c["open"], c["close"]) for c in candles]
     closes = [c["close"] for c in candles]
@@ -856,6 +939,9 @@ def run_sloped_lines(
     # --- Find all swings ---
     swing_highs, swing_lows = find_swings(highs, lows, pivot_lookback)
     local_highs, _ = find_swings(highs, lows, 1) if staggered_lines else ([], [])
+    adaptive_highs, adaptive_lows = find_swings(highs, lows, adaptive_pivot_bars) if adaptive_tightening else ([], [])
+    confirmed_adaptive_highs, confirmed_adaptive_lows = [], []
+    adaptive_high_ptr = adaptive_low_ptr = 0
 
     # --- Progressive confirmation tracking ---
     confirmed_highs: list[tuple[int, float, int]] = []
@@ -897,6 +983,13 @@ def run_sloped_lines(
         while local_high_ptr < len(local_highs) and local_highs[local_high_ptr][2] <= i:
             confirmed_local_highs.append(local_highs[local_high_ptr])
             local_high_ptr += 1
+
+        while adaptive_high_ptr < len(adaptive_highs) and adaptive_highs[adaptive_high_ptr][2] <= i:
+            confirmed_adaptive_highs.append(adaptive_highs[adaptive_high_ptr])
+            adaptive_high_ptr += 1
+        while adaptive_low_ptr < len(adaptive_lows) and adaptive_lows[adaptive_low_ptr][2] <= i:
+            confirmed_adaptive_lows.append(adaptive_lows[adaptive_low_ptr])
+            adaptive_low_ptr += 1
 
         # A completed candle can schedule a recovery, but the fill belongs to
         # the next candle's open so the backtest never trades on a close it has
@@ -1229,7 +1322,7 @@ def run_sloped_lines(
         # Optional staggered ladder. Resistance reuses the latest touch with the
         # next confirmed one-bar local maximum; support retains the established
         # two-later-pivot rule. All pivots are confirmed before promotion.
-        if staggered_lines and active_trendline is not None:
+        if (staggered_lines or adaptive_tightening) and active_trendline is not None:
             common = dict(
                 closes=closes,
                 current_bar=i,
@@ -1242,14 +1335,30 @@ def run_sloped_lines(
                 validation_boundary=validation_boundary,
             )
             tighter_line = None
-            if state in ("waiting_for_buy", "short") and active_trendline.get("type") == "resistance":
+            if staggered_lines and state in ("waiting_for_buy", "short") and active_trendline.get("type") == "resistance":
                 tighter_line = build_staggered_resistance(
                     active_trendline, confirmed_local_highs, **common,
                 )
-            elif state == "holding" and active_trendline.get("type") == "support":
+            elif staggered_lines and state == "holding" and active_trendline.get("type") == "support":
                 tighter_line = build_staggered_support(
                     active_trendline, confirmed_lows, **common,
                 )
+            if adaptive_tightening:
+                kind = active_trendline['type']
+                fast = build_adaptive_line(active_trendline,
+                    confirmed_adaptive_lows if kind == 'support' else confirmed_adaptive_highs,
+                    atr_value=atr[i], since_bar=search_after_bar,
+                    min_improvement_atr=adaptive_min_improvement_atr, **common)
+                choices = [candidate for candidate in (tighter_line, fast) if candidate is not None]
+                old_value = trendline_value(active_trendline['anchor1'], active_trendline['anchor2'], i)
+                def improvement(candidate):
+                    value = trendline_value(candidate['anchor1'], candidate['anchor2'], i)
+                    return value - old_value if kind == 'support' else old_value - value
+                choices = [candidate for candidate in choices if improvement(candidate) + 1e-10 >= adaptive_min_improvement_atr * atr[i]]
+                tighter_line = max(choices, key=lambda candidate: (improvement(candidate), candidate['anchor2'][0], candidate['anchor1'][0])) if choices else None
+                if tighter_line is not None:
+                    tighter_line.update(adaptive=True, activated_at_bar=i, effective_from_bar=i + 1,
+                                        improvement_atr=improvement(tighter_line) / atr[i])
             if tighter_line is not None:
                 trendlines.append({
                     **active_trendline,
@@ -1592,14 +1701,20 @@ def trendlines_to_overlays(trendlines: list[dict], candles: list[dict]) -> list[
             level = int(tl.get("level", 1))
             label = f"▲ Support L{level} (higher lows)"
 
-        overlays.append({
-            "label": label,
-            "color": color,
-            "type": "line",
-            "lineWidth": 2,
-            "lineStyle": 0,  # solid
-            "points": points,
-        })
+        if tl.get('status') == 'superseded':
+            color = 'rgba(59,130,246,0.3)' if direction != 'descending' else 'rgba(16,185,129,0.3)'
+        if tl.get('adaptive'):
+            split = min(int(tl['activated_at_bar']), end_bar) - a1_bar
+            segments = [(points[:split+1], 2, 'forming'), (points[split:], 0, 'active')]
+            for segment, style, state in segments:
+                if len(segment) >= 2:
+                    overlays.append({'label': f'Adaptive {label} ({state}; known after {candles[tl["activated_at_bar"]]["date"]})',
+                        'color': color, 'type': 'line', 'lineWidth': 1 if style else 3,
+                        'lineStyle': style, 'points': segment})
+        else:
+            overlays.append({'label': label, 'color': color, 'type': 'line',
+                'lineWidth': 1 if tl.get('status') == 'superseded' else 2,
+                'lineStyle': 0, 'points': points})
 
     return overlays
 
@@ -1626,6 +1741,9 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    adaptive_tightening = bool(kwargs.get('adaptive_tightening', False))
+    adaptive_pivot_bars = kwargs.get('adaptive_pivot_bars', 2)
+    adaptive_min_improvement_atr = kwargs.get('adaptive_min_improvement_atr', 0.25)
     line_breakout_buy = bool(kwargs.get("line_breakout_buy", False))
     entry_barrier_sell = bool(kwargs.get("entry_barrier_sell", False))
     reentry_mode = kwargs.get("reentry_mode", "none")
@@ -1652,6 +1770,8 @@ def run_sloped_lines_trades(candles: list[dict], **kwargs) -> list[dict]:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        adaptive_tightening=adaptive_tightening, adaptive_pivot_bars=adaptive_pivot_bars,
+        adaptive_min_improvement_atr=adaptive_min_improvement_atr,
         line_breakout_buy=line_breakout_buy,
         entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode,
@@ -1685,6 +1805,9 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
     gap_up = bool(kwargs.get("gap_up", False))
     gap_down = bool(kwargs.get("gap_down", False))
     staggered_lines = bool(kwargs.get("staggered_lines", False))
+    adaptive_tightening = bool(kwargs.get('adaptive_tightening', False))
+    adaptive_pivot_bars = kwargs.get('adaptive_pivot_bars', 2)
+    adaptive_min_improvement_atr = kwargs.get('adaptive_min_improvement_atr', 0.25)
     line_breakout_buy = bool(kwargs.get("line_breakout_buy", False))
     entry_barrier_sell = bool(kwargs.get("entry_barrier_sell", False))
     reentry_mode = kwargs.get("reentry_mode", "none")
@@ -1712,6 +1835,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         gap_up=gap_up,
         gap_down=gap_down,
         staggered_lines=staggered_lines,
+        adaptive_tightening=adaptive_tightening, adaptive_pivot_bars=adaptive_pivot_bars,
+        adaptive_min_improvement_atr=adaptive_min_improvement_atr,
         line_breakout_buy=line_breakout_buy,
         entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode,
@@ -1740,7 +1865,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
 
         slope = (a2_price - a1_price) / (a2_bar - a1_bar)
         end_price = a1_price + slope * (end_bar - a1_bar)
-        confirmation_bar = max(a2_bar, min(int(tl.get("confirmed_at_bar", a2_bar)), end_bar))
+        confirmation_bar = max(a2_bar, min(int(tl.get("activated_at_bar", tl.get("confirmed_at_bar", a2_bar))), end_bar))
         confirmation_price = a1_price + slope * (confirmation_bar - a1_bar)
         points = [
             {
@@ -1756,6 +1881,8 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
         level = int(tl.get("level", 1))
         label = f"▼ Resistance L{level} (Breakout = Buy)" if is_res else f"▲ Support L{level} (Breakdown = Sell)"
 
+        if tl.get('adaptive'):
+            label = f"Adaptive {'Resistance' if is_res else 'Support'} A{level} (active after {candles[confirmation_bar]['date']} close)"
         formatted_trendlines.append({
             "type": "resistance" if is_res else "support",
             "direction": "descending" if is_res else "ascending",
@@ -1776,6 +1903,12 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
             "break_date": tl.get("break_date"),
             "break_price": tl.get("break_price"),
             "slope_per_bar": round(slope, 6),
+            "slope_pct_per_bar": round(slope / a1_price * 100, 6) if a1_price else 0,
+            "adaptive": bool(tl.get('adaptive', False)),
+            "activation_date": candles[confirmation_bar]['date'],
+            "activation_time": candles[confirmation_bar].get('time'),
+            "effective_from_date": candles[tl['effective_from_bar']]['date'] if tl.get('effective_from_bar', len(candles)) < len(candles) else None,
+            "improvement_atr": tl.get('improvement_atr'),
             "color": color,
             "label": label,
             "points": points,
@@ -1824,6 +1957,9 @@ def run_backtest(
     entry_barrier_sell: bool = False,
     compounding: bool = True,
     peak_reclaim_full_candle: bool = False,
+    adaptive_tightening: bool = False,
+    adaptive_pivot_bars: int = 2,
+    adaptive_min_improvement_atr: float = 0.25,
 ) -> dict:
     """Full backtest pipeline: fetch data -> run strategy -> compute metrics."""
     if not math.isfinite(initial_capital) or initial_capital <= 0:
@@ -1848,6 +1984,8 @@ def run_backtest(
         line_angle=line_angle, stop_loss_mode=stop_loss_mode, min_anchor_bars=min_anchor_bars,
         anchor_source=anchor_source, validation_boundary=validation_boundary,
         gap_up=gap_up, gap_down=gap_down, staggered_lines=staggered_lines,
+        adaptive_tightening=adaptive_tightening, adaptive_pivot_bars=adaptive_pivot_bars,
+        adaptive_min_improvement_atr=adaptive_min_improvement_atr,
         line_breakout_buy=line_breakout_buy, entry_barrier_sell=entry_barrier_sell,
         reentry_mode=reentry_mode, reentry_rsi=reentry_rsi, reentry_ema=reentry_ema,
         reentry_price_breakout=reentry_price_breakout, reentry_volume=reentry_volume,
@@ -1874,12 +2012,16 @@ def run_backtest(
             "end_bar": tl.get("end_bar"),
             "level": tl.get("level", 1),
             "status": tl.get("status"),
+            "adaptive": bool(tl.get('adaptive', False)),
+            "activated_at_bar": tl.get('activated_at_bar'),
+            "effective_from_bar": tl.get('effective_from_bar'),
+            "improvement_atr": tl.get('improvement_atr'),
         })
 
     return {
         "symbol": symbol.upper(),
         "strategy": "sloped_lines",
-        "strategy_label": f"Sloped Lines (pivot={pivot_lookback}, tol={trendline_tolerance*100:.1f}%, confirm_candles={confirm_candles}, angle={line_angle}%, stop={stop_loss_mode})",
+        "strategy_label": f"Sloped Lines (pivot={pivot_lookback}, tol={trendline_tolerance*100:.1f}%, confirm_candles={confirm_candles}, anchor_move={line_angle}%, stop={stop_loss_mode})",
         "parameters": {
             "pivot_lookback": pivot_lookback,
             "trendline_tolerance": trendline_tolerance,
@@ -1897,6 +2039,9 @@ def run_backtest(
             "gap_up": gap_up,
             "gap_down": gap_down,
             "staggered_lines": staggered_lines,
+            "adaptive_tightening": adaptive_tightening,
+            "adaptive_pivot_bars": adaptive_pivot_bars,
+            "adaptive_min_improvement_atr": adaptive_min_improvement_atr,
             "line_breakout_buy": line_breakout_buy,
             "entry_barrier_sell": entry_barrier_sell,
             "reentry_mode": reentry_mode,
@@ -1946,7 +2091,7 @@ def main():
     parser.add_argument("--confirm-bars", type=int, default=CONFIRM_BARS, help="Consecutive bars beyond trendline to confirm break (default: 1)")
     parser.add_argument("--confirm-candles", type=int, default=0, choices=[0, 1, 2, 3], help="Number of additional supporting confirmation candles before buy (default: 0)")
     parser.add_argument("--inverse-color", "--inverse-color-trigger", action="store_true", default=False, dest="inverse_color_trigger", help="Require ascending support to start green/end red, and descending resistance to start red/end green")
-    parser.add_argument("--line-angle", type=float, default=DEFAULT_LINE_ANGLE, choices=[0.0, 2.0, 3.0, 5.0, 8.0], help="Minimum percentage angle/slope threshold between line anchors (0, 2, 3, 5, 8, default: 3.0)")
+    parser.add_argument("--line-angle", type=float, default=DEFAULT_LINE_ANGLE, choices=[0.0, 2.0, 3.0, 5.0, 8.0], help="Minimum percentage price move between line anchors (0, 2, 3, 5, 8, default: 3.0)")
     parser.add_argument("--stop-loss-mode", default=DEFAULT_STOP_LOSS_MODE, choices=["none", "exit_peak_reclaim", "barrier_trap_reentry", "atr_stop_buffer"], help="Stop loss mode (none, exit_peak_reclaim, barrier_trap_reentry, atr_stop_buffer, default: exit_peak_reclaim)")
     parser.add_argument("--enable-short", action="store_true", default=ENABLE_SHORT, help="Enable short selling on support break")
     parser.add_argument("--full-candle", action="store_true", default=DEFAULT_FULL_CANDLE, help="Require candle to close across trendline for breakout (default: False)")
@@ -1958,12 +2103,16 @@ def main():
     parser.add_argument("--entry-barrier-sell", action="store_true", help="Enable entry barrier sells (default: off)")
     parser.add_argument("--gap-up", action="store_true", default=False, help="Buy on two completed green candles with non-overlapping bodies")
     parser.add_argument("--gap-down", action="store_true", default=False, help="Sell on two completed red candles with non-overlapping bodies")
+    parser.add_argument('--adaptive-tightening', action='store_true', help='Tighten buy and sell lines using recent confirmed local pivots')
+    parser.add_argument('--adaptive-pivot-bars', type=int, choices=[1,2], default=2)
+    parser.add_argument('--adaptive-min-improvement-atr', type=float, default=.25)
+    parser.add_argument('--staggered-lines', action='store_true')
     parser.add_argument("--chart", action="store_true", help="Generate interactive HTML chart with trendlines")
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
     print(f"  Sloped Lines Strategy — {args.symbol}")
-    print(f"  Pivots: {args.pivot_lookback}  |  Tolerance: {args.trendline_tolerance*100:.1f}%  |  Confirm Candles: {args.confirm_candles}  |  Line Angle: {args.line_angle}%")
+    print(f"  Pivots: {args.pivot_lookback}  |  Tolerance: {args.trendline_tolerance*100:.1f}%  |  Confirm Candles: {args.confirm_candles}  |  Min anchor move: {args.line_angle}%")
     print(f"  Interval: {args.interval}  |  Full Candle: {'ON' if args.full_candle else 'OFF (Touch)'}  |  Wick: {'ON' if args.use_wick else 'OFF (Body)'}  |  Inverse Color: {'ON' if args.inverse_color_trigger else 'OFF'}  |  Stop Loss: {args.stop_loss_mode}")
     print(f"{'='*60}\n")
 
@@ -1987,6 +2136,10 @@ def main():
         entry_barrier_sell=args.entry_barrier_sell,
         gap_up=args.gap_up,
         gap_down=args.gap_down,
+        staggered_lines=args.staggered_lines,
+        adaptive_tightening=args.adaptive_tightening,
+        adaptive_pivot_bars=args.adaptive_pivot_bars,
+        adaptive_min_improvement_atr=args.adaptive_min_improvement_atr,
     )
 
     print(f"  Period:           {result['date_from']} -> {result['date_to']} ({result['candles_analyzed']} bars)")

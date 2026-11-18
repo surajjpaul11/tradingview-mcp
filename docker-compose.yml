@@ -6,9 +6,16 @@ services:
     image: atilaahmet/tradingview-mcp:latest
     container_name: tradingview-mcp
     ports:
-      - "8080:8000"
+      - "8000:8000"
+    volumes:
+      - market-data:/app/market-data
     restart: unless-stopped
     environment:
       # Optional: Add any future API keys or environment variables here
       - PORT=8000
       - HOST=0.0.0.0
+      - PORT_MAX_TRIES=5
+      - MARKET_DATA_DB_PATH=/app/market-data/market_data.sqlite3
+
+volumes:
+  market-data:

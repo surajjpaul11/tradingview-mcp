@@ -62,7 +62,7 @@ _STRATEGY_LABELS = {
 
 # ─── Data Fetching ────────────────────────────────────────────────────────────
 
-def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window: str = None) -> list[dict]:
+def _download_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window: str = None, start=None, end=None) -> list[dict]:
     selected_window = None
     market_config = None
     if trading_window is not None:
@@ -71,14 +71,19 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window:
         selected_window = normalize_trading_window(trading_window, market_config)
     include_prepost = selected_window is not None and selected_window != "regular market"
     url = f"{_YF_BASE}/{symbol}?interval={interval}&range={period}&includePrePost={'true' if include_prepost else 'false'}"
+    if start is not None:
+        from urllib.parse import urlencode
+        url = f"{_YF_BASE}/{symbol}?" + urlencode({'interval': interval, 'period1': start, 'period2': end,
+                                                   'includePrePost': 'true' if include_prepost else 'false'})
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
 
     data = None
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except Exception:
-        pass
+    except Exception as exc:
+        if getattr(exc, 'code', None) == 429:
+            raise  # Let the shared store enforce Retry-After instead of proxy retries.
 
     if data is None:
         try:
@@ -105,6 +110,7 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window:
         if None in (o, h, l, c):
             continue
         candles.append({
+            "time": ts,
             "date":   datetime.fromtimestamp(ts, tz=timezone.utc).strftime(date_fmt),
             "open":   round(o, 4),
             "high":   round(h, 4),
@@ -113,6 +119,17 @@ def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window:
             "volume": v or 0,
         })
     return candles
+
+
+def _fetch_ohlcv(symbol: str, period: str, interval: str = "1d", trading_window: str = None) -> list[dict]:
+    from tradingview_mcp.core.services.market_data_store import Series, get_market_store, yahoo_request_bounds
+    from tradingview_mcp.core.services.market_hours import load_market_config, normalize_trading_window
+    session = normalize_trading_window(trading_window or 'regular market', load_market_config())
+    start, end = yahoo_request_bounds(symbol, period, session)
+    result = get_market_store().history(Series('yahoo', symbol.upper(), interval, session, 'raw'), start, end,
+        lambda a, b: _download_ohlcv(symbol, period, interval, session, a, b))
+    # Preserve the public research candle shape and completed-bar filtering.
+    return [{k: v for k, v in row.items() if k != 'time'} for row in result.candles]
 
 
 def _completed_candles(candles: list[dict], symbol: str, interval: str,

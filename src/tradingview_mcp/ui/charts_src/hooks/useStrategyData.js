@@ -1,0 +1,52 @@
+import { useEffect, useMemo, useState } from 'react';
+import { findRange } from '../timeframes.js';
+import { historyRequestKey, snapshotApplies } from '../feeds/history.js';
+
+const EMPTY={stats:null,trades:[],trendlines:[],channels:[],loading:false,error:'',query:''};
+const PARAM_KEYS={adaptive_tightening:'adaptive_tightening',adaptive_pivot_bars:'adaptive_pivot_bars',adaptive_min_improvement_atr:'adaptive_min_improvement_atr',commission_pct:'commission_pct',slippage_pct:'slippage_pct',
+  reentry_mode:'reentry_mode',reentry_rsi:'reentry_rsi',reentry_ema:'reentry_ema',reentry_price_breakout:'reentry_price_breakout',reentry_volume:'reentry_volume',
+  peak_reclaim_full_candle:'peak_reclaim_full_candle',compounding:'compounding',initial_capital:'initial_capital',line_breakout_buy:'line_breakout_buy',entry_barrier_sell:'entry_barrier_sell',full_candle:'full_candle',use_wick:'use_wick',gap_up:'gap_up',gap_down:'gap_down',staggered_lines:'staggered_lines',confirm_candles:'confirm_candles',pivot_lookback:'pivot_lookback',
+  anchor_source:'anchor_source',validation_boundary:'validation_boundary',trendline_tolerance:'trendline_tolerance',
+  inverse_color_trigger:'inverse_color_trigger',line_angle:'line_angle',stop_loss_mode:'stop_loss_mode',min_anchor_bars:'min_anchor_bars',
+  channel_mult:'channel_mult',lookback:'lookback',
+};
+export function strategyQuery(symbol,pane){
+  const query=new URLSearchParams({
+    source:symbol.source,symbol:symbol.id,strategy:pane.strategy.name,timeframe:pane.resolution,
+    period:findRange(pane.range).period,trading_window:pane.tradingWindow||'regular market',
+  });
+  if(pane.backtestWindow){
+    query.set('start_date',pane.backtestWindow.start_date);
+    query.set('end_date',pane.backtestWindow.end_date);
+    if(snapshotApplies(symbol,pane.resolution,pane.tradingWindow||'regular market',pane.backtestWindow))query.set('snapshot_id',pane.backtestWindow.snapshot_id);
+  }
+  Object.entries(pane.strategy.parameters||{}).forEach(([key,value])=>{
+    if(PARAM_KEYS[key] && value!==undefined && value!==null) query.set(PARAM_KEYS[key],String(value));
+  });
+  return query;
+}
+export function useStrategyData(symbol,pane,feedStatus){
+  const [state,setState]=useState(EMPTY);
+  const ready=feedStatus?.historyKey===historyRequestKey(symbol,pane.resolution,pane.range,pane.tradingWindow||'regular market',pane.backtestWindow)&&['live','stale'].includes(feedStatus?.state);
+  const revision=ready?feedStatus?.dataStatus?.data_revision:null;
+  const query=useMemo(()=>{
+    const value=strategyQuery(symbol,pane);
+    if(revision&&!snapshotApplies(symbol,pane.resolution,pane.tradingWindow||'regular market',pane.backtestWindow))value.set('data_revision',revision);
+    return value.toString();
+  },[symbol,pane,revision]);
+  useEffect(()=>{
+    if(!pane.strategy.enabled||!ready)return undefined;
+    const controller=new AbortController();
+    const fetchJson=async(path)=>{
+      const response=await fetch(`${path}?${query}`,{signal:controller.signal});
+      if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.detail||`${path}: HTTP ${response.status}`);}
+      return response.json();
+    };
+    const overlayPath=pane.strategy.name==='enhanced_channel'?'/api/channels':'/api/trendlines';
+    Promise.all([fetchJson('/api/stats'),fetchJson('/api/trades'),fetchJson(overlayPath)])
+      .then(([stats,trades,overlay])=>setState({stats,trades:trades.trades||[],trendlines:overlay.trendlines||[],channels:overlay.overlays||[],loading:false,error:'',query}))
+      .catch((error)=>{if(error.name!=='AbortError')setState({...EMPTY,error:error.message,query});});
+    return ()=>controller.abort();
+  },[pane.strategy.enabled,pane.strategy.name,query,ready]);
+  return pane.strategy.enabled ? (state.query===query?state:{...EMPTY,loading:true}) : EMPTY;
+}

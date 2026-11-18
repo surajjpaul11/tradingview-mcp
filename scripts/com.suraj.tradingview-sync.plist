@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Daily Alpaca trade sync at 16:00 local time.
+     Install:  cp scripts/com.suraj.tradingview-sync.plist ~/Library/LaunchAgents/
+               launchctl load ~/Library/LaunchAgents/com.suraj.tradingview-sync.plist
+     Run now:  launchctl start com.suraj.tradingview-sync
+     Remove:   launchctl unload ~/Library/LaunchAgents/com.suraj.tradingview-sync.plist
+     Edit the two paths below if the worktree moves. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.suraj.tradingview-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/scripts/sync_alpaca_trades.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>16</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- If the Mac was asleep at 16:00, run once on wake -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/data/alpaca_sync.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/spaul11/Projects/tradingview-mcp/.claude/worktrees/Claude/data/alpaca_sync.launchd.log</string>
+</dict>
+</plist>

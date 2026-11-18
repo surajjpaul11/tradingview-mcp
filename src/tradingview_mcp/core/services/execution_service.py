@@ -105,6 +105,10 @@ class BitgetAdapter(BrokerAdapter):
         """Current state of a previously placed order (status/filled price/qty)."""
         return {"order_id": order_id, "status": "unknown"}
 
+    def list_open_orders(self, symbol: Optional[str] = None) -> list[dict]:
+        """Resting orders at the broker; empty when the adapter cannot report them."""
+        return []
+
     def close_position(self, symbol: str) -> dict:
         """Flatten the whole position in `symbol` at market, cancelling its open orders."""
         raise NotImplementedError(f"{self.broker_name} adapter cannot close positions yet")
@@ -238,6 +242,17 @@ class AlpacaAdapter(BrokerAdapter):
             state = self.get_order(order_id)
         return state
 
+    def list_open_orders(self, symbol: Optional[str] = None) -> list[dict]:
+        """Resting (not yet filled/cancelled) orders, optionally for one symbol."""
+        kwargs = {"status": "open"}
+        if symbol:
+            kwargs["symbols"] = [symbol]
+        return [{"order_id": o.id, "symbol": o.symbol, "type": o.order_type, "side": o.side,
+                 "status": o.status, "time_in_force": o.time_in_force,
+                 "stop_price": float(o.stop_price) if o.stop_price else None,
+                 "limit_price": float(o.limit_price) if o.limit_price else None}
+                for o in self._api.list_orders(**kwargs)]
+
     def get_position(self, symbol: str) -> Optional[dict]:
         try:
             p = self._api.get_position(symbol)
@@ -281,13 +296,17 @@ class AlpacaAdapter(BrokerAdapter):
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         await_fill: bool = True,
+        time_in_force: Optional[str] = None,
     ) -> dict:
+        # A stop/target must outlive the session that opened the trade: with "day" the legs
+        # expire at the close and leave the position unprotected overnight.
+        protected = stop_loss is not None or take_profit is not None
         order_params = {
             "symbol": symbol,
             "qty": quantity,
             "side": side,
             "type": "market",
-            "time_in_force": "day",
+            "time_in_force": time_in_force or ("gtc" if protected else "day"),
         }
 
         # Alpaca requires both legs for a bracket; a single leg uses OTO.
@@ -387,6 +406,7 @@ def execute_order(
     dry_run: bool = True,
     strategy: str = "manual",
     allow_closed_market: bool = False,
+    sync_after_order: bool = True,
 ) -> dict:
     """
     Execute a trade on the specified broker.
@@ -401,6 +421,8 @@ def execute_order(
         dry_run:      If True, simulate without placing a real order
         allow_closed_market: If True, queue the order while the market is closed
                       instead of refusing it (Alpaca only)
+        sync_after_order: If True (default), re-read the order once it is logged and
+                      correct the recorded entry price to the actual fill
 
     Returns:
         Order confirmation dict with:
@@ -494,6 +516,8 @@ def execute_order(
 
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
     result["dry_run"] = dry_run
+    result["time_in_force"] = result.get("time_in_force") or (
+        "gtc" if (stop_loss is not None or take_profit is not None) else "day")
 
     # ── Auto-log to trade database ──
     try:
@@ -514,7 +538,29 @@ def execute_order(
     except Exception:
         result["trade_id"] = None  # DB logging failed but order succeeded
 
+    # ── Correct the recorded entry to the real fill, right now ──
+    if not dry_run and sync_after_order and result.get("trade_id") and result.get("order_id"):
+        result["post_order_sync"] = _sync_one_trade(
+            adapter, result["trade_id"], result["order_id"], result.get("entry_price"))
+
     return result
+
+
+def _sync_one_trade(adapter, trade_id: str, order_id: str, recorded_entry) -> dict:
+    """Re-read one order and correct that trade row if the fill differs from what was logged."""
+    try:
+        state = adapter.get_order(order_id)
+    except Exception as e:
+        return {"synced": False, "reason": f"order lookup failed: {e}"}
+    fill = state.get("filled_price")
+    if not fill:
+        return {"synced": False, "reason": f"not filled yet (status: {state.get('status')})",
+                "recheck": "run sync_broker_trades once it fills"}
+    if recorded_entry is not None and abs(float(fill) - float(recorded_entry)) < 1e-9:
+        return {"synced": True, "changed": False, "entry_price": fill}
+    correction = _update_trade_fill(trade_id, float(fill),
+                                    float(state.get("filled_quantity") or 0) or None)
+    return {"synced": True, "changed": bool(correction.get("updated")), "correction": correction}
 
 
 # ─── Closing and reconciliation ───────────────────────────────────────────────
@@ -600,7 +646,12 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
 
     open_trades = [t for t in _get_trade_history(broker=broker, status="open", limit=500)
                    if t.get("mode") == "live"]
-    checked, updated_fills, closed, unresolved = 0, [], [], []
+    checked, updated_fills, closed, unresolved, unprotected = 0, [], [], [], []
+    try:
+        resting = adapter.list_open_orders()
+    except Exception as e:
+        resting = []
+        unresolved.append({"trade_id": None, "reason": f"open-order lookup failed: {e}"})
 
     for t in open_trades:
         checked += 1
@@ -623,8 +674,25 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
             except Exception as e:
                 unresolved.append({"trade_id": t["trade_id"], "reason": f"order lookup failed: {e}"})
 
-        # 2. Position gone at the broker → the trade is closed in reality
+        # 2. Protection still alive? Day-TIF stop/target legs expire at the close and
+        #    leave the position bare, which nothing else notices.
         position = getattr(adapter, "get_position", lambda _s: None)(symbol)
+        if position is not None and (t.get("stop_loss") or t.get("take_profit")):
+            guards = [o for o in resting
+                      if o.get("symbol", "").upper() == symbol
+                      and o.get("side") in ("sell", "buy")
+                      and (o.get("stop_price") or o.get("limit_price"))]
+            if not guards:
+                unprotected.append({
+                    "trade_id": t["trade_id"], "symbol": symbol,
+                    "quantity": position.get("quantity"),
+                    "recorded_stop_loss": t.get("stop_loss"),
+                    "recorded_take_profit": t.get("take_profit"),
+                    "warning": ("position is open at the broker with NO resting stop or target — "
+                                "day-TIF legs expire at the close; re-place them as GTC"),
+                })
+
+        # 3. Position gone at the broker → the trade is closed in reality
         if position is None:
             try:
                 last = adapter.get_current_price(symbol)
@@ -642,6 +710,7 @@ def sync_broker_trades(broker: str = "alpaca", record_exits: bool = True,
         "open_trades_checked": checked,
         "closed_at_broker": closed,
         "entry_price_mismatches": updated_fills,
+        "unprotected_positions": unprotected,
         "correct_entries": correct_entries,
         "unresolved": unresolved,
         "record_exits": record_exits,

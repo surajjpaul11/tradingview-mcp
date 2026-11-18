@@ -57,6 +57,7 @@ _STRATEGY_LABELS = {
     "sloped_lines": "Sloped Lines (Alternating Trendline Breakout)",
     "volume_price_breakout": "Volume-Confirmed Price Breakout",
     "resistance_lines": "Resistance Lines (Horizontal S/R Bounce, Long Only)",
+    "liquidity_exhaustion": "Liquidity & Capitulation Exhaustion (Macro Term Structure + Credit)",
 }
 
 
@@ -681,6 +682,7 @@ _STRATEGY_MAP = {
     "sloped_lines": _get_dynamic_runner("sloped_lines_strategy.py", "run_sloped_lines_trades"),
     "volume_price_breakout": run_volume_price_breakout,
     "resistance_lines": _get_dynamic_runner("resistance_lines_strategy.py", "run_resistance_lines"),
+    "liquidity_exhaustion": _get_dynamic_runner("liquidity_exhaustion_strategy.py", "run_liquidity_exhaustion_trades"),
 }
 
 

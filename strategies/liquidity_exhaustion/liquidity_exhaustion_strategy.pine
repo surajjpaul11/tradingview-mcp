@@ -1,0 +1,172 @@
+//@version=6
+strategy("Liquidity & Capitulation Exhaustion Strategy", 
+         shorttitle="Liquidity Exhaustion", 
+         overlay=true, 
+         initial_capital=10000, 
+         default_qty_type=strategy.percent_of_equity, 
+         default_qty_value=100, 
+         commission_type=strategy.commission.percent, 
+         commission_value=0.10)
+
+// ==============================================================================
+// INPUTS & PARAMETERS
+// ==============================================================================
+var string G_CAPITULATION = "Capitulation Bottom Parameters"
+vtrPanicThresh    = input.float(0.98, "VTR Panic Threshold (VIX/VIX3M)", group=G_CAPITULATION, tooltip="Ratio >= threshold indicates backwardation / margin call panic")
+vtrRecovLine      = input.float(0.98, "VTR Recovery Line", group=G_CAPITULATION, tooltip="VTR easing below this signals forced liquidation has exhausted")
+minPanicDrawdown  = input.float(4.0,  "Min Drawdown from Peak (%)", group=G_CAPITULATION)
+panicMemoryBars   = input.int(12,     "Panic Memory Window (Bars)", minval=1, maxval=30, group=G_CAPITULATION)
+
+var string G_EXUBERANCE = "Exuberance Top Parameters"
+enableShort       = input.bool(false, "Enable Shorting on Exuberance Breakdown", group=G_EXUBERANCE)
+vixComplacent     = input.float(14.5, "VIX Complacency Level", group=G_EXUBERANCE)
+
+var string G_RISK = "Risk & Exit Management"
+initialStopMult   = input.float(2.5, "Initial Stop Loss (ATR Mult)", minval=1.0, group=G_RISK)
+profitActivateAtr = input.float(1.5, "Profit to Activate Trailing Stop (ATR Mult)", minval=0.5, group=G_RISK)
+trailAtrMult      = input.float(3.5, "Trailing Stop Distance (ATR Mult)", minval=1.0, group=G_RISK)
+contangoExitVtr   = input.float(0.82, "Deep Contango Profit Target (VTR)", group=G_RISK)
+contangoMinAtr    = input.float(2.0, "Contango Exit Min Profit (ATR Mult)", group=G_RISK)
+
+var string G_VISUAL = "Visual Display"
+showZones         = input.bool(true, "Show Regime Background Shading", group=G_VISUAL)
+showStopLine      = input.bool(true, "Show Trailing Stop Line", group=G_VISUAL)
+
+// ==============================================================================
+// MULTI-TICKER LIQUIDITY & VOLATILITY DATA
+// ==============================================================================
+// Fetch auxiliary series at daily resolution
+vixRaw   = request.security("CBOE:VIX", "D", close)
+vix3mRaw = request.security("CBOE:VIX3M", "D", close)
+hygRaw   = request.security("AMEX:HYG", "D", close)
+lqdRaw   = request.security("AMEX:LQD", "D", close)
+rspRaw   = request.security("AMEX:RSP", "D", close)
+
+// Fallback handling if indices not available on specific exchange
+vix   = na(vixRaw) ? 15.0 : vixRaw
+vix3m = na(vix3mRaw) ? 17.0 : vix3mRaw
+hyg   = na(hygRaw) ? close : hygRaw
+lqd   = na(lqdRaw) ? close : lqdRaw
+rsp   = na(rspRaw) ? close : rspRaw
+
+// VIX Term Structure Ratio
+vtr = vix / vix3m
+vtrEma5 = ta.ema(vtr, 5)
+
+// Credit Spread Ratio (HYG / LQD)
+creditRatio = hyg / lqd
+creditEma20 = ta.ema(creditRatio, 20)
+
+// Breadth Ratio (RSP / SPY)
+breadthRatio = rsp / close
+breadthEma20 = ta.ema(breadthRatio, 20)
+
+// Core Technicals
+atr14 = ta.atr(14)
+sma20 = ta.sma(close, 20)
+rollingPeak = ta.highest(high, 60)
+drawdownPct = ((rollingPeak - close) / rollingPeak) * 100.0
+
+// ==============================================================================
+// REGIME SIGNALS & COMPOSITE SCORING
+// ==============================================================================
+isPanicActive = (vtr >= vtrPanicThresh)
+barsSincePanic = ta.barssince(isPanicActive)
+
+// Capitulation Reversal Buy Trigger
+panicWasRecent = not na(barsSincePanic) and (barsSincePanic <= panicMemoryBars)
+isOversold     = (drawdownPct >= minPanicDrawdown)
+vtrEasing      = (vtr < vtrRecovLine) or ta.crossunder(vtr, vtrEma5)
+candleReversal = (close > open) or (close > close[1])
+
+capitulationBuy = panicWasRecent and isOversold and vtrEasing and candleReversal and (strategy.position_size == 0)
+
+// Exuberance Top Breakdown Trigger
+atPeak        = (drawdownPct <= 1.5)
+isComplacent  = (vix <= vixComplacent)
+breadthLags   = (breadthRatio < breadthEma20)
+creditLags    = (creditRatio < creditEma20)
+maBreak       = ta.crossunder(close, sma20)
+
+exuberanceShort = enableShort and atPeak and isComplacent and maBreak and (strategy.position_size == 0)
+
+// ==============================================================================
+// STRATEGY EXECUTION & DYNAMIC RISK ENGINE
+// ==============================================================================
+var float activeStop = na
+var float peakPrice = na
+var float troughPrice = na
+
+// Position Entry
+if (capitulationBuy)
+    strategy.entry("Long", strategy.long)
+    activeStop := open - (initialStopMult * atr14)
+    peakPrice := close
+
+if (exuberanceShort)
+    strategy.entry("Short", strategy.short)
+    activeStop := open + (initialStopMult * atr14)
+    troughPrice := close
+
+// In-Position Trailing & Exits
+if (strategy.position_size > 0)
+    peakPrice := math.max(peakPrice, close)
+    float profitAtr = (close - strategy.position_avg_price) / atr14
+
+    // Activate trailing stop once in profit
+    if (profitAtr >= profitActivateAtr)
+        float trailLevel = peakPrice - (trailAtrMult * atr14)
+        activeStop := math.max(activeStop, trailLevel)
+
+    // Deep contango profit target
+    if (vtr <= contangoExitVtr and profitAtr >= contangoMinAtr)
+        strategy.close("Long", comment="Contango Target")
+        activeStop := na
+    else if (close <= activeStop)
+        string exitComment = (profitAtr >= profitActivateAtr) ? "Trailing Stop" : "Stop Loss"
+        strategy.close("Long", comment=exitComment)
+        activeStop := na
+
+else if (strategy.position_size < 0)
+    troughPrice := math.min(troughPrice, close)
+    float profitAtr = (strategy.position_avg_price - close) / atr14
+
+    if (profitAtr >= profitActivateAtr)
+        float trailLevel = troughPrice + (trailAtrMult * atr14)
+        activeStop := math.min(activeStop, trailLevel)
+
+    if (vtr >= vtrPanicThresh)
+        strategy.close("Short", comment="Panic Cover")
+        activeStop := na
+    else if (close >= activeStop)
+        string exitComment = (profitAtr >= profitActivateAtr) ? "Trailing Stop" : "Stop Loss"
+        strategy.close("Short", comment=exitComment)
+        activeStop := na
+else
+    activeStop := na
+
+// ==============================================================================
+// VISUAL INDICATORS & PLOTS
+// ==============================================================================
+// Background Regime Shading
+color bgColor = na
+if showZones
+    if (strategy.position_size > 0)
+        bgColor := color.new(color.green, 92)
+    else if (isPanicActive or (not na(barsSincePanic) and barsSincePanic <= 3))
+        bgColor := color.new(color.maroon, 85)
+    else if (atPeak and isComplacent and (breadthLags or creditLags))
+        bgColor := color.new(color.orange, 90)
+
+bgcolor(bgColor, title="Regime Background")
+
+// Trailing Stop Line
+plot(showStopLine and not na(activeStop) ? activeStop : na, 
+     title="Active Stop", 
+     color=color.red, 
+     style=plot.style_linebr, 
+     linewidth=2)
+
+// Signal Shapes
+plotshape(capitulationBuy, title="Capitulation Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plotshape(exuberanceShort, title="Exuberance Short", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, text="SHORT")

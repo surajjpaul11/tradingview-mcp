@@ -391,6 +391,30 @@ def run_liquidity_exhaustion(
     return trades
 
 
+def run_liquidity_exhaustion_trades(candles: list[dict], **kwargs) -> list[dict]:
+    """
+    Adapter function matching the standard backtest_service signature.
+    Auto-fetches and aligns auxiliary macro/volatility tickers if not already present.
+    """
+    if not candles:
+        return []
+
+    # If candles are not yet enriched with auxiliary indicators, fetch and align them
+    if "^VIX" not in candles[0] or "^VIX3M" not in candles[0]:
+        period = kwargs.pop("period", "5y")
+        interval = kwargs.pop("interval", "1d")
+        aux_tickers = ["^VIX", "^VIX3M", "HYG", "LQD", "RSP"]
+        aux_data = {}
+        for sym in aux_tickers:
+            try:
+                aux_data[sym] = fetch_ohlcv(sym, period=period, interval=interval)
+            except Exception:
+                pass
+        candles = align_multi_asset_data(candles, aux_data)
+
+    return run_liquidity_exhaustion(candles, **kwargs)
+
+
 # ==============================================================================
 # PERFORMANCE METRICS & COSTS
 # ==============================================================================

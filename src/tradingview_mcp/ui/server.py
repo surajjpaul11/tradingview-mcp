@@ -115,8 +115,13 @@ def _format_trade_candle_datetime(date_value, candles: list[dict], default_time:
     return _format_iso_datetime(target, default_time)
 
 
+_SEEDED_IN_PROCESS = False
+
 def _ensure_seeded():
     """Ensure database has historical backtest trades loaded."""
+    global _SEEDED_IN_PROCESS
+    if _SEEDED_IN_PROCESS:
+        return
     init_db()
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
@@ -143,6 +148,7 @@ def _ensure_seeded():
 
     if needs_seeding:
         seed_backtest_data()
+    _SEEDED_IN_PROCESS = True
 
 def _save_backtest_trades(symbol: str, strategy: str, trade_log: list[dict]):
     """Persist newly generated backtest trades into trades.db."""

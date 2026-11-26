@@ -169,6 +169,18 @@
       "symptom": "AAPL Saved Best engine has 16 winners out of 38 trades (42.1%), but the stats API calculates 15 winners using int(38*42.1/100). Return and win-rate percentages are unaffected.",
       "cause": "api_stats reconstructs counts from an already rounded win_rate_pct instead of the actual winning_trades and losing_trades fields.",
       "verified": "Observed while comparing the original AAPL engine ledger to the previously stored API statistics. Kept outside the adaptive-line implementation."
+    },
+    {
+      "id": "BUG-010",
+      "title": "Chart drawing tools provide no visible placement feedback and silently discard invalid baselines",
+      "fixed": true,
+      "found": "2026-10-27",
+      "branch": "codex/hyperliquid-chart-updates",
+      "symptom": "Selecting Line or Channel gives no on-chart instructions, anchor markers, or preview. Clicking twice on the same candle can discard the drawing. Empty-space anchors use an inaccurate whole-history pixel approximation.",
+      "cause": "The toolbar only activates click collection; rendering starts after all clicks, invalid baselines reset without feedback, and missing click times use container width instead of the visible logical scale.",
+      "fix": "Add step-by-step drawing guidance, live canvas previews and anchor handles, Escape/Cancel, retained anchors on invalid channel baselines, logical-scale coordinate conversion and primitive rendering that leaves candle scales unchanged. Rebuild the served chart bundle.",
+      "verified": "Chart production build and lint pass; 12 JavaScript unit tests and 3 chart workspace Python tests pass. Headless Chrome verifies painted line/channel previews and completed shapes, retained invalid channel anchors, Escape/Cancel, undo, saved drawing rendering after reload, clearing, and no page errors.",
+      "fixed_in": "Working tree (uncommitted)"
     }
   ]
 }

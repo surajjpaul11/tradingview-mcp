@@ -4,6 +4,24 @@ export const DRAWING_TOOLS = {
   parallel_channel: { label: 'Parallel Channel', points: 3 },
 };
 
+export function drawingHint(tool, progress) {
+  if (tool === 'trendline') return progress ? 'Click the end point of your line.' : 'Click the start point of your line.';
+  if (tool === 'parallel_channel') return ['Click the first point of the channel baseline.', 'Click the second point of the channel baseline.', 'Click to set the channel width.'][progress];
+  return '';
+}
+
+// Use the visible logical scale, including the empty space beyond the last bar.
+// Mapping x as a fraction of all history places anchors incorrectly after zooming.
+export function drawingPoint(logical, price, candles, interval) {
+  if (!Number.isFinite(logical) || !Number.isFinite(price) || !candles.length) return null;
+  const index = Math.round(logical);
+  const last = candles.length - 1;
+  const time = candles[index]?.time ?? (index < 0
+    ? candles[0].time + index * interval
+    : candles[last].time + (index - last) * interval);
+  return { time, price };
+}
+
 const line = (first, second, role) => ({ role, points: [first, second] });
 
 export function drawingSegments(drawing) {
@@ -28,6 +46,7 @@ export function drawingSegments(drawing) {
 export function createDrawing(type, points, id = `${type}-${Date.now()}`) {
   const required = DRAWING_TOOLS[type]?.points ?? 0;
   if (!required || points.length !== required) return null;
-  if (points[0].time === points[1].time) return null;
+  if (points.some(({ time, price }) => !Number.isFinite(time) || !Number.isFinite(price))) return null;
+  if (points[0].time === points[1].time && (type === 'parallel_channel' || points[0].price === points[1].price)) return null;
   return { id, type, points: points.map(({ time, price }) => ({ time, price })) };
 }

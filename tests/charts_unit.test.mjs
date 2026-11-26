@@ -5,7 +5,8 @@ import { findFairValueGaps, buildVolumeProfile } from '../src/tradingview_mcp/ui
 import { parseHyperliquidCandle, parseYahooChart } from '../src/tradingview_mcp/ui/charts_src/feeds/parsers.js';
 import { formatCrosshairTime } from '../src/tradingview_mcp/ui/charts_src/chartConfig.js';
 import { buildSymbolGroups, filterSymbolGroups, findSymbol } from '../src/tradingview_mcp/ui/charts_src/symbols.js';
-import { createDrawing, drawingSegments } from '../src/tradingview_mcp/ui/charts_src/drawings.js';
+import { createDrawing, drawingSegments, drawingPoint } from '../src/tradingview_mcp/ui/charts_src/drawings.js';
+import { DrawingPrimitive } from '../src/tradingview_mcp/ui/charts_src/primitives/DrawingPrimitive.js';
 import { DEFAULT_STRATEGY } from '../src/tradingview_mcp/ui/charts_src/layouts.js';
 import { strategyQuery } from '../src/tradingview_mcp/ui/charts_src/hooks/useStrategyData.js';
 
@@ -50,6 +51,34 @@ test('builds straight lines and parallel channel boundaries',()=>{
   assert.equal(segments.length,3);
   assert.deepEqual(segments[1].points.map((point)=>point.price),[14,18]);
   assert.equal(segments[2].role,'midline');
+});
+
+test('drawing anchors follow logical positions when zoomed and in empty chart space',()=>{
+  const candles=Array.from({length:100},(_,i)=>({time:60+i*60}));
+  assert.deepEqual(drawingPoint(80.2,14,candles,60),{time:4860,price:14});
+  assert.deepEqual(drawingPoint(104,14,candles,60),{time:6300,price:14});
+  assert.deepEqual(drawingPoint(-2,14,candles,60),{time:-60,price:14});
+  assert.equal(drawingPoint(null,14,candles,60),null);
+  assert.equal(drawingPoint(2,null,candles,60),null);
+  assert.equal(drawingPoint(2,14,[],60),null);
+  assert.ok(createDrawing('trendline',[{time:60,price:10},{time:60,price:14}]));
+  assert.equal(createDrawing('parallel_channel',[{time:60,price:10},{time:60,price:14},{time:120,price:15}]),null);
+});
+
+test('drawing primitive paints channel previews, anchors, and saved drawings without adding series',()=>{
+  const primitive=new DrawingPrimitive(); const strokes=[];const anchors=[];let path=[];let updates=0;
+  const scale={timeToCoordinate:(time)=>time>=60&&time<=180?time:null,logicalToCoordinate:(index)=>60+index*60,timeToIndex:()=>1};
+  primitive.attached({chart:{timeScale:()=>scale},series:{priceToCoordinate:(price)=>200-price*10},requestUpdate:()=>updates++});
+  const context={save(){},restore(){},setLineDash(){},beginPath(){path=[];},moveTo(x,y){path.push([x,y]);},lineTo(x,y){path.push([x,y]);},stroke(){if(path.length)strokes.push(path);},arc(x,y){anchors.push([x,y]);},fill(){}};
+  const target={useMediaCoordinateSpace:(draw)=>draw({context})};
+  const channel=createDrawing('parallel_channel',[{time:60,price:10},{time:180,price:14},{time:120,price:16}]);
+  primitive.update({draft:channel,candles:[{time:60},{time:120},{time:180}]});primitive.draw(target);
+  assert.equal(strokes.length,3);assert.equal(anchors.length,3);
+  assert.deepEqual(strokes[1],[[60,60],[180,20]]);
+  assert.deepEqual(primitive.coordinate({time:300,price:10}),{x:300,y:100});
+  primitive.update({draft:null,drawings:[channel]});
+  assert.equal(updates,2);assert.equal(primitive.draft,null);
+  primitive.detached();assert.equal(primitive.chart,null);
 });
 
 test('merges and filters strategy dashboard symbols by data source',()=>{

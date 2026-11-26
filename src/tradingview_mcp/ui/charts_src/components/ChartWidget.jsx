@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import IndicatorToggles from './IndicatorToggles.jsx';
 import DrawingToolbar from './DrawingToolbar.jsx';
 import LightweightChart from './LightweightChart.jsx';
@@ -8,10 +8,12 @@ import SymbolSelector from './SymbolSelector.jsx';
 import { findSymbol } from '../symbols.js';
 import { rangeOptions,resolutionOptions,resolveResolution } from '../timeframes.js';
 import { useStrategyData } from '../hooks/useStrategyData.js';
+import { drawingHint } from '../drawings.js';
 
 export default function ChartWidget({pane,active,symbolGroups,onActivate,onPaneChange,onOpenStrategy}){
   const [status,setStatus]=useState({state:'loading'}); const symbol=findSymbol(pane.symbolId,symbolGroups);
   const [drawingTool,setDrawingTool]=useState('cursor'); const [drawingProgress,setDrawingProgress]=useState(0);
+  const cancelDrawing=useCallback(()=>{setDrawingTool('cursor');setDrawingProgress(0);},[]);
   const strategy=useStrategyData(symbol,pane,status);
   const symbolChange=(symbolId)=>{setDrawingTool('cursor');setDrawingProgress(0);onPaneChange((current)=>{const next=findSymbol(symbolId,symbolGroups);return {symbolId,backtestWindow:next.source==='yahoo'&&current.backtestWindow?{...current.backtestWindow,snapshot_id:undefined}:null,source:next.source,resolution:resolveResolution(next.source,current.resolution,current.range),drawings:[]};});};
   const toggle=(key)=>onPaneChange((current)=>({indicators:{...current.indicators,[key]:!current.indicators[key]}}));
@@ -27,7 +29,13 @@ export default function ChartWidget({pane,active,symbolGroups,onActivate,onPaneC
       <button type="button" className={`strategy-toggle ${pane.strategy.enabled?'enabled':''}`} onClick={(e)=>{e.stopPropagation();onOpenStrategy();}}>Strategy</button>
       <StatusBadge status={strategy.error?{state:'error',message:strategy.error}:status}/>
     </header>
-    <div className="chart-widget__body" data-drawing-tool={drawingTool}><LightweightChart symbol={symbol} pane={pane} strategyData={strategy} drawingTool={drawingTool} onDrawingProgress={setDrawingProgress} onDrawingComplete={addDrawing} onStatusChange={setStatus}/></div>
+    <div className="chart-widget__body" data-drawing-tool={drawingTool}>
+      <LightweightChart symbol={symbol} pane={pane} strategyData={strategy} drawingTool={drawingTool} onDrawingProgress={setDrawingProgress} onDrawingComplete={addDrawing} onDrawingCancel={cancelDrawing} onStatusChange={setStatus}/>
+      {drawingTool!=='cursor'&&<div className="drawing-guide">
+        <span role="status">{status.state==='loading'?'Waiting for candles…':status.state==='error'?'Candles unavailable. Retry after the chart loads.':drawingHint(drawingTool,drawingProgress)}</span>
+        <button type="button" onClick={cancelDrawing}>Cancel (Esc)</button>
+      </div>}
+    </div>
     <footer className="chart-widget__footer">
       {pane.backtestWindow&&<span className="strategy-empty">{pane.backtestWindow.start_date} → {pane.backtestWindow.end_date}</span>}
       <SegmentedControl label="Timeline" options={rangeOptions(symbol.source,pane.resolution)} value={pane.range} onChange={(range)=>onPaneChange({range,backtestWindow:null})}/>

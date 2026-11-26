@@ -43,19 +43,54 @@ try{
   await page.getByTitle('Fair Value Gaps').click();await page.getByTitle('Volume Profile (visible range)').click();
   assert.equal(await page.getByTitle('Fair Value Gaps').getAttribute('aria-pressed'),'true');
   const firstChartBody=page.locator('.chart-widget').first().locator('.chart-widget__body');
+  const moveOnChart=async(x,y)=>{const box=await firstChartBody.boundingBox();await page.mouse.move(box.x+x,box.y+y);};
+  const drawingPixels=async(color)=>page.locator('.lightweight-chart').first().evaluate((element,color)=>{
+    let count=0;
+    for(const canvas of element.querySelectorAll('canvas')){
+      const data=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=0;i<data.length;i+=4){
+        if(color==='line'?data[i]===245&&data[i+1]===158&&data[i+2]===11:data[i]===34&&data[i+1]===211&&data[i+2]===238)count++;
+      }
+    }
+    return count;
+  },color);
   await page.locator('.chart-widget').first().getByRole('button',{name:'Line'}).click();
   await page.waitForFunction(()=>document.querySelector('.chart-widget__body')?.dataset.drawingTool==='trendline');
-  await firstChartBody.click({position:{x:180,y:260}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/2'));await page.waitForTimeout(550);await firstChartBody.click({position:{x:620,y:150}});
+  assert.match(await page.locator('.drawing-guide').innerText(),/Click the start point/);
+  await firstChartBody.click({position:{x:180,y:260}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/2'));
+  assert.match(await page.locator('.drawing-guide').innerText(),/Click the end point/);
+  await moveOnChart(620,150);await page.waitForFunction(()=>document.querySelector('.lightweight-chart').dataset.drawingPreviewPoints==='2');
+  await page.waitForTimeout(100);assert.ok(await drawingPixels('line')>50,'line preview must be painted on the chart');
+  await page.waitForTimeout(550);await firstChartBody.click({position:{x:620,y:150}});
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
+  await page.waitForTimeout(100);assert.ok(await drawingPixels('line')>50,'completed line must remain visible');
+  assert.equal(await page.locator('.drawing-guide').count(),0);
   await page.locator('.chart-widget').first().getByRole('button',{name:'Channel'}).click();
   await page.waitForFunction(()=>document.querySelector('.chart-widget__body')?.dataset.drawingTool==='parallel_channel');
   await page.waitForTimeout(550);
   await firstChartBody.click({position:{x:220,y:300}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/3'));await page.waitForTimeout(550);
   await firstChartBody.click({position:{x:650,y:210}});await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('2/3'));await page.waitForTimeout(550);
+  assert.match(await page.locator('.drawing-guide').innerText(),/Click to set the channel width/);
+  await moveOnChart(400,120);await page.waitForFunction(()=>document.querySelector('.lightweight-chart').dataset.drawingPreviewPoints==='3');
+  await page.waitForTimeout(100);assert.ok(await drawingPixels('channel')>100,'channel boundaries must preview before the third click');
   await firstChartBody.click({position:{x:400,y:120}});
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===2);
+  await page.waitForTimeout(100);assert.ok(await drawingPixels('channel')>100,'completed channel must remain visible');
+  if(process.env.CHARTS_SCREENSHOT)await firstChartBody.screenshot({path:process.env.CHARTS_SCREENSHOT});
   await page.locator('.chart-widget').first().getByRole('button',{name:'Undo last drawing'}).click();
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Channel'}).click();
+  await page.waitForTimeout(550);await firstChartBody.click({position:{x:220,y:300}});
+  await page.waitForFunction(()=>document.querySelector('.drawing-toolbar button[aria-pressed="true"]')?.textContent.includes('1/3'));
+  // A same-candle second anchor must not silently throw the draft away.
+  await page.waitForTimeout(550);await firstChartBody.click({position:{x:220,y:250}});
+  assert.match(await page.locator('.drawing-guide').innerText(),/second point/);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelector('.chart-widget__body').dataset.drawingTool==='cursor'&&document.querySelector('.lightweight-chart').dataset.drawingPreviewPoints==='0');
+  assert.equal(await page.locator('.drawing-guide').count(),0);
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Line'}).click();
+  await page.getByRole('button',{name:'Cancel (Esc)'}).click();
+  await page.waitForFunction(()=>document.querySelector('.chart-widget__body').dataset.drawingTool==='cursor');
   await page.locator('.pane-selector select').selectOption('2');await page.waitForFunction(()=>document.querySelectorAll('.chart-widget').length===2);
   const symbolSearch=page.locator('.chart-widget').nth(1).getByRole('combobox',{name:'Symbol'});
   await symbolSearch.fill('WULF');
@@ -110,6 +145,10 @@ try{
   assert.equal(await page.locator('.chart-widget').first().locator('.strategy-toggle').evaluate((element)=>element.classList.contains('enabled')),false);
   await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.chart-widget').length===2);
   await page.waitForFunction(()=>Number(document.querySelector('.chart-widget .lightweight-chart')?.dataset.drawingCount)===1);
+  await page.waitForTimeout(100);assert.ok(await drawingPixels('line')>50,'saved line must render after reload');
+  await page.locator('.chart-widget').first().getByRole('button',{name:'Clear',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('.lightweight-chart').dataset.drawingCount==='0');
+  await page.waitForTimeout(100);assert.equal(await drawingPixels('line'),0,'clear must remove the rendered line');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({passed:true,panes:2,liveCandles:4,strategyMarkers:2,overlays:1,drawings:1}));
+  console.log(JSON.stringify({passed:true,panes:2,liveCandles:4,strategyMarkers:2,overlays:1,drawingPreviews:true,drawingPersistence:true,drawingCancellation:true,drawingClear:true}));
 }finally{await browser.close();dashboard.child.kill('SIGTERM');}

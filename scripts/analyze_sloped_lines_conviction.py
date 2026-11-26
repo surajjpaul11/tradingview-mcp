@@ -62,7 +62,8 @@ def add_indicators(candles: list[dict]) -> pd.DataFrame:
 def line_features(result: dict, entry_date: str) -> dict:
     candidates = [
         line for line in result["trendlines"]
-        if line.get("direction") == "descending" and line.get("break_date") == entry_date
+        if line.get("direction") == "descending"
+        and (line.get("fill_date") or line.get("break_date")) == entry_date
     ]
     if not candidates:
         return {}
@@ -103,7 +104,7 @@ def build_rows(period: str) -> tuple[pd.DataFrame, dict]:
             "return_pct": 100 * (np.prod([1 + t["return_pct"] / 100 for t in completed]) - 1),
         }
         for trade_number, trade in enumerate(completed, start=1):
-            i = by_date[trade["entry_date"]]
+            i = by_date[trade.get("entry_signal_date", trade["entry_date"])]
             current = frame.iloc[i]
             previous = frame.iloc[i - 1] if i else current
             price_up_signal = bool(current["close"] > previous["close"])
@@ -134,6 +135,7 @@ def build_rows(period: str) -> tuple[pd.DataFrame, dict]:
                 "ticker": ticker,
                 "trade_number": trade_number,
                 "entry_date": trade["entry_date"],
+                "entry_signal_date": trade.get("entry_signal_date", trade["entry_date"]),
                 "entry_price": trade["entry_price"],
                 "exit_date": trade["exit_date"],
                 "exit_price": trade["exit_price"],

@@ -587,7 +587,12 @@ def run_sloped_lines(
 
     Parameters:
       - full_candle: If True, requires the candle to CLOSE across the trendline (close breakout).
-                     If False, touching/piercing with high/low triggers the breakout (wick/touch break).
+                     If False, uses the selected body/wick boundary to detect a break.
+      - execution: Body-only, close-confirmed, and candle-color signals execute at the
+                   next candle's open. Additional confirmation candles also require
+                   next-open execution. Only unfiltered wick touches fill intrabar.
+                   Current-candle ATR stop signals also wait for the next open.
+                   A final-bar close signal remains unfilled without a next open.
       - use_wick: If True, uses candle wicks (high/low) for line contact points.
                   If False (default), uses ONLY candle bodies (max/min of open/close).
       - confirm_candles: Number of additional supporting candles in the same direction required
@@ -637,10 +642,94 @@ def run_sloped_lines(
     state: str = "waiting_for_buy"
     last_sell_point: tuple[int, float] | None = None
     trap_info: dict | None = None
+    pending_order: dict | None = None
+    close_dependent = full_candle or not use_wick or inverse_color_trigger
+
+    def execute_order(order: dict, bar: int, fill_price: float) -> None:
+        nonlocal position, state, active_trendline, search_after_bar
+        nonlocal last_sell_point, trap_info, break_start_bar, confirm_count
+        fill_date = candles[bar]["date"]
+        signal_bar = order["signal_bar"]
+        reason = order["reason"]
+        if order.get("line") is not None:
+            order["line"].update(fill_bar=bar, fill_date=fill_date, break_price=fill_price)
+
+        if position is not None:
+            trades.append({
+                "entry_date": position["entry_date"],
+                "entry_price": position["entry_price"],
+                "entry_signal_date": position["entry_signal_date"],
+                "exit_date": fill_date,
+                "exit_price": fill_price,
+                "exit_signal_date": candles[signal_bar]["date"],
+                "side": position["side"],
+                "entry_reason": position.get("entry_reason", "breakout"),
+                "exit_reason": "resistance_break" if position["side"] == "short" else reason,
+                "strategy": "sloped_lines",
+            })
+            if position["side"] == "long":
+                trap_info = {"exit_bar": bar, "entry_price": position["entry_price"]}
+            position = None
+
+        if order["action"] == "buy":
+            position = {
+                "entry_date": fill_date, "entry_price": fill_price,
+                "entry_signal_date": candles[signal_bar]["date"],
+                "entry_bar": bar, "entry_low": order["entry_low"],
+                "side": "long", "entry_reason": reason,
+            }
+            state = "holding"
+            last_sell_point = None
+            trap_info = None
+        else:
+            # A next-open fill cannot use the fill candle's eventual high as an anchor.
+            last_sell_point = (bar, max(fill_price, highs[signal_bar]))
+            if enable_short and reason == "support_break":
+                position = {
+                    "entry_date": fill_date, "entry_price": fill_price,
+                    "entry_signal_date": candles[signal_bar]["date"],
+                    "entry_bar": bar, "entry_high": last_sell_point[1],
+                    "side": "short", "entry_reason": reason,
+                }
+                state = "short"
+            else:
+                state = "waiting_for_buy"
+        active_trendline = None
+        search_after_bar = bar
+        break_start_bar = None
+        confirm_count = 0
+
+    def submit_order(action: str, reason: str, bar: int, touch_price: float,
+                     entry_low: float | None = None, line: dict | None = None,
+                     require_close: bool = False) -> None:
+        nonlocal pending_order, active_trendline
+        recorded_line = None
+        if line is not None:
+            recorded_line = {
+                **line, "break_bar": bar, "break_date": candles[bar]["date"],
+                "break_price": None, "fill_bar": None, "fill_date": None,
+            }
+            trendlines.append(recorded_line)
+        order = {
+            "action": action, "reason": reason, "signal_bar": bar,
+            "entry_low": entry_low, "line": recorded_line,
+        }
+        if close_dependent or require_close:
+            pending_order = order
+            active_trendline = None
+        else:
+            execute_order(order, bar, touch_price)
 
     for i in range(len(candles)):
         date  = candles[i]["date"]
         price = closes[i]
+
+        # Execute a completed-bar signal before inspecting this candle's OHLC.
+        filled_long_at_open = False
+        if pending_order is not None:
+            filled_long_at_open = pending_order["action"] == "buy"
+            execute_order(pending_order, i, candles[i]["open"])
+            pending_order = None
 
         # --- Confirm new swing points ---
         while sh_ptr < len(swing_highs) and swing_highs[sh_ptr][2] <= i:
@@ -652,57 +741,22 @@ def run_sloped_lines(
 
         # --- Check special stop-loss re-entry modes when out of position ---
         if state == "waiting_for_buy":
-            # 1. Exit Peak Reclaim: price breaks above the peak of the recent sell candle
             if stop_loss_mode == "exit_peak_reclaim" and last_sell_point is not None and i > last_sell_point[0]:
                 sell_peak = last_sell_point[1]
                 is_reclaim = (price > sell_peak) if full_candle else (highs[i] > sell_peak)
-                if is_reclaim:
-                    if inverse_color_trigger and not is_green_candle(candles[i]):
-                        pass
-                    else:
-                        exec_price = price if full_candle else max(sell_peak, candles[i]["open"])
-                        position = {
-                            "entry_date":  date,
-                            "entry_price": exec_price,
-                            "entry_bar":   i,
-                            "entry_low":   lows[i],
-                            "side":        "long",
-                            "entry_reason": "exit_peak_reclaim",
-                        }
-                        state = "holding"
-                        active_trendline = None
-                        search_after_bar = i
-                        last_sell_point = None
-                        trap_info = None
-                        break_start_bar = None
-                        confirm_count = 0
-                        continue
+                if is_reclaim and (not inverse_color_trigger or is_green_candle(candles[i])):
+                    submit_order("buy", "exit_peak_reclaim", i,
+                                 max(sell_peak, candles[i]["open"]), entry_low=lows[i])
+                    continue
 
-            # 2. Barrier Trap Reentry: price recovers back above entry price within 5 bars
             if stop_loss_mode == "barrier_trap_reentry" and trap_info is not None:
                 if i <= trap_info["exit_bar"] + 5:
-                    is_trap_recovery = (price >= trap_info["entry_price"]) if full_candle else (highs[i] >= trap_info["entry_price"])
-                    if is_trap_recovery:
-                        if inverse_color_trigger and not is_green_candle(candles[i]):
-                            pass
-                        else:
-                            exec_price = price if full_candle else max(trap_info["entry_price"], candles[i]["open"])
-                            position = {
-                                "entry_date":  date,
-                                "entry_price": exec_price,
-                                "entry_bar":   i,
-                                "entry_low":   lows[i],
-                                "side":        "long",
-                                "entry_reason": "barrier_trap_reentry",
-                            }
-                            state = "holding"
-                            active_trendline = None
-                            search_after_bar = i
-                            last_sell_point = None
-                            trap_info = None
-                            break_start_bar = None
-                            confirm_count = 0
-                            continue
+                    recovery = trap_info["entry_price"]
+                    is_recovery = (price >= recovery) if full_candle else (highs[i] >= recovery)
+                    if is_recovery and (not inverse_color_trigger or is_green_candle(candles[i])):
+                        submit_order("buy", "barrier_trap_reentry", i,
+                                     max(recovery, candles[i]["open"]), entry_low=lows[i])
+                        continue
                 else:
                     trap_info = None
 
@@ -711,158 +765,38 @@ def run_sloped_lines(
             tl = active_trendline
             projected = trendline_value(tl["anchor1"], tl["anchor2"], i)
 
-            if state == "waiting_for_buy" or state == "short":
-                # Watching descending resistance — break ABOVE = buy signal
+            if state in ("waiting_for_buy", "short") and tl["type"] == "resistance":
                 is_break = (price > projected) if full_candle else (highs[i] > projected)
-                if tl["type"] == "resistance":
-                    if break_start_bar is None:
-                        if is_break:
-                            if inverse_color_trigger and not is_green_candle(candles[i]):
-                                # Inverse color rule: buyback can only trigger on a green candle!
-                                pass
-                            elif confirm_candles == 0:
-                                exec_price = price if full_candle else max(round(projected, 4), candles[i]["open"])
-                                trendlines.append({
-                                    **tl,
-                                    "break_bar": i,
-                                    "break_price": exec_price,
-                                    "break_date": date,
-                                })
-
-                                # Close short if in one
-                                if position is not None and position["side"] == "short":
-                                    trades.append({
-                                        "entry_date":  position["entry_date"],
-                                        "entry_price": position["entry_price"],
-                                        "exit_date":   date,
-                                        "exit_price":  exec_price,
-                                        "side":        "short",
-                                        "entry_reason": position.get("entry_reason", "support_break"),
-                                        "exit_reason": "resistance_break",
-                                        "strategy":    "sloped_lines",
-                                    })
-                                    position = None
-
-                                # Open long
-                                position = {
-                                    "entry_date":  date,
-                                    "entry_price": exec_price,
-                                    "entry_bar":   i,
-                                    "entry_low":   lows[i],
-                                    "side":        "long",
-                                    "entry_reason": "breakout",
-                                }
-                                state = "holding"
-                                active_trendline = None
-                                search_after_bar = i
-                                last_sell_point = None
-                                continue
-                            else:
-                                break_start_bar = i
-                                confirm_count = 0
+                if break_start_bar is None:
+                    if is_break and (not inverse_color_trigger or is_green_candle(candles[i])):
+                        if confirm_candles == 0:
+                            submit_order("buy", "breakout", i,
+                                         max(round(projected, 4), candles[i]["open"]),
+                                         entry_low=lows[i], line=tl)
+                            continue
+                        break_start_bar = i
+                        confirm_count = 0
+                else:
+                    is_supporting = is_break and (price > closes[i - 1] or price >= candles[i]["open"])
+                    if inverse_color_trigger and not is_green_candle(candles[i]):
+                        is_supporting = False
+                    if is_supporting:
+                        confirm_count += 1
+                        if confirm_count >= confirm_candles:
+                            entry_low = min(lows[break_start_bar:i + 1])
+                            submit_order("buy", "breakout", i,
+                                         max(round(projected, 4), candles[i]["open"]),
+                                         entry_low=entry_low, line=tl, require_close=True)
+                            continue
                     else:
-                        # In confirmation phase: must be above trendline AND moving in upward direction
-                        is_supporting = is_break and (price > closes[i-1] or price >= candles[i]["open"])
-                        if inverse_color_trigger and not is_green_candle(candles[i]):
-                            is_supporting = False
-                        if is_supporting:
-                            confirm_count += 1
-                            if confirm_count >= confirm_candles:
-                                exec_price = price if full_candle else max(round(projected, 4), candles[i]["open"])
-                                entry_low = min([lows[b] for b in range(break_start_bar, i + 1)])
-                                trendlines.append({
-                                    **tl,
-                                    "break_bar": i,
-                                    "break_price": exec_price,
-                                    "break_date": date,
-                                })
+                        break_start_bar = None
+                        confirm_count = 0
 
-                                # Close short if in one
-                                if position is not None and position["side"] == "short":
-                                    trades.append({
-                                        "entry_date":  position["entry_date"],
-                                        "entry_price": position["entry_price"],
-                                        "exit_date":   date,
-                                        "exit_price":  exec_price,
-                                        "side":        "short",
-                                        "entry_reason": position.get("entry_reason", "support_break"),
-                                        "exit_reason": "resistance_break",
-                                        "strategy":    "sloped_lines",
-                                    })
-                                    position = None
-
-                                # Open long
-                                position = {
-                                    "entry_date":  date,
-                                    "entry_price": exec_price,
-                                    "entry_bar":   i,
-                                    "entry_low":   entry_low,
-                                    "side":        "long",
-                                    "entry_reason": "breakout",
-                                }
-                                state = "holding"
-                                active_trendline = None
-                                search_after_bar = i
-                                last_sell_point = None
-                                break_start_bar = None
-                                confirm_count = 0
-                                continue
-                        else:
-                            # Reversal / drop below line: false breakout aborted
-                            break_start_bar = None
-                            confirm_count = 0
-
-            elif state == "holding":
-                # Watching ascending support — break BELOW = sell signal
+            elif state == "holding" and tl["type"] == "support":
                 is_break = (price < projected) if full_candle else (lows[i] < projected)
-                if tl["type"] == "support" and is_break:
-                    if inverse_color_trigger and not is_red_candle(candles[i]):
-                        # Inverse color rule: sell can only trigger on a red candle!
-                        pass
-                    else:
-                        exec_price = price if full_candle else min(round(projected, 4), candles[i]["open"])
-                        # Record trendline for visualization
-                        trendlines.append({
-                            **tl,
-                            "break_bar": i,
-                            "break_price": exec_price,
-                            "break_date": date,
-                        })
-
-                    # Close long
-                    if position is not None and position["side"] == "long":
-                        trades.append({
-                            "entry_date":  position["entry_date"],
-                            "entry_price": position["entry_price"],
-                            "exit_date":   date,
-                            "exit_price":  exec_price,
-                            "side":        "long",
-                            "entry_reason": position.get("entry_reason", "breakout"),
-                            "exit_reason": "support_break",
-                            "strategy":    "sloped_lines",
-                        })
-                        trap_info = {"exit_bar": i, "entry_price": position["entry_price"]}
-                        position = None
-
-                    # Open short if enabled
-                    if enable_short:
-                        position = {
-                            "entry_date":  date,
-                            "entry_price": exec_price,
-                            "entry_bar":   i,
-                            "entry_high":  highs[i],
-                            "side":        "short",
-                            "entry_reason": "support_break",
-                        }
-                        state = "short"
-                    else:
-                        state = "waiting_for_buy"
-
-                    active_trendline = None
-                    search_after_bar = i
-                    last_sell_point = (i, highs[i])
-                    break_start_bar = None
-                    confirm_count = 0
+                if is_break and (not inverse_color_trigger or is_red_candle(candles[i])):
+                    submit_order("sell", "support_break", i,
+                                 min(round(projected, 4), candles[i]["open"]), line=tl)
                     continue
 
         # --- Try to build trendlines if we don't have an active one ---
@@ -891,42 +825,28 @@ def run_sloped_lines(
                 entry_low = position["entry_low"]
                 stop_barrier = entry_low - (atr[i] if stop_loss_mode == "atr_stop_buffer" else 0.0)
                 entry_break = (price < stop_barrier) if full_candle else (lows[i] < stop_barrier)
-                if entry_break and i > position["entry_bar"]:
+                if entry_break and (i > position["entry_bar"] or filled_long_at_open):
                     exec_price = price if full_candle else min(stop_barrier, candles[i]["open"])
                     # Record support trendline so the breakdown line is visible on chart
-                    a2_bar = max(i, position["entry_bar"] + 1)
-                    allow_fallback_tl = True
+                    a2_bar = i
+                    allow_fallback_tl = i > position["entry_bar"]
                     if line_angle > 0.0:
                         allow_fallback_tl = False
                     if inverse_color_trigger:
                         if not is_green_candle(candles[position["entry_bar"]]) or not is_red_candle(candles[a2_bar]):
                             allow_fallback_tl = False
+                    fallback_line = None
                     if allow_fallback_tl:
-                        trendlines.append({
+                        fallback_line = {
                             "type": "support",
                             "direction": "ascending",
                             "anchor1": (position["entry_bar"], entry_low),
                             "anchor2": (a2_bar, entry_low),
                             "confirmed_at_bar": position["entry_bar"],
-                            "break_bar": i,
-                            "break_price": exec_price,
-                            "break_date": date,
-                        })
-                    trades.append({
-                        "entry_date":  position["entry_date"],
-                        "entry_price": position["entry_price"],
-                        "exit_date":   date,
-                        "exit_price":  exec_price,
-                        "side":        "long",
-                        "entry_reason": position.get("entry_reason", "breakout"),
-                        "exit_reason": _entry_barrier_exit_reason(stop_loss_mode),
-                        "strategy":    "sloped_lines",
-                    })
-                    trap_info = {"exit_bar": i, "entry_price": position["entry_price"]}
-                    position = None
-                    state = "waiting_for_buy"
-                    search_after_bar = i
-                    last_sell_point = (i, highs[i])
+                        }
+                    submit_order("sell", _entry_barrier_exit_reason(stop_loss_mode), i,
+                                 exec_price, line=fallback_line,
+                                 require_close=stop_loss_mode == "atr_stop_buffer")
                     continue
 
                 # If price pulls back before line forms without breaking stop, adjust entry base
@@ -968,6 +888,8 @@ def run_sloped_lines(
             "side":        side,
             "entry_reason": position.get("entry_reason", "breakout"),
             "exit_reason": "end_of_data",
+            "entry_signal_date": position["entry_signal_date"],
+            "exit_signal_date": None,
             "strategy":    "sloped_lines",
         })
 
@@ -1239,6 +1161,7 @@ def run_sloped_lines_with_trendlines(candles: list[dict], **kwargs) -> dict:
             "end_price": round(end_price, 4),
             "break_date": tl.get("break_date"),
             "break_price": tl.get("break_price"),
+            "fill_date": tl.get("fill_date"),
             "slope_per_bar": round(slope, 6),
             "color": color,
             "label": label,
@@ -1309,6 +1232,8 @@ def run_backtest(
             "break_bar": tl.get("break_bar"),
             "break_price": tl.get("break_price"),
             "break_date": tl.get("break_date"),
+            "fill_bar": tl.get("fill_bar"),
+            "fill_date": tl.get("fill_date"),
         })
 
     return {
